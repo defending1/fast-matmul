@@ -4,3 +4,7 @@
 *.pyc
 obj
 build
+
+# Rust / Cargo
+**/target/
+**/*.rs.bk
