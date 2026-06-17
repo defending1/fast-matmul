@@ -1,0 +1,528 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{tensors}[2024-11-12 Tensors Style File]
+
+%% ----------------------------------------------------------------------
+%% Required packages
+%% ----------------------------------------------------------------------
+%% For special document commands, i.e., macros
+\RequirePackage{xparse}
+
+%% For various important things
+\RequirePackage{amssymb,amsfonts,amsmath}
+
+%% For mathscr
+\RequirePackage[mathscr]{eucal}
+
+%% For boldsymbol
+\RequirePackage{amsbsy}
+
+%% For \llbracket and \rrbracket, \varoast, \varoslash
+\RequirePackage{stmaryrd}
+
+%% For \scaleobj
+\RequirePackage{scalerel}
+
+%% Suppress warnings
+%
+% (See https://tex.stackexchange.com/questions/106714/stmaryrd-and-boldsymbol-avoid-warnings)
+%
+\SetSymbolFont{stmry}{bold}{U}{stmry}{m}{n}
+
+% For \DeclarePairedDelimiter
+\RequirePackage{mathtools}
+
+%% For bm (bold math)
+\RequirePackage{bm}
+
+
+
+%% ----------------------------------------------------------------------
+%% General Macros
+%% ----------------------------------------------------------------------
+
+%% Quad-text-quad
+\NewDocumentCommand{\qtext}{O{\quad}O{#1}m}{#1\text{#3}#2}
+
+
+%% ----------------------------------------------------------------------
+%% Generic Vector and Matrix Macros
+%% ----------------------------------------------------------------------
+
+%% --------------------
+%% Transpose Symbol
+%% --------------------
+\NewDocumentCommand{\Tr}{s}{\IfBooleanTF{#1}{\vphantom{\intercal}}{\intercal}}
+
+%% --------------------
+%% Inverse & Pseudoinverse
+%% --------------------
+\NewDocumentCommand{\InvHelper}{}{\scalebox{0.5}[1.0]{\( - \)}1}
+\NewDocumentCommand{\Inv}{s}{\IfBooleanTF{#1}{\vphantom{\InvHelper}}{\InvHelper}}
+\NewDocumentCommand{\PinHelper}{}{\dagger}
+\NewDocumentCommand{\Pin}{s}{\IfBooleanTF{#1}{\vphantom{\PinHelper}}{\PinHelper}} 
+%% --------------------
+%% Vector
+%% --------------------
+% 1 [] - Optional decoration
+% 2 {} - Letter
+% 3 {} - Optional subscript
+% 4 '  - Transpose
+% 5 "  - Phantom Tranpose
+\NewDocumentCommand{\Vc}{O{} m !g t' t"}{%
+  \bm{#1{\mathbf{\MakeLowercase{#2}}}}%
+  \IfValueT{#3}{_{#3}}%
+  \IfBooleanTF{#4}{^{\Tr}}{%
+    \IfBooleanT{#5}{^{\Tr*}}}%
+}
+
+%% --------------------
+%% Matrix
+%% --------------------
+% 1 [] - Optional decoration
+% 2 {} - Letter
+% 3 {} - Optional subscript
+% 4 '  - Transpose
+% 5 "  - Phantom Tranpose
+\NewDocumentCommand{\Mx}{O{} m !g t' t"}{
+  \bm{#1{\mathbf{\MakeUppercase{#2}}}}%
+  \IfValueT{#3}{_{#3}}%
+  \IfBooleanTF{#4}{^{\Tr}}{%
+    \IfBooleanT{#5}{^{\Tr*}}}%
+}
+
+%% --------------------
+%% Tensor
+%% --------------------
+% 1 [] - Optional decoration
+% 2 {} - Letter
+\NewDocumentCommand{\Tn}{O{} m !g}{%
+  \boldsymbol{#1{\mathscr{\MakeUppercase{#2}}}}%
+  \IfValueT{#3}{_{#3}}%
+}
+
+%% --------------------
+%% Matricized Tensor
+%% --------------------
+% 1 [] - Optional decoration
+% 2 {} - Letter
+% 3 [] - Optional stars to be passed to \prn
+% 4 {} - Unfolding info
+% 5 '  - Transpose
+% 6 "  - Phantom Tranpose
+\NewDocumentCommand{\Tm}{O{} m O{} !g t' t"}{
+  \bm{#1{\mathbf{\MakeUppercase{#2}}}}_{\prn#3(#4)}%
+  \IfBooleanTF{#5}{^{\Tr}}{%
+    \IfBooleanT{#6}{^{\Tr*}}}%
+}
+
+%% ----------------------------------------------------------------------
+%% Super containers
+%% ----------------------------------------------------------------------
+
+%% Help command
+\NewDocumentCommand{\megaLRexp}{mmmmmmmm}{%
+  \IfBooleanTF{#1}{%
+    \IfBooleanTF{#2}{%
+      \IfBooleanTF{#3}{%
+        \IfBooleanTF{#4}%        
+        {\Biggl#6 #8 \Biggr#7}%
+        {\biggl#6 #8 \biggr#7}}%
+      {\Bigl#6 #8 \Bigr#7}}%
+    {\bigl#6 #8 \bigr#7}}%
+  {\IfBooleanTF{#5}
+    {\left#6 #8 \right#7}
+    {#6 #8 #7}}%
+}
+
+
+\NewDocumentCommand{\prn}{ ssss t+ g d() t'}
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{(}{)}{#6}}%
+  \IfValueT{#7}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{(}{)}{#7}}%
+  \IfBooleanT{#8}{^{\Tr}}%
+}
+
+\NewDocumentCommand{\abs}{ ssss t+ g d||}
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\vert}{\vert}{#6}}%
+  \IfValueT{#7}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\vert}{\vert}{#7}}%
+}
+
+\NewDocumentCommand{\crly}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\{}{\}}{#6}}%
+}
+
+\NewDocumentCommand{\nrm}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\|}{\|}{#6}}%
+}
+
+\NewDocumentCommand{\fnrm}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\|}{\|_{F}}{#6}}%
+}
+
+\NewDocumentCommand{\tnrm}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\|}{\|_{2}}{#6}}%
+}
+
+\NewDocumentCommand{\sqr}{ ssss t+ g d[] }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\lbrack}{\rbrack}{#6}}%
+  \IfValueT{#7}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\lbrack}{\rbrack}{#7}}%
+}
+
+\NewDocumentCommand{\angb}{ ssss t+ g d<> }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\langle}{\rangle}{#6}}%
+  \IfValueT{#7}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\langle}{\rangle}{#7}}%
+}
+
+\NewDocumentCommand{\dsqr}{ ssss t+ g d[] }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\llbracket}{\rrbracket}{#6}}%
+  \IfValueT{#7}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\llbracket}{\rrbracket}{#7}}%
+}
+
+\NewDocumentCommand{\ceil}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\lceil}{\rceil}{#6}}%
+}
+
+\NewDocumentCommand{\floor}{ ssss t+ g }
+{%
+  \IfValueT{#6}{\megaLRexp{#1}{#2}{#3}{#4}{#5}{\lfloor}{\rfloor}{#6}}%
+}
+
+
+
+%% ------------------------------------------------------------
+%% Special Operators
+%% ------------------------------------------------------------
+
+% Tensor outer product - Note that must use "\protect\topp" inside captions 
+\let\mathtop\topp
+\newcommand{\topp}{\mathbin{\mathchoice
+    {\vcenter{\hbox{\scaleobj{0.75}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{0.75}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{0.6}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{0.5}{\varbigcirc}}}}
+  }}
+\newcommand{\bigtopp}{\mathop{\vphantom{\sum}\mathchoice
+    {\vcenter{\hbox{\scaleobj{1.5}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{1.1}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{1.1}{\varbigcirc}}}}
+    {\vcenter{\hbox{\scaleobj{1.1}{\varbigcirc}}}}
+  }}
+
+% Matrix Kronecker Product 
+\newcommand{\krn}{\mathbin{\otimes}}
+\newcommand{\bigkrn}{\mathop{\bigotimes}}
+
+% Matrix Khatri-Rao Product
+\newcommand{\krp}{\mathbin{\odot}}
+\newcommand{\bigkrp}{\mathop{\bigodot}}
+
+% Matrix Hadamard
+%\NewDocumentCommand{\had}{}{\mathbin{\ast}}
+
+\newcommand{\had}{\mathbin{\mathchoice
+    {\vcenter{\hbox{\scaleobj{1.5}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{1.5}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{1.2}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{1.0}{\ast}}}}
+  }}
+\newcommand{\bighad}{\mathop{\vphantom{\sum}\mathchoice
+    {\vcenter{\hbox{\scaleobj{2.7}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{2.2}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{2.0}{\ast}}}}
+    {\vcenter{\hbox{\scaleobj{1.9}{\ast}}}}
+  }}
+
+
+% Tensor times matrix
+\NewDocumentCommand{\ttm}{O{k}}{\mathbin{\times_{\mspace{-2mu}#1}}}
+
+\newcommand{\bigttm}{\mathop{\vphantom{\sum}\mathchoice
+    {\vcenter{\hbox{\scaleobj{2.2}{\times}}}}
+    {\vcenter{\hbox{\scaleobj{1.7}{\times}}}}
+    {\vcenter{\hbox{\scaleobj{1.5}{\times}}}}
+    {\vcenter{\hbox{\scaleobj{1.3}{\times}}}}
+  }}
+
+
+%% ----------------------------------------------------------------------
+%% Multidimensional Sizes and Indices
+%% ----------------------------------------------------------------------
+
+
+%% Utility for double-subscripting with multidimensional sizes, etc.
+\NewDocumentCommand{\dsub}{m m t_ m}{#1_{#2_{#4}}}
+
+% --- Helper Macro: Generic Multi List ---
+% Base on which to build other commands.
+% (1) variable letter, e.g., n
+% (2) separator, e.g., \times
+% (3) true = cdots, false = dots
+% (4) last subscript, e.g., d
+% (5) true = squeeze out 2nd index
+% (6) true if 3D or 4D 
+% (7) true if 4D
+\NewDocumentCommand{\tttMlist}{m m m m m m m}{%
+  #1_{1} #2 %
+  \IfBooleanF{#5}{#1_{2} #2} % Only print 2nd index if *not* squeezing out 2nd index
+  \IfBooleanTF{#6}{ % 3D or 4D
+    #1_{3} % 3D
+    \IfBooleanT{#7}{#2 #1_{4} } % 4D
+  }{ % Not 3D or 4D
+    \IfBooleanTF{#3}{\cdots}{\dots} #2 #1_{#4} %
+  }%
+}
+
+% --- Helper Macro: Generic Reverse Multi List ---
+% Base on which to build other commands.
+% (1) variable letter, e.g., n
+% (2) separator, e.g., \times
+% (3) true = cdots, false = dots
+% (4) first subscript, e.g., d
+% (5) true = squeeze out 2nd index
+% (6) true if 3D or 4D 
+% (7) true if 4D
+\NewDocumentCommand{\tttRMlist}{m m m m m m m}{%
+  \IfBooleanTF{#6}%
+  {\IfBooleanT{#7}{#1_{4} #2} #1_{3} #2 #1_{2} #2 #1_{1}}%
+  {#1_{#4} \IfBooleanF{#5}{#2 #1_{#4-1}} #2 \cdots  #2 #1_{1}}%
+}
+
+% --- Helper Macro: Generic Skip List ---
+% Base on which to build other commands.
+% (1) variable letter, e.g., n
+% (2) separator, e.g., \times
+% (3) true = cdots, false = dots
+% (4) last subscript, e.g., d
+% (5) skip index
+% (6) replacement
+\NewDocumentCommand{\tttSlist}{m m m m m m}{%
+  #1_{1} %
+  #2 \IfBooleanTF{#3}{\cdots}{\dots}
+  #2 #1_{#5-1} %
+  \IfValueT{#6}{#2 #6} %
+  #2 #1_{#5+1} %
+  #2 \IfBooleanTF{#3}{\cdots}{\dots}
+  #2 #1_{#4} %
+}
+
+% --- Helper Macro: Generic Reverse Skip List ---
+% Base on which to build other commands.
+% (1) variable letter, e.g., n
+% (2) separator, e.g., \times
+% (3) true = cdots, false = dots
+% (4) first subscript, e.g., d
+% (5) skip index
+% (6) replacement
+\NewDocumentCommand{\tttRSlist}{m m m m m m}{%
+  #1_{#4} %
+  #2 \IfBooleanTF{#3}{\cdots}{\dots}
+  #2 #1_{#5+1} %
+  \IfValueT{#6}{#2 #6} %
+  #2 #1_{#5-1} %
+  #2 \IfBooleanTF{#3}{\cdots}{\dots}
+  #2 #1_{1} %
+}
+
+
+%% --------------------
+%% Tensor Index with Commas
+%% --------------------
+% Tensor index with parentheses: (i_1, i_2, ..., i_d)
+% *   3-way: (i_1, i_2, i_3)
+% **  4-way: (i_1, i_2, i_3, i_4)
+% -   Skip 2nd argument: (i_1, ..., i_d)
+% [i] Optional name of variable
+% [d] Optional last index
+\NewDocumentCommand{\miwc}{s s t! O{i} O{d}}{%
+  \tttMlist{#4}{,}{\BooleanFalse}{#5}{#3}{#1}{#2}%
+}
+
+\NewDocumentCommand{\siwc}{O{k} O{i} O{d} g}{%
+  \tttSlist{#2}{,}{\BooleanFalse}{#3}{#1}{#4}%
+}
+
+%% --------------------
+%% Tensor Index without Commas
+%% --------------------
+% Tensor Subsript: i_1 i_2 ... i_d
+% *   3-way: i_1 i_2 i_3
+% **  4-way: i_1 i_2 i_3 i_4
+% -   Skip 2nd argument: i_1 ... i_d
+% [i] Optional name of variable
+% [d] Optional last index
+\NewDocumentCommand{\minc}{s s t! O{i} O{d}}{%
+  \tttMlist{#4}{}{\BooleanTrue}{#5}{#3}{#1}{#2}%
+}
+
+\NewDocumentCommand{\sinc}{O{k} O{i} O{d} g}{%
+  \tttSlist{#2}{}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+
+%% --------------------
+%% Tensor Sizes
+%% --------------------
+\NewDocumentCommand{\tttTsze}{>{\SplitArgument{3}{,}}m}{\tttTszeFour#1} % Helper
+\NewDocumentCommand{\tttTszeFour}{m m m m}{#1 \IfValueT{#2}{\times #2} \IfValueT{#3}{\times #3} \IfValueT{#4}{\times #4}} % Helper
+
+\NewDocumentCommand{\msiz}{s s t! O{n} O{d} !g !g}{%
+  \IfValueTF{#6}%
+  {\tttTsze{#6}\IfValueT{#7}{\times \cdots \times #7}}%
+  {#4_1 \IfBooleanF{#3}{\times #4_2}%
+    \IfBooleanTF{#1}{\times #4_3 \IfBooleanT{#2}{\times #4_4}}{\times \cdots \times #4_{#5}}}%
+}
+
+\NewDocumentCommand{\Rmsiz}{s s t! O{n} O{d} !g !g}{%
+  \mathbb{R}^{\IfValueTF{#6}%
+  {\tttTsze{#6}\IfValueT{#7}{\times \cdots \times #7}}%
+  {#4_1 \IfBooleanF{#3}{\times #4_2}%
+    \IfBooleanTF{#1}{\times #4_3 \IfBooleanT{#2}{\times #4_4}}{\times \cdots \times #4_{#5}}}}%
+}
+
+\NewDocumentCommand{\Kmsiz}{m s s t! O{n} O{d} !g !g}{%
+  #1^{\IfValueTF{#7}%
+  {\tttTsze{#7}\IfValueT{#8}{\times \cdots \times #8}}%
+  {#5_1 \IfBooleanF{#4}{\times #5_2}%
+    \IfBooleanTF{#2}{\times #5_3 \IfBooleanT{#3}{\times #5_4}}{\times \cdots \times #5_{#6}}}}%
+}
+
+
+\NewDocumentCommand{\ssiz}{O{k} O{n} O{d} g}{%
+  \tttSlist{#2}{\times}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+\NewDocumentCommand{\Rssiz}{O{k} O{n} O{d} g}{%
+  \mathbb{R}^{\tttSlist{#2}{\times}{\BooleanTrue}{#3}{#1}{#4}}%
+}
+
+%% --------------------
+%% Tensor Size Domains
+%% --------------------
+\NewDocumentCommand{\tttMdom}{>{\SplitArgument{3}{,}}m}{\tttMdomFour#1} % Helper
+\NewDocumentCommand{\tttMdomFour}{m m m m}{[#1] \IfValueT{#2}{\otimes [#2]} \IfValueT{#3}{\otimes [#3]} \IfValueT{#4}{\otimes [#4]}} % Helper
+
+\NewDocumentCommand{\mdom}{s s t! O{n} O{d} !g !g}
+{
+  \IfValueTF{#6}
+  {\tttMdom{#6}\IfValueT{#7}{\otimes \cdots \otimes [#7]}}
+  {[#4_1] \IfBooleanF{#3}{\otimes [#4_2]}
+    \IfBooleanTF{#1}{\otimes [#4_3] \IfBooleanT{#2}{\otimes [#4_4]}}{\otimes \cdots \otimes [#4_{#5}]}}
+}
+
+\NewDocumentCommand{\sdom}{O{k} O{n} O{d} g}{%
+  [#2_{1}] %
+  \otimes \cdots
+  \otimes [#2_{#1-1}] %
+  \IfValueT{#4}{\otimes [#4]} %
+  \otimes [#2_{#1+1}] %
+  \otimes \cdots
+  \otimes [#2_{#3}] %
+}
+
+
+%% --------------------
+%% Tensor Sum
+%% --------------------
+%\NewDocumentCommand{\tttMsummandFirstArg}{>{\SplitList{,}}m}{\ProcessList{#1}{\tttMsummand}}
+\NewDocumentCommand{\tttMsummand}{>{\SplitArgument{1}{/}}m}{\tttMsummandTwo#1} % Helper
+\NewDocumentCommand{\tttMsummandTwo}{mm}{\IfValueTF{#2}{\sum_{#1=1}^{#2}}{\sum_{#1}}} % Helper
+
+\NewDocumentCommand{\msum}{s s t! O{i} O{n} O{d} >{\SplitList{,}}g !g}{%
+  \IfValueTF{#7}%
+  {\ProcessList{#7}{\tttMsummand}\IfValueT{#8}{\cdots\tttMsummand{#8}}}% Explicit list(s)
+  %{\msummandFirstArg{#7}\IfValueT{#8}{\cdots\msummand{#8}}}% Explicit list(s)
+  {% Auto-filled with optional auto-arguments
+    \tttMsummand{#4_1/#5_1}% First Summand
+    \IfBooleanF{#3}{\tttMsummand{#4_2/#5_2}}% Second Summand (if no ! token)
+    \IfBooleanTF{#1}% One star for 3D, 2 stars for 4D
+    {\tttMsummand{#4_3/#5_3} \IfBooleanT{#2}{\tttMsummand{#4_4/#5_4}}} % 3D or 4D
+    {\cdots\tttMsummand{#4_{#6}/#5_{#6}}} % Higher-D (with cdots)
+  }%
+}
+
+%% --------------------
+%% Multi tensor outer product
+%% --------------------
+\NewDocumentCommand{\tttMtope}{>{\SplitArgument{3}{,}}m}{\tttMtopeFour#1} % Helper
+\NewDocumentCommand{\tttMtopeFour}{m m m m}{#1 \IfValueT{#2}{\topp #2} \IfValueT{#3}{\topp #3} \IfValueT{#4}{\topp #4}} % Helper
+
+\NewDocumentCommand{\mtop}{s s t! O{\Vc{a}} O{d} !g !g}
+{
+  \IfValueTF{#6}
+  {\tttMtope{#6}\IfValueT{#7}{\topp \cdots \topp #7}}
+  {#4_1 \IfBooleanF{#3}{\topp #4_2}
+    \IfBooleanTF{#1}{\topp #4_3 \IfBooleanT{#2}{\topp #4_4}}{\topp \cdots \topp #4_{#5}}}
+}
+
+\NewDocumentCommand{\sktop}{O{k} O{\Vc{a}} O{d} g}{%
+  \tttSlist{#2}{\topp}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+%% -------------------
+%% Multi TTM
+%% -------------------
+\NewDocumentCommand{\tttTtmPlus}{m t_ m}{\ttm[#3] #1_{#3}}
+
+\NewDocumentCommand{\mttm}{s s t! O{\Mx{U}} O{d}}{%
+  \tttMlist{\tttTtmPlus{#4}}{}{\BooleanTrue}{#5}{#3}{#1}{#2}%
+}
+
+\NewDocumentCommand{\sttm}{O{k} O{\Mx{U}} O{d} g}{%
+  \tttSlist{\tttTtmPlus{#2}}{}{\BooleanTrue}{#3}{#1}{\IfValueTF{#4}{\ttm[#1] #4}{}}
+}
+
+
+%% -------------------
+%% Multi Kronecker Product
+%% -------------------
+
+\NewDocumentCommand{\mkrn}{s s t! O{\Mx{U}} O{d}}{%
+  \tttRMlist{#4}{\krn}{\BooleanTrue}{#5}{#3}{#1}{#2}%
+}
+
+\NewDocumentCommand{\skrn}{O{k} O{\Mx{U}} O{d} g}{%
+  \tttRSlist{#2}{\krn}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+%% -------------------
+%% Multi KRP
+%% -------------------
+
+\NewDocumentCommand{\mkrp}{s s t! O{\Mx{A}} O{d}}{%
+  \tttRMlist{#4}{\krp}{\BooleanTrue}{#5}{#3}{#1}{#2}%
+}
+
+\NewDocumentCommand{\skrp}{O{k} O{\Mx{A}} O{d} g}{%
+  \tttRSlist{#2}{\krp}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+
+%% -------------------
+%% Multi-Hadamard
+%% -------------------
+
+% Multi-Hadamard
+\NewDocumentCommand{\mhad}{s s t! O{\Mx{A}} O{d}}{%
+  \tttRMlist{#4}{\had}{\BooleanTrue}{#5}{#3}{#1}{#2}%
+}
+
+% Gram for Skip Multi-Hadamard
+\NewDocumentCommand{\shadgram}{O{\Mx{A}} O{#1} t_ m}{#1{#4}'#2{#4}"}
+
+% Skip Multi-Hadamard
+\NewDocumentCommand{\shad}{O{k} O{\shadgram} O{d} g}{%
+  \tttRSlist{#2}{\had}{\BooleanTrue}{#3}{#1}{#4}%
+}
+
+
+
+

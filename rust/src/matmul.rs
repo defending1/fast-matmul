@@ -1,10 +1,14 @@
+use ndarray::{Array1, Array2, Array3};
+
 /// Natural column-major mapping (1-indexed): L(r, c; rows, cols) = r + (c - 1) * rows.
+/// Equivalent to MATLAB's sub2ind for a 2D matrix of shape (rows, cols).
 #[inline]
 pub fn l_map(r: usize, c: usize, rows: usize, _cols: usize) -> usize {
     r + (c - 1) * rows
 }
 
 /// Natural column-major inverse mapping (1-indexed): L^-1(idx; rows, cols) = (row, col).
+/// Equivalent to MATLAB's ind2sub for a 2D matrix of shape (rows, cols).
 #[inline]
 #[allow(dead_code)]
 pub fn l_map_inv(idx: usize, rows: usize, _cols: usize) -> (usize, usize) {
@@ -28,60 +32,15 @@ pub fn l_star_map_inv(idx: usize, _rows: usize, cols: usize) -> (usize, usize) {
     (r, c)
 }
 
-/// A 3-dimensional tensor represented in column-major order.
-/// Dimensions are (I, J, K), where:
-/// - I = m * n (size of vec(U))
-/// - J = n * p (size of vec(V))
-/// - K = m * p (size of vec(W^T))
-#[derive(Debug, Clone, PartialEq)]
-pub struct Tensor3D {
-    pub shape: (usize, usize, usize),
-    pub data: Vec<f64>,
-}
-
-impl Tensor3D {
-    /// Create a new 3D tensor initialized with zeros of the given shape.
-    pub fn new(shape: (usize, usize, usize)) -> Self {
-        let size = shape.0 * shape.1 * shape.2;
-        Self {
-            shape,
-            data: vec![0.0; size],
-        }
-    }
-
-    /// Map a 3D index (i, j, k) to a 1D column-major flat index.
-    /// In column-major order, the first dimension (i) varies fastest,
-    /// then the second (j), and then the third (k).
-    #[inline]
-    pub fn index(&self, i: usize, j: usize, k: usize) -> usize {
-        let (shape_i, shape_j, _shape_k) = self.shape;
-        i + j * shape_i + k * shape_i * shape_j
-    }
-
-    /// Retrieve the value at the 3D index (i, j, k).
-    pub fn get(&self, i: usize, j: usize, k: usize) -> f64 {
-        let idx = self.index(i, j, k);
-        self.data[idx]
-    }
-
-    /// Set the value at the 3D index (i, j, k).
-    pub fn set(&mut self, i: usize, j: usize, k: usize, val: f64) {
-        let idx = self.index(i, j, k);
-        self.data[idx] = val;
-    }
-}
-
 /// Returns the matrix multiplication tensor X representing <m, n, p> as defined in Exercise 3.
 /// The shape of X will be (m*n, n*p, m*p).
-pub fn matmul(m: usize, n: usize, p: usize) -> Tensor3D {
-    let mut x = Tensor3D::new((m * n, n * p, m * p));
+pub fn matmul(m: usize, n: usize, p: usize) -> Array3<f64> {
+    let mut x = Array3::zeros((m * n, n * p, m * p));
 
-    // Loop k from 1 to m*p
     for k in 1..=(m * p) {
         // (L*)^-1(k; m x p) = (k_r, k_c)
         let (k_r, k_c) = l_star_map_inv(k, m, p);
 
-        // Loop h from 1 to n
         for h in 1..=n {
             // i = L(k_r, h; m x n)
             let i = l_map(k_r, h, m, n);
@@ -89,18 +48,22 @@ pub fn matmul(m: usize, n: usize, p: usize) -> Tensor3D {
             // j = L(h, k_c; n x p)
             let j = l_map(h, k_c, n, p);
 
-            // Convert to 0-based indices for Tensor3D storage
-            x.set(i - 1, j - 1, k - 1, 1.0);
+            // Convert to 0-based indices for Array3 storage
+            x[[i - 1, j - 1, k - 1]] = 1.0;
         }
     }
 
     x
 }
 
-/// Evaluates the mode product X x_1 vec(U)^T x_2 vec(V)^T.
-/// The result is a vector of size K = m * p.
-pub fn evaluate_tensor_product(x: &Tensor3D, vec_u: &[f64], vec_v: &[f64]) -> Vec<f64> {
-    let (shape_i, shape_j, shape_k) = x.shape;
+/// Evaluates the mode product X x_1 vec_u^T x_2 vec_v^T.
+/// The result is a 1D Array1 of size K = m * p.
+pub fn evaluate_tensor_product(
+    x: &Array3<f64>,
+    vec_u: &Array1<f64>,
+    vec_v: &Array1<f64>,
+) -> Array1<f64> {
+    let (shape_i, shape_j, shape_k) = x.dim();
     assert_eq!(
         vec_u.len(),
         shape_i,
@@ -112,13 +75,13 @@ pub fn evaluate_tensor_product(x: &Tensor3D, vec_u: &[f64], vec_v: &[f64]) -> Ve
         "vec_v length must match mode-2 dimension"
     );
 
-    let mut z = vec![0.0; shape_k];
+    let mut z = Array1::zeros(shape_k);
 
     for k in 0..shape_k {
         let mut sum_k = 0.0;
         for j in 0..shape_j {
             for i in 0..shape_i {
-                let x_val = x.get(i, j, k);
+                let x_val = x[[i, j, k]];
                 if x_val != 0.0 {
                     sum_k += x_val * vec_u[i] * vec_v[j];
                 }
@@ -131,36 +94,12 @@ pub fn evaluate_tensor_product(x: &Tensor3D, vec_u: &[f64], vec_v: &[f64]) -> Ve
 }
 
 /// Computes the standard matrix multiplication W = U * V and returns vec(W^T).
-pub fn standard_matmul_vec_wt(
-    m: usize,
-    n: usize,
-    p: usize,
-    vec_u: &[f64],
-    vec_v: &[f64],
-) -> Vec<f64> {
-    let mut vec_wt = vec![0.0; m * p];
+pub fn standard_matmul_vec_wt(u: &Array2<f64>, v: &Array2<f64>) -> Array1<f64> {
+    // Perform standard matrix multiplication using ndarray's built-in dot product
+    let w = u.dot(v);
 
-    for r in 1..=m {
-        for c in 1..=p {
-            let mut sum = 0.0;
-            for h in 1..=n {
-                // U_{r, h} located at index L(r, h; m, n) (1-indexed)
-                let u_idx = l_map(r, h, m, n);
-                let u_val = vec_u[u_idx - 1];
-
-                // V_{h, c} located at index L(h, c; n, p) (1-indexed)
-                let v_idx = l_map(h, c, n, p);
-                let v_val = vec_v[v_idx - 1];
-
-                sum += u_val * v_val;
-            }
-            // W^T_{c, r} = W_{r, c}, index under column-major ordering is L(c, r; p, m) (1-indexed)
-            let wt_idx = l_map(c, r, p, m);
-            vec_wt[wt_idx - 1] = sum;
-        }
-    }
-
-    vec_wt
+    // Row-major vectorization of W is equivalent to column-major vectorization of W^T.
+    Array1::from_iter(w.iter().cloned())
 }
 
 #[cfg(test)]
@@ -190,7 +129,7 @@ mod tests {
         let x = matmul(2, 2, 2);
 
         // Assert tensor shape is 4x4x4
-        assert_eq!(x.shape, (4, 4, 4));
+        assert_eq!(x.dim(), (4, 4, 4));
 
         // Front slices from Exercise 3 PDF:
         // X1 = [1 0 0 0; 0 0 0 0; 0 1 0 0; 0 0 0 0]
@@ -214,32 +153,32 @@ mod tests {
         // Check each front slice (which varies i and j for a fixed k)
         for i in 0..4 {
             for j in 0..4 {
-                // Recall index(i, j, k) varies column-major in 2D slices as well,
+                // Recall index varies column-major in 2D slices as well,
                 // but expected arrays are row-major from the visual display,
                 // so we index expected arrays using [i * 4 + j].
                 assert_eq!(
-                    x.get(i, j, 0),
+                    x[[i, j, 0]],
                     expected_x1[i * 4 + j],
                     "Mismatch at slice 0, index ({}, {})",
                     i,
                     j
                 );
                 assert_eq!(
-                    x.get(i, j, 1),
+                    x[[i, j, 1]],
                     expected_x2[i * 4 + j],
                     "Mismatch at slice 1, index ({}, {})",
                     i,
                     j
                 );
                 assert_eq!(
-                    x.get(i, j, 2),
+                    x[[i, j, 2]],
                     expected_x3[i * 4 + j],
                     "Mismatch at slice 2, index ({}, {})",
                     i,
                     j
                 );
                 assert_eq!(
-                    x.get(i, j, 3),
+                    x[[i, j, 3]],
                     expected_x4[i * 4 + j],
                     "Mismatch at slice 3, index ({}, {})",
                     i,
@@ -270,8 +209,19 @@ mod tests {
             let vec_u: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
             let vec_v: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
 
-            let res_tensor = evaluate_tensor_product(&x, &vec_u, &vec_v);
-            let res_standard = standard_matmul_vec_wt(m, n, p, &vec_u, &vec_v);
+            // Convert to ndarray matrices (transposed load to achieve column-major layout)
+            let u_t = Array2::from_shape_vec((n, m), vec_u.clone()).unwrap();
+            let u = u_t.t().to_owned();
+
+            let v_t = Array2::from_shape_vec((p, n), vec_v.clone()).unwrap();
+            let v = v_t.t().to_owned();
+
+            // Vectorizations in column-major
+            let nd_vec_u = Array1::from_vec(vec_u);
+            let nd_vec_v = Array1::from_vec(vec_v);
+
+            let res_tensor = evaluate_tensor_product(&x, &nd_vec_u, &nd_vec_v);
+            let res_standard = standard_matmul_vec_wt(&u, &v);
 
             assert_eq!(res_tensor.len(), res_standard.len());
             for idx in 0..res_tensor.len() {

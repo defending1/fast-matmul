@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.2in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathtools}
+\usepackage{latexsym}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{etoolbox}
+\usepackage{hyperref}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18} 
+\usepackage{lipsum}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{nccmath}
+\usepackage{todonotes}
+\usepackage[most]{tcolorbox}
+\usepackage{wrapfig}
+\newtcolorbox[auto counter]{problem}[1][]{%
+    enhanced,
+    breakable,
+    colback=white,
+    colbacktitle=white,
+    coltitle=black,
+    fonttitle=\bfseries,
+    boxrule=.6pt,
+    titlerule=.2pt,
+    toptitle=3pt,
+    bottomtitle=3pt,
+    title=GitHub repository of this project}
+
+\RequirePackage[activate={true,nocompatibility},final,tracking=true,kerning=true,spacing=true]{microtype}
+\SetTracking{encoding={*}, shape=sc}{40} % Spacing for Small Caps
+\usepackage{dsfont}
+\usepackage{setspace}
+\usepackage{iftex}
+% Define the new conditional
+\newif\ifxetexorluatex
+
+% Set it to true if compiling with XeTeX or LuaTeX
+\ifxetex
+  \xetexorluatextrue
+\fi
+\ifluatex
+  \xetexorluatextrue
+\fi
+
+\ifxetexorluatex
+  \usepackage{unicode-math}
+  \setmainfont{EB Garamond}
+  \setmathfont{Garamond Math}
+
+  % Load some missing symbols from another font.
+  \setmathfont{STIX Two Math}[%
+    range = {
+      \sharp,
+      \natural,
+      \flat,
+      \clubsuit,
+      \spadesuit,
+      \checkmark
+    }
+  ]
+  \setmonofont[Scale=MatchLowercase]{Source Code Pro}
+\else
+  \usepackage[lf]{ebgaramond}
+  \usepackage[oldstyle,scale=0.7]{sourcecodepro}
+  \singlespacing
+\fi
+
+\usepackage{tensors}
+
+
+\renewcommand{\mathbb}[1]{\mathds{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\E}{\mathcal{E}}
+\newcommand{\G}{\mathcal{G}}
+\renewcommand{\L}{\mathcal{L}}
+
+\newcommand{\defeq}{\vcentcolon=}
+\newcommand{\eqdef}{=\vcentcolon}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\Kr}[3]{\mathcal{K}_{#1}(#2,#3)}
+
+\makeatletter
+\let\Vec\relax
+\DeclareMathOperator{\Vec}{vec}
+\let\vec\relax
+\DeclareRobustCommand{\vec}{\Vec}
+\makeatother
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Define a distinct style for experiments
+\newtheoremstyle{experimental}
+  {\topsep}            % Space above
+  {\topsep}            % Space below
+  {\upshape}           % Body font: Upright (non-italic) suits empirical content
+  {}                   % Indent amount
+  {\bfseries} % Head font: Bold sans-serif for a modern, technical aesthetic
+  {.}                  % Punctuation after theorem head
+  {.5em}               % Space after theorem head
+  {}                   % Theorem head spec
+
+% Apply the style and define the unnumbered environment
+\theoremstyle{experimental}
+\newtheorem*{experiment}{Experiment}
+
+\title{%
+   Fast matrix multiplication using CP decomposition
+    \\ \large Computational laboratory project report}
+\author{Alberto Defendi}
+
+\date{}
+
+\setlength{\parskip}{1em}
+\setlength{\parindent}{0em}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    \noindent Bla bla bla 
+\end{abstract}
+
+{\setlength{\parskip}{0em}
+\tableofcontents}
+
+\section{Notation and tensor preliminaries}
+
+A tensor is a multidimensional array, and in this work we deal only with 3-dimenisional (or 3-way)
+tensors $ \Tn{x} \in \R^{m\times n\times p}$.
+
+\section{Low rank tensor decomposition}
+
+\section{Fast matrix multiplication}
+
+Matrix multiplication is a bilinear operation.
+We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between a
+matrix $ \Tm{A} \in \R^{m\times n} $ with $ \Tm{B} \in \R^{n\times p} $. Fixing the natural
+ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
+\Tm{A}\Tm{B} $, we get a representation of $ \Tn{x} \in \R^{mn\times np\times mp} $ of the matrix
+multiplication $ \angb{m,n,p} $ such that
+\begin{equation}
+  \label{eq:mulvec}
+\Vec(\Tm{C}^{\top}) = \Tn{X} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
+.\end{equation}
+
+\todo{Tensor definition}
+
+If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{x}  = \dsqr{U,V,W}$, we can
+rewrite Equation \ref{eq:mulvec} into
+\begin{equation}
+  \Vec(\Tm{C}^{\top}) = \sum_{l=1}^r (\Vc{u_l^{\top}} \Vec(\Tm{A})) \cdot
+  (\Vc{v_l^{\top}}\vec(\Tm{B}))\Vc{w_l},
+\end{equation}
+where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $.
+
+When $ m,n,p >2 $ we can always partition them in blocks as:
+
+\begin{equation*}
+  \begin{bmatrix}
+    A_{11} & A_{12} \\
+    A_{21} & A_{22}
+  \end{bmatrix}, \quad
+  \begin{bmatrix}
+    B_{11} & B_{12} \\
+    B_{21} & B_{22}
+  \end{bmatrix}, 
+\end{equation*}
+where $ A_{11} \in \R^{\left\lfloor \frac{m}{2} \right\rfloor\times \left\lfloor \frac{n}{2} \right\rfloor} 
+$, $ B_{11} \in \R^{\left\lfloor \frac{n}{2} \right\rfloor \times \left\lfloor \frac{p}{2}
+\right\rfloor} $, $ A_{22} \in \R^{\left\lceil \frac{m}{2} \right\rceil \times \left\lceil
+\frac{n}{2} \right\rceil } $, and $ B_{22} \in \R^{\left\lceil \frac{n}{2} \right\rceil \times
+\left\lceil \frac{p}{2} \right\rceil } $.
+
+In particular, we can view the product $ AB $ as the product between $ 2\times 2 $ block matrices 
+\begin{equation*}
+  \begin{bmatrix}
+    C_{11} & C_{12} \\
+    C_{21} & C_{22}
+  \end{bmatrix} =
+  \begin{bmatrix}
+    A_{11} & A_{12} \\
+    A_{21} & A_{22}
+  \end{bmatrix} \cdot 
+  \begin{bmatrix}
+    B_{11} & B_{12} \\
+    B_{21} & B_{22}
+  \end{bmatrix} =
+  \begin{bmatrix}
+    A_{11}B_{11} + A_{12}B_{21} & A_{11}B_{12} + A_{12}B_{22} \\
+    A_{21}B_{12} + A_{22}B_{21} & A_{21}B_{12} + A_{22}B_{22}
+  \end{bmatrix}.
+\end{equation*}
+The naive algorithm proceeds by combining a set of eight matrix multiplications with four
+additions:
+% Intermediate Matrices
+% Intermediate Matrices
+\[
+\begin{aligned}
+M_1 &= A_{11} \cdot B_{11} &\quad M_2 &= A_{12} \cdot B_{21} &\quad M_3 &= A_{11} \cdot B_{12} \\
+M_4 &= A_{12} \cdot B_{22} &\quad M_5 &= A_{21} \cdot B_{11} &\quad M_6 &= A_{22} \cdot B_{21} \\
+M_7 &= A_{21} \cdot B_{12} &\quad M_8 &= A_{22} \cdot B_{22} & &
+\end{aligned}
+\]
+
+% Resulting Matrices
+\[
+\begin{aligned}
+C_{11} &= M_1 + M_2 &\qquad C_{12} &= M_3 + M_4 \\
+C_{21} &= M_5 + M_6 &\qquad C_{22} &= M_7 + M_8
+\end{aligned}
+\]
+
+\clearpage
+\bibliographystyle{unsrt}
+\bibliography{ref}
+\nocite{*}
+
+
+
+\end{document}

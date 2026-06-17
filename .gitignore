@@ -8,3 +8,45 @@ build
 # Rust / Cargo
 **/target/
 **/*.rs.bk
+
+# --- LaTeX (Comprehensive) ---
+*.aux
+*.log
+*.toc
+*.out
+./refs/
+refs
+*.synctex.gz
+*.fdb_latexmk
+latexrun.db
+.latexrun.db*
+fls
+*.fls
+*.blg
+*.bbl
+*.run.xml
+*.bcf
+*.nav
+*.snm
+*.vrb
+*.lof
+*.lot
+*-blx.bib
+*.*-SAVE-ERROR
+
+# --- System / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.idx
+*.ilg
+*.ind
+*.ist
