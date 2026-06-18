@@ -1,14 +1,14 @@
 use ndarray::{Array1, Array2, Array3};
+use std::fs;
+use std::sync::OnceLock;
 
 /// Natural column-major mapping (1-indexed): L(r, c; rows, cols) = r + (c - 1) * rows.
-/// Equivalent to MATLAB's sub2ind for a 2D matrix of shape (rows, cols).
 #[inline]
 pub fn l_map(r: usize, c: usize, rows: usize, _cols: usize) -> usize {
     r + (c - 1) * rows
 }
 
 /// Natural column-major inverse mapping (1-indexed): L^-1(idx; rows, cols) = (row, col).
-/// Equivalent to MATLAB's ind2sub for a 2D matrix of shape (rows, cols).
 #[inline]
 #[allow(dead_code)]
 pub fn l_map_inv(idx: usize, rows: usize, _cols: usize) -> (usize, usize) {
@@ -32,7 +32,7 @@ pub fn l_star_map_inv(idx: usize, _rows: usize, cols: usize) -> (usize, usize) {
     (r, c)
 }
 
-/// Returns the matrix multiplication tensor X representing <m, n, p> as defined in Exercise 3.
+/// Returns the matrix multiplication tensor X representing <m, n, p> as defined in report.
 /// The shape of X will be (m*n, n*p, m*p).
 pub fn matmul(m: usize, n: usize, p: usize) -> Array3<f64> {
     let mut x = Array3::zeros((m * n, n * p, m * p));
@@ -56,26 +56,26 @@ pub fn matmul(m: usize, n: usize, p: usize) -> Array3<f64> {
     x
 }
 
-/// Evaluates the mode product X x_1 vec_u^T x_2 vec_v^T.
+/// Evaluates the mode product X x_1 vec_a^T x_2 vec_b^T.
 /// The result is a 1D Array1 of size K = m * p.
 pub fn evaluate_tensor_product(
     x: &Array3<f64>,
-    vec_u: &Array1<f64>,
-    vec_v: &Array1<f64>,
+    vec_a: &Array1<f64>,
+    vec_b: &Array1<f64>,
 ) -> Array1<f64> {
     let (shape_i, shape_j, shape_k) = x.dim();
     assert_eq!(
-        vec_u.len(),
+        vec_a.len(),
         shape_i,
-        "vec_u length must match mode-1 dimension"
+        "vec_a length must match mode-1 dimension"
     );
     assert_eq!(
-        vec_v.len(),
+        vec_b.len(),
         shape_j,
-        "vec_v length must match mode-2 dimension"
+        "vec_b length must match mode-2 dimension"
     );
 
-    let mut z = Array1::zeros(shape_k);
+    let mut vec_c = Array1::zeros(shape_k);
 
     for k in 0..shape_k {
         let mut sum_k = 0.0;
@@ -83,23 +83,304 @@ pub fn evaluate_tensor_product(
             for i in 0..shape_i {
                 let x_val = x[[i, j, k]];
                 if x_val != 0.0 {
-                    sum_k += x_val * vec_u[i] * vec_v[j];
+                    sum_k += x_val * vec_a[i] * vec_b[j];
                 }
             }
         }
-        z[k] = sum_k;
+        vec_c[k] = sum_k;
     }
 
-    z
+    vec_c
 }
 
-/// Computes the standard matrix multiplication W = U * V and returns vec(W^T).
-pub fn standard_matmul_vec_wt(u: &Array2<f64>, v: &Array2<f64>) -> Array1<f64> {
+/// Computes the standard matrix multiplication C = A * B and returns vec(C^T).
+pub fn standard_matmul_vec_wt(a: &Array2<f64>, b: &Array2<f64>) -> Array1<f64> {
     // Perform standard matrix multiplication using ndarray's built-in dot product
-    let w = u.dot(v);
+    let c = a.dot(b);
 
-    // Row-major vectorization of W is equivalent to column-major vectorization of W^T.
-    Array1::from_iter(w.iter().cloned())
+    // Row-major vectorization of C is equivalent to column-major vectorization of C^T.
+    Array1::from_iter(c.iter().cloned())
+}
+
+static STRASSEN_MATRICES: OnceLock<(Array2<f64>, Array2<f64>, Array2<f64>)> = OnceLock::new();
+
+/// Loads Strassen CP decomposition matrices [U, V, W] from the file `codegen/algorithms/strassen`.
+/// If loading fails, it panics with a descriptive message.
+pub fn load_strassen_matrices() -> (Array2<f64>, Array2<f64>, Array2<f64>) {
+    let paths = [
+        "codegen/algorithms/strassen",
+        "../codegen/algorithms/strassen",
+        "../../codegen/algorithms/strassen",
+    ];
+    let mut content = None;
+    for path in &paths {
+        if let Ok(c) = fs::read_to_string(path) {
+            content = Some(c);
+            break;
+        }
+    }
+    let content = content.expect(
+        "Could not locate 'codegen/algorithms/strassen'. Make sure to run from the project root or rust directory."
+    );
+
+    let mut matrices = Vec::new();
+    let mut current_rows: Vec<Vec<f64>> = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            if !current_rows.is_empty() {
+                let num_rows = current_rows.len();
+                let num_cols = current_rows[0].len();
+                let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
+                matrices.push(
+                    Array2::from_shape_vec((num_rows, num_cols), flat)
+                        .expect("Invalid matrix shape"),
+                );
+                current_rows = Vec::new();
+            }
+            continue;
+        }
+
+        let row: Vec<f64> = trimmed
+            .split_whitespace()
+            .map(|s| {
+                s.parse::<f64>()
+                    .expect("Failed to parse matrix entry as float")
+            })
+            .collect();
+        current_rows.push(row);
+    }
+
+    if !current_rows.is_empty() {
+        let num_rows = current_rows.len();
+        let num_cols = current_rows[0].len();
+        let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
+        matrices.push(
+            Array2::from_shape_vec((num_rows, num_cols), flat).expect("Invalid matrix shape"),
+        );
+    }
+
+    assert_eq!(
+        matrices.len(),
+        3,
+        "Expected exactly 3 matrices in the CP decomposition file"
+    );
+    (
+        matrices[0].clone(),
+        matrices[1].clone(),
+        matrices[2].clone(),
+    )
+}
+
+/// Returns a reference to the statically loaded Strassen CP decomposition matrices [U, V, W].
+pub fn get_strassen_matrices() -> &'static (Array2<f64>, Array2<f64>, Array2<f64>) {
+    STRASSEN_MATRICES.get_or_init(load_strassen_matrices)
+}
+
+/// Computes C = A * B using the CP decomposition formula:
+/// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
+/// assuming row-major layout vectorization for A, B, C.
+pub fn matmul_cp(
+    a: &Array2<f64>,
+    b: &Array2<f64>,
+    u: &Array2<f64>,
+    v: &Array2<f64>,
+    w: &Array2<f64>,
+) -> Array2<f64> {
+    assert_eq!(a.dim(), (2, 2));
+    assert_eq!(b.dim(), (2, 2));
+
+    // Vectorize A and B in row-major order
+    let vec_a = [a[[0, 0]], a[[0, 1]], a[[1, 0]], a[[1, 1]]];
+    let vec_b = [b[[0, 0]], b[[0, 1]], b[[1, 0]], b[[1, 1]]];
+
+    let mut c_vec = [0.0; 4];
+
+    for l in 0..7 {
+        let mut sum_u = 0.0;
+        for i in 0..4 {
+            sum_u += u[[i, l]] * vec_a[i];
+        }
+        let mut sum_v = 0.0;
+        for i in 0..4 {
+            sum_v += v[[i, l]] * vec_b[i];
+        }
+        let p_l = sum_u * sum_v;
+
+        for i in 0..4 {
+            c_vec[i] += p_l * w[[i, l]];
+        }
+    }
+
+    Array2::from_shape_vec((2, 2), c_vec.to_vec()).unwrap()
+}
+
+/// Pads the matrices `a` and `b` to even dimensions if necessary.
+///
+/// If any of the dimensions (m, n, p) are odd, they are incremented by 1,
+/// and the matrices are padded with zeros.
+///
+/// Returns:
+/// - The (possibly padded) matrix A.
+/// - The (possibly padded) matrix B.
+/// - A boolean flag indicating whether padding was applied.
+/// - The dimensions `(next_m, next_n, next_p)` of the padded matrices.
+fn pad_matrices(
+    a: &Array2<f64>,
+    b: &Array2<f64>,
+) -> (Array2<f64>, Array2<f64>, bool, usize, usize, usize) {
+    let (m, n) = a.dim();
+    let (n_b, p) = b.dim();
+    assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
+
+    let mut next_m = m;
+    let mut next_n = n;
+    let mut next_p = p;
+    let mut need_padding = false;
+
+    if m % 2 != 0 {
+        next_m += 1;
+        need_padding = true;
+    }
+    if n % 2 != 0 {
+        next_n += 1;
+        need_padding = true;
+    }
+    if p % 2 != 0 {
+        next_p += 1;
+        need_padding = true;
+    }
+
+    if need_padding {
+        let mut a_new = Array2::zeros((next_m, next_n));
+        a_new.slice_mut(ndarray::s![..m, ..n]).assign(a);
+
+        let mut b_new = Array2::zeros((next_n, next_p));
+        b_new.slice_mut(ndarray::s![..n, ..p]).assign(b);
+
+        (a_new, b_new, true, next_m, next_n, next_p)
+    } else {
+        (a.clone(), b.clone(), false, m, n, p)
+    }
+}
+
+/// Computes C = A * B using Strassen's algorithm recursively.
+/// - If m = 1, n = 1, or p = 1, uses classical matrix multiplication.
+/// - If m = n = p = 2, uses matmul_cp with the Strassen CP decomposition matrices.
+/// - Otherwise, partitions the matrices and calls itself recursively.
+pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+    let (m, n) = a.dim();
+    let (n_b, p) = b.dim();
+    assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
+
+    // Base Case 1: A and/or B are vectors
+    if m == 1 || n == 1 || p == 1 {
+        return a.dot(b);
+    }
+
+    // Base Case 2: 2x2 matrices
+    if m == 2 && n == 2 && p == 2 {
+        let (u, v, w) = get_strassen_matrices();
+        return matmul_cp(a, b, u, v, w);
+    }
+
+    // If any dimension is odd, pad to even
+    let (a_padded, b_padded, need_padding, next_m, next_n, next_p) = pad_matrices(a, b);
+
+    // Now partition the padded matrices into 4 equal blocks
+    let m2 = next_m / 2;
+    let n2 = next_n / 2;
+    let p2 = next_p / 2;
+
+    let a11 = a_padded.slice(ndarray::s![..m2, ..n2]).to_owned();
+    let a12 = a_padded.slice(ndarray::s![..m2, n2..]).to_owned();
+    let a21 = a_padded.slice(ndarray::s![m2.., ..n2]).to_owned();
+    let a22 = a_padded.slice(ndarray::s![m2.., n2..]).to_owned();
+
+    let b11 = b_padded.slice(ndarray::s![..n2, ..p2]).to_owned();
+    let b12 = b_padded.slice(ndarray::s![..n2, p2..]).to_owned();
+    let b21 = b_padded.slice(ndarray::s![n2.., ..p2]).to_owned();
+    let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
+
+    // Use Strassen's 7 multiplications using the parsed matrices U, V, W
+    let (u, v, w) = get_strassen_matrices();
+
+    // Compute the 7 products M_l
+    let mut m_products = Vec::with_capacity(7);
+    for l in 0..7 {
+        // Linear combination of A blocks
+        let mut a_comb = Array2::zeros((m2, n2));
+        if u[[0, l]] != 0.0 {
+            a_comb = a_comb + &a11 * u[[0, l]];
+        }
+        if u[[1, l]] != 0.0 {
+            a_comb = a_comb + &a12 * u[[1, l]];
+        }
+        if u[[2, l]] != 0.0 {
+            a_comb = a_comb + &a21 * u[[2, l]];
+        }
+        if u[[3, l]] != 0.0 {
+            a_comb = a_comb + &a22 * u[[3, l]];
+        }
+
+        // Linear combination of B blocks
+        let mut b_comb = Array2::zeros((n2, p2));
+        if v[[0, l]] != 0.0 {
+            b_comb = b_comb + &b11 * v[[0, l]];
+        }
+        if v[[1, l]] != 0.0 {
+            b_comb = b_comb + &b12 * v[[1, l]];
+        }
+        if v[[2, l]] != 0.0 {
+            b_comb = b_comb + &b21 * v[[2, l]];
+        }
+        if v[[3, l]] != 0.0 {
+            b_comb = b_comb + &b22 * v[[3, l]];
+        }
+
+        // Recursive call
+        let m_l = strassen_matmul(&a_comb, &b_comb);
+        m_products.push(m_l);
+    }
+
+    // Reconstruct C blocks from M_l using W
+    let mut c11 = Array2::zeros((m2, p2));
+    let mut c12 = Array2::zeros((m2, p2));
+    let mut c21 = Array2::zeros((m2, p2));
+    let mut c22 = Array2::zeros((m2, p2));
+
+    for l in 0..7 {
+        if w[[0, l]] != 0.0 {
+            c11 = c11 + &m_products[l] * w[[0, l]];
+        }
+        if w[[1, l]] != 0.0 {
+            c12 = c12 + &m_products[l] * w[[1, l]];
+        }
+        if w[[2, l]] != 0.0 {
+            c21 = c21 + &m_products[l] * w[[2, l]];
+        }
+        if w[[3, l]] != 0.0 {
+            c22 = c22 + &m_products[l] * w[[3, l]];
+        }
+    }
+
+    // Combine the 4 blocks into a single matrix
+    let mut c_padded = Array2::zeros((next_m, next_p));
+    c_padded.slice_mut(ndarray::s![..m2, ..p2]).assign(&c11);
+    c_padded.slice_mut(ndarray::s![..m2, p2..]).assign(&c12);
+    c_padded.slice_mut(ndarray::s![m2.., ..p2]).assign(&c21);
+    c_padded.slice_mut(ndarray::s![m2.., p2..]).assign(&c22);
+
+    // Truncate to original size m x p
+    if need_padding {
+        c_padded.slice(ndarray::s![..m, ..p]).to_owned()
+    } else {
+        c_padded
+    }
 }
 
 #[cfg(test)]
@@ -205,23 +486,23 @@ mod tests {
         for &(m, n, p) in &test_cases {
             let x = matmul(m, n, p);
 
-            // Generate random U and V
-            let vec_u: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
-            let vec_v: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
+            // Generate random A and B matrices
+            let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
+            let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
 
             // Convert to ndarray matrices (transposed load to achieve column-major layout)
-            let u_t = Array2::from_shape_vec((n, m), vec_u.clone()).unwrap();
-            let u = u_t.t().to_owned();
+            let a_t = Array2::from_shape_vec((n, m), vec_a.clone()).unwrap();
+            let a = a_t.t().to_owned();
 
-            let v_t = Array2::from_shape_vec((p, n), vec_v.clone()).unwrap();
-            let v = v_t.t().to_owned();
+            let b_t = Array2::from_shape_vec((p, n), vec_b.clone()).unwrap();
+            let b = b_t.t().to_owned();
 
             // Vectorizations in column-major
-            let nd_vec_u = Array1::from_vec(vec_u);
-            let nd_vec_v = Array1::from_vec(vec_v);
+            let nd_vec_a = Array1::from_vec(vec_a);
+            let nd_vec_b = Array1::from_vec(vec_b);
 
-            let res_tensor = evaluate_tensor_product(&x, &nd_vec_u, &nd_vec_v);
-            let res_standard = standard_matmul_vec_wt(&u, &v);
+            let res_tensor = evaluate_tensor_product(&x, &nd_vec_a, &nd_vec_b);
+            let res_standard = standard_matmul_vec_wt(&a, &b);
 
             assert_eq!(res_tensor.len(), res_standard.len());
             for idx in 0..res_tensor.len() {
@@ -238,5 +519,75 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_strassen_matmul_correctness() {
+        let mut rng = rand::thread_rng();
+
+        let test_cases = vec![
+            (2, 2, 2),
+            (3, 3, 3),
+            (4, 4, 4),
+            (5, 5, 5),
+            (8, 8, 8),
+            (2, 4, 3),
+            (5, 3, 4),
+            (1, 5, 2),
+            (3, 4, 1),
+            (6, 6, 6),
+        ];
+
+        for &(m, n, p) in &test_cases {
+            // Generate random matrices
+            let mut a = Array2::zeros((m, n));
+            for val in a.iter_mut() {
+                *val = rng.gen_range(-10.0..10.0);
+            }
+            let mut b = Array2::zeros((n, p));
+            for val in b.iter_mut() {
+                *val = rng.gen_range(-10.0..10.0);
+            }
+
+            let c_strassen = strassen_matmul(&a, &b);
+            let c_classical = a.dot(&b);
+
+            assert_eq!(c_strassen.dim(), (m, p));
+            for i in 0..m {
+                for j in 0..p {
+                    let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
+                    assert!(
+                        diff < 1e-10,
+                        "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen = {}, Classical = {}",
+                        i,
+                        j,
+                        m,
+                        n,
+                        p,
+                        c_strassen[[i, j]],
+                        c_classical[[i, j]]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pad_matrices() {
+        let a = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let b = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+
+        let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = pad_matrices(&a, &b);
+        assert!(need_padding);
+        assert_eq!(next_m, 2);
+        assert_eq!(next_n, 4); // 3 is padded to 4
+        assert_eq!(next_p, 2);
+        assert_eq!(a_pad.dim(), (2, 4));
+        assert_eq!(b_pad.dim(), (4, 2));
+
+        let a_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let b_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let (_, _, need_padding_even, _, _, _) = pad_matrices(&a_even, &b_even);
+        assert!(!need_padding_even);
     }
 }
