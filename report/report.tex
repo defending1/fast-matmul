@@ -1,4 +1,4 @@
-\documentclass[11pt]{article}
+\documentclass[a4paper, leqno, 11pt]{article}
 \usepackage[margin=1.2in]{geometry}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -15,6 +15,7 @@
 \usepackage{hyperref}
 \usepackage{subcaption}
 \usepackage{tikz}
+\usepackage{nicematrix}
 \usepackage{booktabs}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18} 
@@ -152,6 +153,7 @@
 
 A tensor is a multidimensional array, and in this work we deal only with 3-dimenisional (or 3-way)
 tensors $ \Tn{x} \in \R^{m\times n\times p}$.
+\todo{Short recap of tensor stuff}
 
 \section{Low rank tensor decomposition}
 
@@ -167,29 +169,37 @@ multiplication $ \angb{m,n,p} $ such that
   \label{eq:mulvec}
 \Vec(\Tm{C}^{\top}) = \Tn{X} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
 .\end{equation}
+Note that we fix the linear order on $ A $ and $ B $, while we fix the reverse ordering on $ C $ by
+applying the transpose operation\todo{why}.
 
 \todo{Tensor definition}
 
 If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{x}  = \dsqr{U,V,W}$, we can
 rewrite Equation \ref{eq:mulvec} into
 \begin{equation}
-  \Vec(\Tm{C}^{\top}) = \sum_{l=1}^r (\Vc{u_l^{\top}} \Vec(\Tm{A})) \cdot
-  (\Vc{v_l^{\top}}\vec(\Tm{B}))\Vc{w_l},
+  \label{eq:mulvec:CP}
+  \Vec(\Tm{C}^{\top}) = \sum_{l=1}^r (\underbrace{\Vc{u_l^{\top}} \Vec(\Tm{A})}_{s_l}) \cdot
+  (\underbrace{\Vc{v_l^{\top}}\vec(\Tm{B})}_{t_l})\Vc{w_l} = \sum_{l=1}^r (\underbrace{s_l \cdot
+  t_l}_{m_l})w_l,
 \end{equation}
-where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $.
+where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $. This
+reduces the number of active multiplications to the rank $ r $ of $ \Tn{x} $.
 
 When $ m,n,p >2 $ we can always partition them in blocks as:
 
 \begin{equation*}
-  \begin{bmatrix}
-    A_{11} & A_{12} \\
-    A_{21} & A_{22}
-  \end{bmatrix}, \quad
-  \begin{bmatrix}
-    B_{11} & B_{12} \\
-    B_{21} & B_{22}
-  \end{bmatrix}, 
+  \begin{bNiceArray}{cc}[first-row, first-col, margin, xdots/horizontal-labels]
+    & \Hbrace{1}{\lfloor n/2 \rfloor} & \Hbrace{1}{\lceil n/2 \rceil} \\
+    \Vbrace{1}{\lfloor m/2 \rfloor} & A_{11} & A_{12} \\[2ex]
+    \Vbrace{1}{\lceil m/2 \rceil}   & A_{21} & A_{22}
+  \end{bNiceArray}, \qquad \qquad
+  \begin{bNiceArray}{cc}[first-row, first-col, margin, xdots/horizontal-labels]
+    & \Hbrace{1}{\lfloor p/2 \rfloor} & \Hbrace{1}{\lceil p/2 \rceil} \\
+    \Vbrace{1}{\lfloor n/2 \rfloor} & B_{11} & B_{12} \\[2ex]
+    \Vbrace{1}{\lceil n/2 \rceil}   & B_{21} & B_{22}
+  \end{bNiceArray},
 \end{equation*}
+
 where $ A_{11} \in \R^{\left\lfloor \frac{m}{2} \right\rfloor\times \left\lfloor \frac{n}{2} \right\rfloor} 
 $, $ B_{11} \in \R^{\left\lfloor \frac{n}{2} \right\rfloor \times \left\lfloor \frac{p}{2}
 \right\rfloor} $, $ A_{22} \in \R^{\left\lceil \frac{m}{2} \right\rceil \times \left\lceil
@@ -197,7 +207,8 @@ $, $ B_{11} \in \R^{\left\lfloor \frac{n}{2} \right\rfloor \times \left\lfloor \
 \left\lceil \frac{p}{2} \right\rceil } $.
 
 In particular, we can view the product $ AB $ as the product between $ 2\times 2 $ block matrices 
-\begin{equation*}
+\begin{equation}
+  \label{eq:matprod}
   \begin{bmatrix}
     C_{11} & C_{12} \\
     C_{21} & C_{22}
@@ -212,9 +223,9 @@ In particular, we can view the product $ AB $ as the product between $ 2\times 2
   \end{bmatrix} =
   \begin{bmatrix}
     A_{11}B_{11} + A_{12}B_{21} & A_{11}B_{12} + A_{12}B_{22} \\
-    A_{21}B_{12} + A_{22}B_{21} & A_{21}B_{12} + A_{22}B_{22}
+    A_{21}B_{11} + A_{22}B_{21} & A_{21}B_{12} + A_{22}B_{22}
   \end{bmatrix}.
-\end{equation*}
+\end{equation}
 The naive algorithm proceeds by combining a set of eight matrix multiplications with four
 additions:
 % Intermediate Matrices
@@ -234,6 +245,63 @@ C_{11} &= M_1 + M_2 &\qquad C_{12} &= M_3 + M_4 \\
 C_{21} &= M_5 + M_6 &\qquad C_{22} &= M_7 + M_8
 \end{aligned}
 \]
+For example, when $ m=n=p=2 $, we get the tensor with frontal slices
+\[
+\Mx{X}_1 = \begin{bmatrix}
+  1 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 \\
+  0 & 1 & 0 & 0 \\
+  0 & 0 & 0 & 0
+\end{bmatrix}, \quad
+\Mx{X}_2 = \begin{bmatrix}
+  0 & 0 & 1 & 0 \\
+  0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 1 \\
+  0 & 0 & 0 & 0
+\end{bmatrix}, \quad
+\Mx{X}_3 = \begin{bmatrix}
+  0 & 0 & 0 & 0 \\
+  1 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 \\
+  0 & 1 & 0 & 0
+\end{bmatrix}, \quad
+\Mx{X}_4 = \begin{bmatrix}
+  0 & 0 & 0 & 0 \\
+  0 & 0 & 1 & 0 \\
+  0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 1
+\end{bmatrix}.
+\]
+This yields, for example,
+\begin{equation*}
+    X_3 \ttm[1] \Vec(A)^{\top} \ttm[2] \Vec(B)^{\top} =
+    \begin{bmatrix}
+      a_{11} \; a_{21} \; a_{12} \; a_{22}
+    \end{bmatrix}
+    \begin{bmatrix}
+      0 & 0 & 0 & 0 \\
+      1 & 0 & 0 & 0 \\
+      0 & 0 & 0 & 0 \\
+      0 & 1 & 0 & 0
+    \end{bmatrix}
+    \begin{bmatrix} b_{11} \\ b_{21}\\b_{12}\\b_{22} \end{bmatrix} 
+    = a_{21}b_{11} + a_{22}b_{21} = c_{21}.
+\end{equation*}
+
+Note that the formula in Equation~\ref{eq:mulvec:CP} in the context of block matrix multiplication in
+Equation~\ref{eq:matprod} yelds to
+\begin{equation*}
+  \Vec(A) = \begin{bmatrix} A_{11}\\A_{21}\\A_{12}\\A_{22} \end{bmatrix} 
+, \quad
+\Vec(B) = \begin{bmatrix} B_{11}\\B_{21}\\B_{12}\\B_{22} \end{bmatrix},\quad
+\Vec(C^{\top}) = \begin{bmatrix} C_{11}\\C_{12}\\C_{21}\\C_{22} \end{bmatrix}.
+\end{equation*}
+Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
+\begin{equation*}
+  s_l = u_l^{\top}\Vec(A) = \sum_{i=1}^4 U_{li}\Vec(A)_i, \quad t_l = V_l^{\top}\Vec(B) =
+  \sum_{i=1}^4 V_{li}\Vec(B)_i
+\end{equation*}
+
 
 \clearpage
 \bibliographystyle{unsrt}
