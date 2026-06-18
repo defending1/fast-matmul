@@ -8,6 +8,7 @@ build
 # Rust / Cargo
 **/target/
 **/*.rs.bk
+rust/generated/
 
 # --- LaTeX (Comprehensive) ---
 *.aux

@@ -2,6 +2,10 @@
 
 My project contributions can be found in the directories ./rust and ./report.
 
+TODO:
+
+- HOw to dynamic peeling instead of matrix padding?
+
 ## Fast matrix multiplication
 
 Austin R. Benson and Grey Ballard

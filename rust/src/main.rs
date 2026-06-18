@@ -1,6 +1,4 @@
-mod matmul;
-
-use crate::matmul::{
+use fast_matmul::matmul::{
     evaluate_tensor_product, matmul, standard_matmul_vec_wt, strassen_matmul,
     strassen_matmul_single_thread,
 };
@@ -93,7 +91,7 @@ fn main() {
 
     println!("\n--- Running Matrix Multiplication Benchmarks ---");
     let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let csv_file = "benchmark_results.csv";
+    let csv_file = "generated/benchmark_results.csv";
     if let Err(e) = benchmark_matmul(&sizes, csv_file) {
         eprintln!("Failed to write benchmarks to CSV: {:?}", e);
     } else {
@@ -112,6 +110,10 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
     use std::fs::File;
     use std::io::Write;
     use std::time::Instant;
+
+    if let Some(parent) = std::path::Path::new(filename).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
     let mut file = File::create(filename)?;
     writeln!(

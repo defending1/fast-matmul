@@ -1,6 +1,5 @@
+use crate::loader::get_strassen_matrices;
 use ndarray::{Array1, Array2, Array3};
-use std::fs;
-use std::sync::OnceLock;
 
 /// Natural column-major mapping (1-indexed): L(r, c; rows, cols) = r + (c - 1) * rows.
 #[inline]
@@ -102,85 +101,6 @@ pub fn standard_matmul_vec_wt(a: &Array2<f64>, b: &Array2<f64>) -> Array1<f64> {
     Array1::from_iter(c.iter().cloned())
 }
 
-static STRASSEN_MATRICES: OnceLock<(Array2<f64>, Array2<f64>, Array2<f64>)> = OnceLock::new();
-
-/// Loads Strassen CP decomposition matrices [U, V, W] from the file `codegen/algorithms/strassen`.
-/// If loading fails, it panics with a descriptive message.
-pub fn load_strassen_matrices() -> (Array2<f64>, Array2<f64>, Array2<f64>) {
-    let paths = [
-        "codegen/algorithms/strassen",
-        "../codegen/algorithms/strassen",
-        "../../codegen/algorithms/strassen",
-    ];
-    let mut content = None;
-    for path in &paths {
-        if let Ok(c) = fs::read_to_string(path) {
-            content = Some(c);
-            break;
-        }
-    }
-    let content = content.expect(
-        "Could not locate 'codegen/algorithms/strassen'. Make sure to run from the project root or rust directory."
-    );
-
-    let mut matrices = Vec::new();
-    let mut current_rows: Vec<Vec<f64>> = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.starts_with('#') {
-            if !current_rows.is_empty() {
-                let num_rows = current_rows.len();
-                let num_cols = current_rows[0].len();
-                let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-                matrices.push(
-                    Array2::from_shape_vec((num_rows, num_cols), flat)
-                        .expect("Invalid matrix shape"),
-                );
-                current_rows = Vec::new();
-            }
-            continue;
-        }
-
-        let row: Vec<f64> = trimmed
-            .split_whitespace()
-            .map(|s| {
-                s.parse::<f64>()
-                    .expect("Failed to parse matrix entry as float")
-            })
-            .collect();
-        current_rows.push(row);
-    }
-
-    if !current_rows.is_empty() {
-        let num_rows = current_rows.len();
-        let num_cols = current_rows[0].len();
-        let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-        matrices.push(
-            Array2::from_shape_vec((num_rows, num_cols), flat).expect("Invalid matrix shape"),
-        );
-    }
-
-    assert_eq!(
-        matrices.len(),
-        3,
-        "Expected exactly 3 matrices in the CP decomposition file"
-    );
-    (
-        matrices[0].clone(),
-        matrices[1].clone(),
-        matrices[2].clone(),
-    )
-}
-
-/// Returns a reference to the statically loaded Strassen CP decomposition matrices [U, V, W].
-pub fn get_strassen_matrices() -> &'static (Array2<f64>, Array2<f64>, Array2<f64>) {
-    STRASSEN_MATRICES.get_or_init(load_strassen_matrices)
-}
-
 /// Computes C = A * B using the CP decomposition formula:
 /// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
 /// assuming row-major layout vectorization for A, B, C.
@@ -229,7 +149,7 @@ pub fn matmul_cp(
 /// - The (possibly padded) matrix B.
 /// - A boolean flag indicating whether padding was applied.
 /// - The dimensions `(next_m, next_n, next_p)` of the padded matrices.
-fn pad_matrices(
+pub fn pad_matrices(
     a: &Array2<f64>,
     b: &Array2<f64>,
 ) -> (Array2<f64>, Array2<f64>, bool, usize, usize, usize) {
@@ -269,7 +189,10 @@ fn pad_matrices(
 }
 
 /// Helper to compute a single Strassen product M_l
-#[expect(clippy::too_many_arguments, reason = "Internal helper for Strassen block multiplication recursion")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Internal helper for Strassen block multiplication recursion"
+)]
 fn compute_m_l(
     l: usize,
     m2: usize,
@@ -320,7 +243,10 @@ fn compute_m_l(
 }
 
 /// Helper to compute a single Strassen product M_l in a single-threaded execution
-#[expect(clippy::too_many_arguments, reason = "Internal helper for Strassen block multiplication recursion")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Internal helper for Strassen block multiplication recursion"
+)]
 fn compute_m_l_single_thread(
     l: usize,
     m2: usize,
@@ -412,10 +338,7 @@ pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2
     let m_products: Vec<Array2<f64>> = (0..7)
         .map(|l| {
             compute_m_l_single_thread(
-                l, m2, n2, p2,
-                &a11, &a12, &a21, &a22,
-                &b11, &b12, &b21, &b22,
-                u, v,
+                l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
             )
         })
         .collect();
@@ -500,32 +423,26 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     // Compute the 7 products M_l
     // Parallelize with Rayon if block dimensions are large enough to offset scheduling overhead.
     const PARALLEL_CUTOFF: usize = 64;
-    let m_products: Vec<Array2<f64>> = if m2 >= PARALLEL_CUTOFF && n2 >= PARALLEL_CUTOFF && p2 >= PARALLEL_CUTOFF {
-        use rayon::prelude::*;
-        (0..7)
-            .into_par_iter()
-            .map(|l| {
-                compute_m_l(
-                    l, m2, n2, p2,
-                    &a11, &a12, &a21, &a22,
-                    &b11, &b12, &b21, &b22,
-                    u, v,
-                )
-            })
-            .collect()
-    } else {
-        (0..7)
-            .map(|l| {
-                compute_m_l(
-                    l, m2, n2, p2,
-                    &a11, &a12, &a21, &a22,
-                    &b11, &b12, &b21, &b22,
-                    u, v,
-                )
-            })
-            .collect()
-    };
-
+    let m_products: Vec<Array2<f64>> =
+        if m2 >= PARALLEL_CUTOFF && n2 >= PARALLEL_CUTOFF && p2 >= PARALLEL_CUTOFF {
+            use rayon::prelude::*;
+            (0..7)
+                .into_par_iter()
+                .map(|l| {
+                    compute_m_l(
+                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
+                    )
+                })
+                .collect()
+        } else {
+            (0..7)
+                .map(|l| {
+                    compute_m_l(
+                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
+                    )
+                })
+                .collect()
+        };
 
     // Reconstruct C blocks from M_l using W
     let mut c11 = Array2::zeros((m2, p2));
@@ -562,299 +479,3 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
         c_padded
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::Rng;
-
-    #[test]
-    fn test_matlab_mappings() {
-        // sub2ind([2, 3], 1, 1) = 1
-        assert_eq!(l_map(1, 1, 2, 3), 1);
-        // sub2ind([2, 3], 2, 1) = 2
-        assert_eq!(l_map(2, 1, 2, 3), 2);
-        // sub2ind([2, 3], 1, 2) = 3
-        assert_eq!(l_map(1, 2, 2, 3), 3);
-        // sub2ind([2, 3], 2, 3) = 6
-        assert_eq!(l_map(2, 3, 2, 3), 6);
-
-        // [r, c] = ind2sub([2, 3], 3) -> (1, 2)
-        assert_eq!(l_map_inv(3, 2, 3), (1, 2));
-        // [r, c] = ind2sub([2, 3], 6) -> (2, 3)
-        assert_eq!(l_map_inv(6, 2, 3), (2, 3));
-    }
-
-    #[test]
-    fn test_example_2x2_slices() {
-        let x = matmul(2, 2, 2);
-
-        // Assert tensor shape is 4x4x4
-        assert_eq!(x.dim(), (4, 4, 4));
-
-        // Front slices from Exercise 3 PDF:
-        // X1 = [1 0 0 0; 0 0 0 0; 0 1 0 0; 0 0 0 0]
-        // X2 = [0 0 1 0; 0 0 0 0; 0 0 0 1; 0 0 0 0]
-        // X3 = [0 0 0 0; 1 0 0 0; 0 0 0 0; 0 1 0 0]
-        // X4 = [0 0 0 0; 0 0 1 0; 0 0 0 0; 0 0 0 1]
-
-        let expected_x1 = [
-            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        ];
-        let expected_x2 = [
-            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-        ];
-        let expected_x3 = [
-            0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-        ];
-        let expected_x4 = [
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        ];
-
-        // Check each front slice (which varies i and j for a fixed k)
-        for i in 0..4 {
-            for j in 0..4 {
-                // Recall index varies column-major in 2D slices as well,
-                // but expected arrays are row-major from the visual display,
-                // so we index expected arrays using [i * 4 + j].
-                assert_eq!(
-                    x[[i, j, 0]],
-                    expected_x1[i * 4 + j],
-                    "Mismatch at slice 0, index ({}, {})",
-                    i,
-                    j
-                );
-                assert_eq!(
-                    x[[i, j, 1]],
-                    expected_x2[i * 4 + j],
-                    "Mismatch at slice 1, index ({}, {})",
-                    i,
-                    j
-                );
-                assert_eq!(
-                    x[[i, j, 2]],
-                    expected_x3[i * 4 + j],
-                    "Mismatch at slice 2, index ({}, {})",
-                    i,
-                    j
-                );
-                assert_eq!(
-                    x[[i, j, 3]],
-                    expected_x4[i * 4 + j],
-                    "Mismatch at slice 3, index ({}, {})",
-                    i,
-                    j
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_matmul_tensor_correctness() {
-        let mut rng = rand::thread_rng();
-
-        // Test various dimensions
-        let test_cases = vec![
-            (2, 2, 2),
-            (3, 2, 4),
-            (4, 3, 2),
-            (5, 5, 5),
-            (1, 4, 3),
-            (3, 1, 3),
-        ];
-
-        for &(m, n, p) in &test_cases {
-            let x = matmul(m, n, p);
-
-            // Generate random A and B matrices
-            let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
-            let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
-
-            // Convert to ndarray matrices (transposed load to achieve column-major layout)
-            let a_t = Array2::from_shape_vec((n, m), vec_a.clone()).unwrap();
-            let a = a_t.t().to_owned();
-
-            let b_t = Array2::from_shape_vec((p, n), vec_b.clone()).unwrap();
-            let b = b_t.t().to_owned();
-
-            // Vectorizations in column-major
-            let nd_vec_a = Array1::from_vec(vec_a);
-            let nd_vec_b = Array1::from_vec(vec_b);
-
-            let res_tensor = evaluate_tensor_product(&x, &nd_vec_a, &nd_vec_b);
-            let res_standard = standard_matmul_vec_wt(&a, &b);
-
-            assert_eq!(res_tensor.len(), res_standard.len());
-            for idx in 0..res_tensor.len() {
-                let diff = (res_tensor[idx] - res_standard[idx]).abs();
-                assert!(
-                    diff < 1e-12,
-                    "Large difference at idx {} for dims ({}, {}, {}): tensor = {}, standard = {}",
-                    idx,
-                    m,
-                    n,
-                    p,
-                    res_tensor[idx],
-                    res_standard[idx]
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_strassen_matmul_correctness() {
-        let mut rng = rand::thread_rng();
-
-        let test_cases = vec![
-            (2, 2, 2),
-            (3, 3, 3),
-            (4, 4, 4),
-            (5, 5, 5),
-            (8, 8, 8),
-            (2, 4, 3),
-            (5, 3, 4),
-            (1, 5, 2),
-            (3, 4, 1),
-            (6, 6, 6),
-        ];
-
-        for &(m, n, p) in &test_cases {
-            // Generate random matrices
-            let mut a = Array2::zeros((m, n));
-            for val in a.iter_mut() {
-                *val = rng.gen_range(-10.0..10.0);
-            }
-            let mut b = Array2::zeros((n, p));
-            for val in b.iter_mut() {
-                *val = rng.gen_range(-10.0..10.0);
-            }
-
-            let c_strassen = strassen_matmul(&a, &b);
-            let c_classical = a.dot(&b);
-
-            assert_eq!(c_strassen.dim(), (m, p));
-            for i in 0..m {
-                for j in 0..p {
-                    let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
-                    assert!(
-                        diff < 1e-10,
-                        "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen = {}, Classical = {}",
-                        i,
-                        j,
-                        m,
-                        n,
-                        p,
-                        c_strassen[[i, j]],
-                        c_classical[[i, j]]
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_strassen_matmul_single_thread_correctness() {
-        let mut rng = rand::thread_rng();
-
-        let test_cases = vec![
-            (2, 2, 2),
-            (3, 3, 3),
-            (4, 4, 4),
-            (5, 5, 5),
-            (8, 8, 8),
-            (2, 4, 3),
-            (5, 3, 4),
-            (1, 5, 2),
-            (3, 4, 1),
-            (6, 6, 6),
-        ];
-
-        for &(m, n, p) in &test_cases {
-            // Generate random matrices
-            let mut a = Array2::zeros((m, n));
-            for val in a.iter_mut() {
-                *val = rng.gen_range(-10.0..10.0);
-            }
-            let mut b = Array2::zeros((n, p));
-            for val in b.iter_mut() {
-                *val = rng.gen_range(-10.0..10.0);
-            }
-
-            let c_strassen = strassen_matmul_single_thread(&a, &b);
-            let c_classical = a.dot(&b);
-
-            assert_eq!(c_strassen.dim(), (m, p));
-            for i in 0..m {
-                for j in 0..p {
-                    let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
-                    assert!(
-                        diff < 1e-10,
-                        "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen (single thread) = {}, Classical = {}",
-                        i,
-                        j,
-                        m,
-                        n,
-                        p,
-                        c_strassen[[i, j]],
-                        c_classical[[i, j]]
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_pad_matrices() {
-        let a = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        let b = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-
-        let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = pad_matrices(&a, &b);
-        assert!(need_padding);
-        assert_eq!(next_m, 2);
-        assert_eq!(next_n, 4); // 3 is padded to 4
-        assert_eq!(next_p, 2);
-        assert_eq!(a_pad.dim(), (2, 4));
-        assert_eq!(b_pad.dim(), (4, 2));
-
-        let a_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-        let b_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-        let (_, _, need_padding_even, _, _, _) = pad_matrices(&a_even, &b_even);
-        assert!(!need_padding_even);
-    }
-
-    #[test]
-    fn test_strassen_power_of_two_correctness() {
-        let mut rng = rand::thread_rng();
-        for n in 1..=9 {
-            let size = 1 << n;
-            let mut a = Array2::zeros((size, size));
-            let mut b = Array2::zeros((size, size));
-            for val in a.iter_mut() {
-                *val = rng.gen_range(-1.0..1.0);
-            }
-            for val in b.iter_mut() {
-                *val = rng.gen_range(-1.0..1.0);
-            }
-
-            let c_strassen = strassen_matmul(&a, &b);
-            let c_classical = a.dot(&b);
-
-            assert_eq!(c_strassen.dim(), (size, size));
-            for i in 0..size {
-                for j in 0..size {
-                    let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
-                    assert!(
-                        diff < 1e-9,
-                        "Mismatch at ({}, {}) for size 2^{}: Strassen = {}, Classical = {}",
-                        i,
-                        j,
-                        n,
-                        c_strassen[[i, j]],
-                        c_classical[[i, j]]
-                    );
-                }
-            }
-        }
-    }
-}
-
