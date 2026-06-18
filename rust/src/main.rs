@@ -1,6 +1,9 @@
 mod matmul;
 
-use crate::matmul::{evaluate_tensor_product, matmul, standard_matmul_vec_wt, strassen_matmul};
+use crate::matmul::{
+    evaluate_tensor_product, matmul, standard_matmul_vec_wt, strassen_matmul,
+    strassen_matmul_single_thread,
+};
 use ndarray::{Array1, Array2};
 use rand::Rng;
 
@@ -87,4 +90,81 @@ fn main() {
     } else {
         println!("Result: FAILURE! Strassen results differ from classical.");
     }
+
+    println!("\n--- Running Matrix Multiplication Benchmarks ---");
+    let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512];
+    let csv_file = "benchmark_results.csv";
+    if let Err(e) = benchmark_matmul(&sizes, csv_file) {
+        eprintln!("Failed to write benchmarks to CSV: {:?}", e);
+    } else {
+        println!("Benchmark results successfully written to {}", csv_file);
+    }
 }
+
+/// Computes C = A * B using classical matrix multiplication (using ndarray's built-in dot).
+fn classic_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+    a.dot(b)
+}
+
+/// Benchmarks classic_matmul, strassen_matmul_single_thread, and strassen_matmul,
+/// printing the elapsed times to the console and saving them to a CSV file.
+fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Error> {
+    use std::fs::File;
+    use std::io::Write;
+    use std::time::Instant;
+
+    let mut file = File::create(filename)?;
+    writeln!(
+        file,
+        "size,classic_matmul,strassen_matmul_single_thread,strassen_matmul"
+    )?;
+
+    let mut rng = rand::thread_rng();
+
+    for &size in sizes {
+        println!("\nBenchmarking size {}x{}...", size, size);
+
+        let mut a = Array2::zeros((size, size));
+        let mut b = Array2::zeros((size, size));
+        for val in a.iter_mut() {
+            *val = rng.gen_range(-1.0..1.0);
+        }
+        for val in b.iter_mut() {
+            *val = rng.gen_range(-1.0..1.0);
+        }
+
+        // 1. Classic MatMul
+        let start = Instant::now();
+        let _c_classic = classic_matmul(&a, &b);
+        let duration_classic = start.elapsed().as_secs_f64();
+        println!("  classic_matmul:               {:.6} s", duration_classic);
+
+        // 2. Strassen MatMul Single-Thread
+        let start = Instant::now();
+        let _c_strassen_single = strassen_matmul_single_thread(&a, &b);
+        let duration_strassen_single = start.elapsed().as_secs_f64();
+        println!(
+            "  strassen_matmul_single_thread: {:.6} s",
+            duration_strassen_single
+        );
+
+        // 3. Strassen MatMul (Parallel/Multi-Thread)
+        let start = Instant::now();
+        let _c_strassen_parallel = strassen_matmul(&a, &b);
+        let duration_strassen_parallel = start.elapsed().as_secs_f64();
+        println!(
+            "  strassen_matmul:              {:.6} s",
+            duration_strassen_parallel
+        );
+
+        writeln!(
+            file,
+            "{},{},{},{}",
+            size, duration_classic, duration_strassen_single, duration_strassen_parallel
+        )?;
+    }
+
+    Ok(())
+}
+
+
