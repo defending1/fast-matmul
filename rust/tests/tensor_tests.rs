@@ -1,10 +1,11 @@
-use fast_matmul::matmul::{evaluate_tensor_product, matmul, standard_matmul_vec_wt};
+use fast_matmul::matmul::MatMul;
 use ndarray::{Array1, Array2};
 use rand::Rng;
 
 #[test]
 fn test_example_2x2_slices() {
-    let x = matmul(2, 2, 2);
+    let mm = MatMul::new();
+    let x = mm.matmul(2, 2, 2);
 
     // Assert tensor shape is 4x4x4
     assert_eq!(x.dim(), (4, 4, 4));
@@ -59,6 +60,7 @@ fn test_example_2x2_slices() {
 #[test]
 fn test_matmul_tensor_correctness() {
     let mut rng = rand::thread_rng();
+    let mm = MatMul::new();
 
     let test_cases = vec![
         (2, 2, 2),
@@ -70,7 +72,7 @@ fn test_matmul_tensor_correctness() {
     ];
 
     for &(m, n, p) in &test_cases {
-        let x = matmul(m, n, p);
+        let x = mm.matmul(m, n, p);
 
         let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
         let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
@@ -84,8 +86,8 @@ fn test_matmul_tensor_correctness() {
         let nd_vec_a = Array1::from_vec(vec_a);
         let nd_vec_b = Array1::from_vec(vec_b);
 
-        let res_tensor = evaluate_tensor_product(&x, &nd_vec_a, &nd_vec_b);
-        let res_standard = standard_matmul_vec_wt(&a, &b);
+        let res_tensor = mm.evaluate_tensor_product(&x, &nd_vec_a, &nd_vec_b);
+        let res_standard = mm.standard_matmul_vec_wt(&a, &b);
 
         assert_eq!(res_tensor.len(), res_standard.len());
         for idx in 0..res_tensor.len() {

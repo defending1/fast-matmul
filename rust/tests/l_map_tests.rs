@@ -1,4 +1,4 @@
-use fast_matmul::matmul::{l_map, l_map_inv};
+use fast_matmul::l_map::{l_map, l_map_inv};
 
 #[test]
 fn test_matlab_mappings() {

@@ -1,8 +1,5 @@
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::{
-    evaluate_tensor_product, matmul, standard_matmul_vec_wt, strassen_matmul,
-    strassen_matmul_single_thread,
-};
+use fast_matmul::matmul::MatMul;
 use ndarray::{Array1, Array2};
 use rand::Rng;
 
@@ -10,9 +7,11 @@ fn main() {
     // Pre-load CP matrices to avoid disk I/O and initialization overhead during matrix multiplication
     let _ = CP::get_strassen();
 
+    let mm = MatMul::new();
+
     println!("Matrix Multiplication Tensor (m=2, n=2, p=2) Front Slices:\n");
 
-    let x = matmul(2, 2, 2);
+    let x = mm.matmul(2, 2, 2);
     let (shape_i, shape_j, shape_k) = x.dim();
 
     for k in 0..shape_k {
@@ -34,7 +33,7 @@ fn main() {
     let p = 5;
 
     println!("Testing dimensions: m={}, n={}, p={}", m, n, p);
-    let tensor = matmul(m, n, p);
+    let tensor = mm.matmul(m, n, p);
 
     let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-5.0..5.0)).collect();
     let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-5.0..5.0)).collect();
@@ -50,8 +49,8 @@ fn main() {
     let nd_vec_a = Array1::from_vec(vec_a);
     let nd_vec_b = Array1::from_vec(vec_b);
 
-    let res_tensor = evaluate_tensor_product(&tensor, &nd_vec_a, &nd_vec_b);
-    let res_standard = standard_matmul_vec_wt(&a, &b);
+    let res_tensor = mm.evaluate_tensor_product(&tensor, &nd_vec_a, &nd_vec_b);
+    let res_standard = mm.standard_matmul_vec_wt(&a, &b);
 
     let mut max_diff = 0.0;
     for i in 0..res_tensor.len() {
@@ -72,7 +71,7 @@ fn main() {
     }
 
     println!("\n--- Running Strassen MatMul Verification ---");
-    let c_strassen = strassen_matmul(&a, &b);
+    let c_strassen = mm.strassen_matmul(&a, &b);
     let c_classical = a.dot(&b);
     let mut strassen_diff = 0.0;
     for i in 0..m {
@@ -126,6 +125,7 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
     )?;
 
     let mut rng = rand::thread_rng();
+    let mm = MatMul::new();
 
     for &size in sizes {
         println!("\nBenchmarking size {}x{}...", size, size);
@@ -147,7 +147,7 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
 
         // 2. Strassen MatMul Single-Thread
         let start = Instant::now();
-        let _c_strassen_single = strassen_matmul_single_thread(&a, &b);
+        let _c_strassen_single = mm.strassen_matmul_single_thread(&a, &b);
         let duration_strassen_single = start.elapsed().as_secs_f64();
         println!(
             "  strassen_matmul_single_thread: {:.6} s",
@@ -156,7 +156,7 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
 
         // 3. Strassen MatMul (Parallel/Multi-Thread)
         let start = Instant::now();
-        let _c_strassen_parallel = strassen_matmul(&a, &b);
+        let _c_strassen_parallel = mm.strassen_matmul(&a, &b);
         let duration_strassen_parallel = start.elapsed().as_secs_f64();
         println!(
             "  strassen_matmul:              {:.6} s",

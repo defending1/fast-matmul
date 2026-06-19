@@ -1,10 +1,11 @@
-use fast_matmul::matmul::{pad_matrices, strassen_matmul, strassen_matmul_single_thread};
+use fast_matmul::matmul::MatMul;
 use ndarray::Array2;
 use rand::Rng;
 
 #[test]
 fn test_strassen_matmul_correctness() {
     let mut rng = rand::thread_rng();
+    let mm = MatMul::new();
 
     let test_cases = vec![
         (2, 2, 2),
@@ -29,7 +30,7 @@ fn test_strassen_matmul_correctness() {
             *val = rng.gen_range(-10.0..10.0);
         }
 
-        let c_strassen = strassen_matmul(&a, &b);
+        let c_strassen = mm.strassen_matmul(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (m, p));
@@ -55,6 +56,7 @@ fn test_strassen_matmul_correctness() {
 #[test]
 fn test_strassen_matmul_single_thread_correctness() {
     let mut rng = rand::thread_rng();
+    let mm = MatMul::new();
 
     let test_cases = vec![
         (2, 2, 2),
@@ -79,7 +81,7 @@ fn test_strassen_matmul_single_thread_correctness() {
             *val = rng.gen_range(-10.0..10.0);
         }
 
-        let c_strassen = strassen_matmul_single_thread(&a, &b);
+        let c_strassen = mm.strassen_matmul_single_thread(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (m, p));
@@ -104,10 +106,11 @@ fn test_strassen_matmul_single_thread_correctness() {
 
 #[test]
 fn test_pad_matrices() {
+    let mm = MatMul::new();
     let a = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
     let b = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
 
-    let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = pad_matrices(&a, &b);
+    let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = mm.pad_matrices(&a, &b);
     assert!(need_padding);
     assert_eq!(next_m, 2);
     assert_eq!(next_n, 4); // 3 is padded to 4
@@ -117,13 +120,14 @@ fn test_pad_matrices() {
 
     let a_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
     let b_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-    let (_, _, need_padding_even, _, _, _) = pad_matrices(&a_even, &b_even);
+    let (_, _, need_padding_even, _, _, _) = mm.pad_matrices(&a_even, &b_even);
     assert!(!need_padding_even);
 }
 
 #[test]
 fn test_strassen_power_of_two_correctness() {
     let mut rng = rand::thread_rng();
+    let mm = MatMul::new();
     for n in 1..=9 {
         let size = 1 << n;
         let mut a = Array2::zeros((size, size));
@@ -135,7 +139,7 @@ fn test_strassen_power_of_two_correctness() {
             *val = rng.gen_range(-1.0..1.0);
         }
 
-        let c_strassen = strassen_matmul(&a, &b);
+        let c_strassen = mm.strassen_matmul(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (size, size));
