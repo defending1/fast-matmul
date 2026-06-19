@@ -208,6 +208,7 @@ fn compute_m_l(
     b22: &Array2<f64>,
     u: &Array2<f64>,
     v: &Array2<f64>,
+    multithreaded: bool,
 ) -> Array2<f64> {
     // Linear combination of A blocks
     let mut a_comb = Array2::zeros((m2, n2));
@@ -239,151 +240,10 @@ fn compute_m_l(
         b_comb = b_comb + b22 * v[[3, l]];
     }
 
-    strassen_matmul(&a_comb, &b_comb)
+    strassen_matmul_impl(&a_comb, &b_comb, multithreaded)
 }
 
-/// Helper to compute a single Strassen product M_l in a single-threaded execution
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Internal helper for Strassen block multiplication recursion"
-)]
-fn compute_m_l_single_thread(
-    l: usize,
-    m2: usize,
-    n2: usize,
-    p2: usize,
-    a11: &Array2<f64>,
-    a12: &Array2<f64>,
-    a21: &Array2<f64>,
-    a22: &Array2<f64>,
-    b11: &Array2<f64>,
-    b12: &Array2<f64>,
-    b21: &Array2<f64>,
-    b22: &Array2<f64>,
-    u: &Array2<f64>,
-    v: &Array2<f64>,
-) -> Array2<f64> {
-    // Linear combination of A blocks
-    let mut a_comb = Array2::zeros((m2, n2));
-    if u[[0, l]] != 0.0 {
-        a_comb = a_comb + a11 * u[[0, l]];
-    }
-    if u[[1, l]] != 0.0 {
-        a_comb = a_comb + a12 * u[[1, l]];
-    }
-    if u[[2, l]] != 0.0 {
-        a_comb = a_comb + a21 * u[[2, l]];
-    }
-    if u[[3, l]] != 0.0 {
-        a_comb = a_comb + a22 * u[[3, l]];
-    }
-
-    // Linear combination of B blocks
-    let mut b_comb = Array2::zeros((n2, p2));
-    if v[[0, l]] != 0.0 {
-        b_comb = b_comb + b11 * v[[0, l]];
-    }
-    if v[[1, l]] != 0.0 {
-        b_comb = b_comb + b12 * v[[1, l]];
-    }
-    if v[[2, l]] != 0.0 {
-        b_comb = b_comb + b21 * v[[2, l]];
-    }
-    if v[[3, l]] != 0.0 {
-        b_comb = b_comb + b22 * v[[3, l]];
-    }
-
-    strassen_matmul_single_thread(&a_comb, &b_comb)
-}
-
-/// Computes C = A * B using Strassen's algorithm recursively (single-threaded).
-pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-    let (m, n) = a.dim();
-    let (n_b, p) = b.dim();
-    assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
-
-    // Base Case 1: A and/or B are vectors
-    if m == 1 || n == 1 || p == 1 || n <= 128 {
-        return a.dot(b);
-    }
-
-    // Base Case 2: 2x2 matrices
-    if m == 2 && n == 2 && p == 2 {
-        let cp = CP::get_strassen();
-        return matmul_cp(a, b, &cp.u, &cp.v, &cp.w);
-    }
-
-    // If any dimension is odd, pad to even
-    let (a_padded, b_padded, need_padding, next_m, next_n, next_p) = pad_matrices(a, b);
-
-    // Now partition the padded matrices into 4 equal blocks
-    let m2 = next_m / 2;
-    let n2 = next_n / 2;
-    let p2 = next_p / 2;
-
-    let a11 = a_padded.slice(ndarray::s![..m2, ..n2]).to_owned();
-    let a12 = a_padded.slice(ndarray::s![..m2, n2..]).to_owned();
-    let a21 = a_padded.slice(ndarray::s![m2.., ..n2]).to_owned();
-    let a22 = a_padded.slice(ndarray::s![m2.., n2..]).to_owned();
-
-    let b11 = b_padded.slice(ndarray::s![..n2, ..p2]).to_owned();
-    let b12 = b_padded.slice(ndarray::s![..n2, p2..]).to_owned();
-    let b21 = b_padded.slice(ndarray::s![n2.., ..p2]).to_owned();
-    let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
-
-    // Use Strassen's 7 multiplications using the parsed matrices U, V, W
-    let cp = CP::get_strassen();
-
-    // Compute the 7 products M_l
-    let m_products: Vec<Array2<f64>> = (0..7)
-        .map(|l| {
-            compute_m_l_single_thread(
-                l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
-            )
-        })
-        .collect();
-
-    // Reconstruct C blocks from M_l using W
-    let mut c11 = Array2::zeros((m2, p2));
-    let mut c12 = Array2::zeros((m2, p2));
-    let mut c21 = Array2::zeros((m2, p2));
-    let mut c22 = Array2::zeros((m2, p2));
-
-    for (l, m_prod) in m_products.iter().enumerate() {
-        if cp.w[[0, l]] != 0.0 {
-            c11 = c11 + m_prod * cp.w[[0, l]];
-        }
-        if cp.w[[1, l]] != 0.0 {
-            c12 = c12 + m_prod * cp.w[[1, l]];
-        }
-        if cp.w[[2, l]] != 0.0 {
-            c21 = c21 + m_prod * cp.w[[2, l]];
-        }
-        if cp.w[[3, l]] != 0.0 {
-            c22 = c22 + m_prod * cp.w[[3, l]];
-        }
-    }
-
-    // Combine the 4 blocks into a single matrix
-    let mut c_padded = Array2::zeros((next_m, next_p));
-    c_padded.slice_mut(ndarray::s![..m2, ..p2]).assign(&c11);
-    c_padded.slice_mut(ndarray::s![..m2, p2..]).assign(&c12);
-    c_padded.slice_mut(ndarray::s![m2.., ..p2]).assign(&c21);
-    c_padded.slice_mut(ndarray::s![m2.., p2..]).assign(&c22);
-
-    // Truncate to original size m x p
-    if need_padding {
-        c_padded.slice(ndarray::s![..m, ..p]).to_owned()
-    } else {
-        c_padded
-    }
-}
-
-/// Computes C = A * B using Strassen's algorithm recursively.
-/// - If m = 1, n = 1, or p = 1, uses classical matrix multiplication.
-/// - If m = n = p = 2, uses matmul_cp with the Strassen CP decomposition matrices.
-/// - Otherwise, partitions the matrices and calls itself recursively.
-pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+fn strassen_matmul_impl(a: &Array2<f64>, b: &Array2<f64>, multithreaded: bool) -> Array2<f64> {
     let (m, n) = a.dim();
     let (n_b, p) = b.dim();
     assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
@@ -424,13 +284,15 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     // Parallelize with Rayon if block dimensions are large enough to offset scheduling overhead.
     const PARALLEL_CUTOFF: usize = 64;
     let m_products: Vec<Array2<f64>> =
-        if m2 >= PARALLEL_CUTOFF && n2 >= PARALLEL_CUTOFF && p2 >= PARALLEL_CUTOFF {
+        if multithreaded && m2 >= PARALLEL_CUTOFF && n2 >= PARALLEL_CUTOFF && p2 >= PARALLEL_CUTOFF
+        {
             use rayon::prelude::*;
             (0..7)
                 .into_par_iter()
                 .map(|l| {
                     compute_m_l(
-                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
+                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u,
+                        &cp.v, true,
                     )
                 })
                 .collect()
@@ -438,7 +300,21 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
             (0..7)
                 .map(|l| {
                     compute_m_l(
-                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
+                        l,
+                        m2,
+                        n2,
+                        p2,
+                        &a11,
+                        &a12,
+                        &a21,
+                        &a22,
+                        &b11,
+                        &b12,
+                        &b21,
+                        &b22,
+                        &cp.u,
+                        &cp.v,
+                        multithreaded,
                     )
                 })
                 .collect()
@@ -478,4 +354,17 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     } else {
         c_padded
     }
+}
+
+/// Computes C = A * B using Strassen's algorithm recursively (single-threaded).
+pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+    strassen_matmul_impl(a, b, false)
+}
+
+/// Computes C = A * B using Strassen's algorithm recursively.
+/// - If m = 1, n = 1, or p = 1, uses classical matrix multiplication.
+/// - If m = n = p = 2, uses matmul_cp with the Strassen CP decomposition matrices.
+/// - Otherwise, partitions the matrices and calls itself recursively.
+pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+    strassen_matmul_impl(a, b, true)
 }
