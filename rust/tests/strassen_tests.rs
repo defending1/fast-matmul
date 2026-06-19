@@ -1,4 +1,4 @@
-use fast_matmul::matmul::{strassen_matmul, strassen_matmul_single_thread, pad_matrices};
+use fast_matmul::matmul::{pad_matrices, strassen_matmul, strassen_matmul_single_thread};
 use ndarray::Array2;
 use rand::Rng;
 

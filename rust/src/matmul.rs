@@ -1,4 +1,4 @@
-use crate::loader::get_strassen_matrices;
+use crate::cp::CP;
 use ndarray::{Array1, Array2, Array3};
 
 /// Natural column-major mapping (1-indexed): L(r, c; rows, cols) = r + (c - 1) * rows.
@@ -303,14 +303,14 @@ pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2
     assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
     // Base Case 1: A and/or B are vectors
-    if m == 1 || n == 1 || p == 1 {
+    if m == 1 || n == 1 || p == 1 || n <= 128 {
         return a.dot(b);
     }
 
     // Base Case 2: 2x2 matrices
     if m == 2 && n == 2 && p == 2 {
-        let (u, v, w) = get_strassen_matrices();
-        return matmul_cp(a, b, u, v, w);
+        let cp = CP::get_strassen();
+        return matmul_cp(a, b, &cp.u, &cp.v, &cp.w);
     }
 
     // If any dimension is odd, pad to even
@@ -332,13 +332,13 @@ pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2
     let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
 
     // Use Strassen's 7 multiplications using the parsed matrices U, V, W
-    let (u, v, w) = get_strassen_matrices();
+    let cp = CP::get_strassen();
 
     // Compute the 7 products M_l
     let m_products: Vec<Array2<f64>> = (0..7)
         .map(|l| {
             compute_m_l_single_thread(
-                l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
+                l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
             )
         })
         .collect();
@@ -349,18 +349,18 @@ pub fn strassen_matmul_single_thread(a: &Array2<f64>, b: &Array2<f64>) -> Array2
     let mut c21 = Array2::zeros((m2, p2));
     let mut c22 = Array2::zeros((m2, p2));
 
-    for l in 0..7 {
-        if w[[0, l]] != 0.0 {
-            c11 = c11 + &m_products[l] * w[[0, l]];
+    for (l, m_prod) in m_products.iter().enumerate() {
+        if cp.w[[0, l]] != 0.0 {
+            c11 = c11 + m_prod * cp.w[[0, l]];
         }
-        if w[[1, l]] != 0.0 {
-            c12 = c12 + &m_products[l] * w[[1, l]];
+        if cp.w[[1, l]] != 0.0 {
+            c12 = c12 + m_prod * cp.w[[1, l]];
         }
-        if w[[2, l]] != 0.0 {
-            c21 = c21 + &m_products[l] * w[[2, l]];
+        if cp.w[[2, l]] != 0.0 {
+            c21 = c21 + m_prod * cp.w[[2, l]];
         }
-        if w[[3, l]] != 0.0 {
-            c22 = c22 + &m_products[l] * w[[3, l]];
+        if cp.w[[3, l]] != 0.0 {
+            c22 = c22 + m_prod * cp.w[[3, l]];
         }
     }
 
@@ -389,14 +389,14 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
     // Base Case 1: A and/or B are vectors
-    if m == 1 || n == 1 || p == 1 {
+    if m == 1 || n == 1 || p == 1 || n <= 128 {
         return a.dot(b);
     }
 
     // Base Case 2: 2x2 matrices
     if m == 2 && n == 2 && p == 2 {
-        let (u, v, w) = get_strassen_matrices();
-        return matmul_cp(a, b, u, v, w);
+        let cp = CP::get_strassen();
+        return matmul_cp(a, b, &cp.u, &cp.v, &cp.w);
     }
 
     // If any dimension is odd, pad to even
@@ -418,7 +418,7 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
 
     // Use Strassen's 7 multiplications using the parsed matrices U, V, W
-    let (u, v, w) = get_strassen_matrices();
+    let cp = CP::get_strassen();
 
     // Compute the 7 products M_l
     // Parallelize with Rayon if block dimensions are large enough to offset scheduling overhead.
@@ -430,7 +430,7 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
                 .into_par_iter()
                 .map(|l| {
                     compute_m_l(
-                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
+                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
                     )
                 })
                 .collect()
@@ -438,7 +438,7 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
             (0..7)
                 .map(|l| {
                     compute_m_l(
-                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, u, v,
+                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, &cp.u, &cp.v,
                     )
                 })
                 .collect()
@@ -450,18 +450,18 @@ pub fn strassen_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let mut c21 = Array2::zeros((m2, p2));
     let mut c22 = Array2::zeros((m2, p2));
 
-    for l in 0..7 {
-        if w[[0, l]] != 0.0 {
-            c11 = c11 + &m_products[l] * w[[0, l]];
+    for (l, m_prod) in m_products.iter().enumerate() {
+        if cp.w[[0, l]] != 0.0 {
+            c11 = c11 + m_prod * cp.w[[0, l]];
         }
-        if w[[1, l]] != 0.0 {
-            c12 = c12 + &m_products[l] * w[[1, l]];
+        if cp.w[[1, l]] != 0.0 {
+            c12 = c12 + m_prod * cp.w[[1, l]];
         }
-        if w[[2, l]] != 0.0 {
-            c21 = c21 + &m_products[l] * w[[2, l]];
+        if cp.w[[2, l]] != 0.0 {
+            c21 = c21 + m_prod * cp.w[[2, l]];
         }
-        if w[[3, l]] != 0.0 {
-            c22 = c22 + &m_products[l] * w[[3, l]];
+        if cp.w[[3, l]] != 0.0 {
+            c22 = c22 + m_prod * cp.w[[3, l]];
         }
     }
 

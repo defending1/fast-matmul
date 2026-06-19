@@ -1,4 +1,4 @@
-use fast_matmul::matmul::{matmul, evaluate_tensor_product, standard_matmul_vec_wt};
+use fast_matmul::matmul::{evaluate_tensor_product, matmul, standard_matmul_vec_wt};
 use ndarray::{Array1, Array2};
 use rand::Rng;
 

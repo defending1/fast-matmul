@@ -1,3 +1,4 @@
+use fast_matmul::cp::CP;
 use fast_matmul::matmul::{
     evaluate_tensor_product, matmul, standard_matmul_vec_wt, strassen_matmul,
     strassen_matmul_single_thread,
@@ -6,6 +7,9 @@ use ndarray::{Array1, Array2};
 use rand::Rng;
 
 fn main() {
+    // Pre-load CP matrices to avoid disk I/O and initialization overhead during matrix multiplication
+    let _ = CP::get_strassen();
+
     println!("Matrix Multiplication Tensor (m=2, n=2, p=2) Front Slices:\n");
 
     let x = matmul(2, 2, 2);
@@ -90,7 +94,7 @@ fn main() {
     }
 
     println!("\n--- Running Matrix Multiplication Benchmarks ---");
-    let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512];
+    let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
     let csv_file = "generated/benchmark_results.csv";
     if let Err(e) = benchmark_matmul(&sizes, csv_file) {
         eprintln!("Failed to write benchmarks to CSV: {:?}", e);
@@ -168,5 +172,3 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
 
     Ok(())
 }
-
-
