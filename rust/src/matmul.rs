@@ -236,18 +236,13 @@ impl MatMul {
         let mut c21 = Array2::zeros((m2, p2));
         let mut c22 = Array2::zeros((m2, p2));
 
+        let mut c_blocks = [&mut c11, &mut c12, &mut c21, &mut c22];
         for (l, m_prod) in m_products.iter().enumerate() {
-            if self.cp.w[[0, l]] != 0.0 {
-                c11.scaled_add(self.cp.w[[0, l]], m_prod);
-            }
-            if self.cp.w[[1, l]] != 0.0 {
-                c12.scaled_add(self.cp.w[[1, l]], m_prod);
-            }
-            if self.cp.w[[2, l]] != 0.0 {
-                c21.scaled_add(self.cp.w[[2, l]], m_prod);
-            }
-            if self.cp.w[[3, l]] != 0.0 {
-                c22.scaled_add(self.cp.w[[3, l]], m_prod);
+            for (i, block) in c_blocks.iter_mut().enumerate() {
+                let coeff = self.cp.w[[i, l]];
+                if coeff != 0.0 {
+                    block.scaled_add(coeff, m_prod);
+                }
             }
         }
 
