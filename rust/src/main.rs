@@ -1,14 +1,10 @@
+use fast_matmul::benchmark::Benchmark;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::MatMul;
 use ndarray::{Array1, Array2};
 use rand::Rng;
 
-fn main() {
-    // Pre-load CP matrices to avoid disk I/O and initialization overhead during matrix multiplication
-    let _ = CP::get_strassen();
-
-    let mm = MatMul::new();
-
+fn standard_block_matmul(mm: &MatMul, m: usize, n: usize, p: usize) {
     println!("Matrix Multiplication Tensor (m=2, n=2, p=2) Front Slices:\n");
 
     let x = mm.matmul(2, 2, 2);
@@ -26,14 +22,10 @@ fn main() {
         println!();
     }
 
-    println!("--- Running Runtime Verification with Random Matrices ---");
-    let mut rng = rand::thread_rng();
-    let m = 3;
-    let n = 4;
-    let p = 5;
-
     println!("Testing dimensions: m={}, n={}, p={}", m, n, p);
     let tensor = mm.matmul(m, n, p);
+
+    let mut rng = rand::thread_rng();
 
     let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-5.0..5.0)).collect();
     let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-5.0..5.0)).collect();
@@ -69,106 +61,28 @@ fn main() {
     } else {
         println!("Result: FAILURE! The results differ significantly.");
     }
+}
 
-    println!("\n--- Running CP MatMul Verification ---");
-    let c_cp = mm.cp_matmul(&a, &b);
-    let c_classical = a.dot(&b);
-    let mut cp_diff = 0.0;
-    for i in 0..m {
-        for j in 0..p {
-            let diff = (c_cp[[i, j]] - c_classical[[i, j]]).abs();
-            if diff > cp_diff {
-                cp_diff = diff;
-            }
-        }
-    }
-    println!(
-        "CP MatMul completed. Maximum difference between CP and classical: {:.6e}",
-        cp_diff
-    );
-    if cp_diff < 1e-10 {
-        println!("Result: SUCCESS! CP matrix multiplication is correct.");
-    } else {
-        println!("Result: FAILURE! CP results differ from classical.");
-    }
+fn main() {
+    // Pre-load CP matrices to avoid disk I/O and initialization overhead during matrix multiplication
+    let _ = CP::get_strassen();
+
+    println!("--- Running Runtime Verification with Random Matrices ---");
+    let m = 3;
+    let n = 4;
+    let p = 5;
+
+    let mm = MatMul::new();
+    standard_block_matmul(&mm, m, n, p);
 
     println!("\n--- Running Matrix Multiplication Benchmarks ---");
     let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
     let csv_file = "generated/benchmark_results.csv";
-    if let Err(e) = benchmark_matmul(&sizes, csv_file) {
+    
+    let bench = Benchmark::new(&mm);
+    if let Err(e) = bench.run(&sizes, csv_file) {
         eprintln!("Failed to write benchmarks to CSV: {:?}", e);
     } else {
         println!("Benchmark results successfully written to {}", csv_file);
     }
-}
-
-/// Computes C = A * B using classical matrix multiplication (using ndarray's built-in dot).
-fn classic_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-    a.dot(b)
-}
-
-/// Benchmarks classic_matmul, cp_matmul_single_thread, and cp_matmul,
-/// printing the elapsed times to the console and saving them to a CSV file.
-fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Error> {
-    use std::fs::File;
-    use std::io::Write;
-    use std::time::Instant;
-
-    if let Some(parent) = std::path::Path::new(filename).parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let mut file = File::create(filename)?;
-    writeln!(
-        file,
-        "size,classic_matmul,cp_matmul_single_thread,cp_matmul"
-    )?;
-
-    let mut rng = rand::thread_rng();
-    let mm = MatMul::new();
-
-    for &size in sizes {
-        println!("\nBenchmarking size {}x{}...", size, size);
-
-        let mut a = Array2::zeros((size, size));
-        let mut b = Array2::zeros((size, size));
-        for val in a.iter_mut() {
-            *val = rng.gen_range(-1.0..1.0);
-        }
-        for val in b.iter_mut() {
-            *val = rng.gen_range(-1.0..1.0);
-        }
-
-        // 1. Classic MatMul
-        let start = Instant::now();
-        let _c_classic = classic_matmul(&a, &b);
-        let duration_classic = start.elapsed().as_secs_f64();
-        println!("  classic_matmul:               {:.6} s", duration_classic);
-
-        // 2. CP MatMul Single-Thread
-        let start = Instant::now();
-        let _c_cp_single = mm.cp_matmul_single_thread(&a, &b);
-        let duration_cp_single = start.elapsed().as_secs_f64();
-        println!(
-            "  cp_matmul_single_thread: {:.6} s",
-            duration_cp_single
-        );
-
-        // 3. CP MatMul (Parallel/Multi-Thread)
-        let start = Instant::now();
-        let _c_cp_parallel = mm.cp_matmul(&a, &b);
-        let duration_cp_parallel = start.elapsed().as_secs_f64();
-        println!(
-            "  cp_matmul:              {:.6} s",
-            duration_cp_parallel
-        );
-
-        writeln!(
-            file,
-            "{},{},{},{}",
-            size, duration_classic, duration_cp_single, duration_cp_parallel
-        )?;
-    }
-
-    Ok(())
 }
