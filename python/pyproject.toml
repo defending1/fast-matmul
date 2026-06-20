@@ -1,0 +1,8 @@
+[project]
+name = "benchmark-plots"
+version = "0.1.0"
+description = "Performance line plots for fast matrix multiplication benchmarks."
+dependencies = [
+    "matplotlib>=3.8.0",
+    "pandas>=2.1.0",
+]
