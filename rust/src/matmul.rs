@@ -87,36 +87,24 @@ impl MatMul {
     /// Computes C = A * B using the CP decomposition formula:
     /// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
     /// assuming row-major layout vectorization for A, B, C.
-    #[expect(
-        clippy::needless_range_loop,
-        reason = "Explicit 2x2 matrix coordinate indexing matches mathematical formulation"
-    )]
     pub fn matmul_cp(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
         assert_eq!(a.dim(), (2, 2));
         assert_eq!(b.dim(), (2, 2));
 
-        let vec_a = [a[[0, 0]], a[[0, 1]], a[[1, 0]], a[[1, 1]]];
-        let vec_b = [b[[0, 0]], b[[0, 1]], b[[1, 0]], b[[1, 1]]];
+        let vec_a = Array1::from_iter([a[[0, 0]], a[[0, 1]], a[[1, 0]], a[[1, 1]]]);
+        let vec_b = Array1::from_iter([b[[0, 0]], b[[0, 1]], b[[1, 0]], b[[1, 1]]]);
 
-        let mut c_vec = [0.0; 4];
+        let mut c_vec = Array1::zeros(4);
 
-        for l in 0..7 {
-            let mut sum_u = 0.0;
-            for i in 0..4 {
-                sum_u += self.cp.u[[i, l]] * vec_a[i];
-            }
-            let mut sum_v = 0.0;
-            for i in 0..4 {
-                sum_v += self.cp.v[[i, l]] * vec_b[i];
-            }
-            let p_l = sum_u * sum_v;
+        for l in 0..self.cp.rank {
+            let s_l = self.cp.u.column(l).dot(&vec_a);
+            let t_l = self.cp.v.column(l).dot(&vec_b);
+            let m_l = s_l * t_l;
 
-            for i in 0..4 {
-                c_vec[i] += p_l * self.cp.w[[i, l]];
-            }
+            c_vec.scaled_add(m_l, &self.cp.w.column(l));
         }
 
-        Array2::from_shape_vec((2, 2), c_vec.to_vec()).unwrap()
+        c_vec.into_shape_with_order((2, 2)).unwrap()
     }
 
     /// Pads the matrices `a` and `b` to even dimensions if necessary.
@@ -161,55 +149,32 @@ impl MatMul {
     }
 
     /// Helper to compute a single Strassen product M_l
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Internal helper for Strassen block multiplication recursion"
-    )]
     fn compute_m_l(
         &self,
         l: usize,
-        m2: usize,
-        n2: usize,
-        p2: usize,
-        a11: &Array2<f64>,
-        a12: &Array2<f64>,
-        a21: &Array2<f64>,
-        a22: &Array2<f64>,
-        b11: &Array2<f64>,
-        b12: &Array2<f64>,
-        b21: &Array2<f64>,
-        b22: &Array2<f64>,
+        a_blocks: &[Array2<f64>],
+        b_blocks: &[Array2<f64>],
         multithreaded: bool,
     ) -> Array2<f64> {
-        let mut a_comb = Array2::zeros((m2, n2));
-        if self.cp.u[[0, l]] != 0.0 {
-            a_comb = a_comb + a11 * self.cp.u[[0, l]];
-        }
-        if self.cp.u[[1, l]] != 0.0 {
-            a_comb = a_comb + a12 * self.cp.u[[1, l]];
-        }
-        if self.cp.u[[2, l]] != 0.0 {
-            a_comb = a_comb + a21 * self.cp.u[[2, l]];
-        }
-        if self.cp.u[[3, l]] != 0.0 {
-            a_comb = a_comb + a22 * self.cp.u[[3, l]];
-        }
-
-        let mut b_comb = Array2::zeros((n2, p2));
-        if self.cp.v[[0, l]] != 0.0 {
-            b_comb = b_comb + b11 * self.cp.v[[0, l]];
-        }
-        if self.cp.v[[1, l]] != 0.0 {
-            b_comb = b_comb + b12 * self.cp.v[[1, l]];
-        }
-        if self.cp.v[[2, l]] != 0.0 {
-            b_comb = b_comb + b21 * self.cp.v[[2, l]];
-        }
-        if self.cp.v[[3, l]] != 0.0 {
-            b_comb = b_comb + b22 * self.cp.v[[3, l]];
-        }
+        let a_comb = Self::combine_blocks(a_blocks, self.cp.u.column(l));
+        let b_comb = Self::combine_blocks(b_blocks, self.cp.v.column(l));
 
         self.strassen_matmul_impl(&a_comb, &b_comb, multithreaded)
+    }
+
+    /// Computes the dot product of a slice of matrix blocks
+    /// weighted by a 1D vector of coefficients.
+    ///
+    /// This is an optimized in-place operation that uses `scaled_add` to avoid allocating
+    /// temporary intermediate arrays, and skips operations for zero coefficients.
+    fn combine_blocks(blocks: &[Array2<f64>], coeffs: ndarray::ArrayView1<f64>) -> Array2<f64> {
+        let mut comb = Array2::zeros(blocks[0].dim());
+        for (block, &coeff) in blocks.iter().zip(coeffs) {
+            if coeff != 0.0 {
+                comb.scaled_add(coeff, block);
+            }
+        }
+        comb
     }
 
     fn strassen_matmul_impl(
@@ -222,7 +187,7 @@ impl MatMul {
         let (n_b, p) = b.dim();
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
-        if m == 1 || n == 1 || p == 1 || n <= 128 {
+        if m == 1 || n == 1 || p == 1 || n <= 128 || m <= 128 || p <= 128 {
             return a.dot(b);
         }
 
@@ -246,6 +211,9 @@ impl MatMul {
         let b21 = b_padded.slice(ndarray::s![n2.., ..p2]).to_owned();
         let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
 
+        let a_blocks = [a11, a12, a21, a22];
+        let b_blocks = [b11, b12, b21, b22];
+
         const PARALLEL_CUTOFF: usize = 64;
         let m_products: Vec<Array2<f64>> = if multithreaded
             && m2 >= PARALLEL_CUTOFF
@@ -253,33 +221,13 @@ impl MatMul {
             && p2 >= PARALLEL_CUTOFF
         {
             use rayon::prelude::*;
-            (0..7)
+            (0..self.cp.rank)
                 .into_par_iter()
-                .map(|l| {
-                    self.compute_m_l(
-                        l, m2, n2, p2, &a11, &a12, &a21, &a22, &b11, &b12, &b21, &b22, true,
-                    )
-                })
+                .map(|l| self.compute_m_l(l, &a_blocks, &b_blocks, true))
                 .collect()
         } else {
-            (0..7)
-                .map(|l| {
-                    self.compute_m_l(
-                        l,
-                        m2,
-                        n2,
-                        p2,
-                        &a11,
-                        &a12,
-                        &a21,
-                        &a22,
-                        &b11,
-                        &b12,
-                        &b21,
-                        &b22,
-                        multithreaded,
-                    )
-                })
+            (0..self.cp.rank)
+                .map(|l| self.compute_m_l(l, &a_blocks, &b_blocks, multithreaded))
                 .collect()
         };
 
@@ -290,16 +238,16 @@ impl MatMul {
 
         for (l, m_prod) in m_products.iter().enumerate() {
             if self.cp.w[[0, l]] != 0.0 {
-                c11 = c11 + m_prod * self.cp.w[[0, l]];
+                c11.scaled_add(self.cp.w[[0, l]], m_prod);
             }
             if self.cp.w[[1, l]] != 0.0 {
-                c12 = c12 + m_prod * self.cp.w[[1, l]];
+                c12.scaled_add(self.cp.w[[1, l]], m_prod);
             }
             if self.cp.w[[2, l]] != 0.0 {
-                c21 = c21 + m_prod * self.cp.w[[2, l]];
+                c21.scaled_add(self.cp.w[[2, l]], m_prod);
             }
             if self.cp.w[[3, l]] != 0.0 {
-                c22 = c22 + m_prod * self.cp.w[[3, l]];
+                c22.scaled_add(self.cp.w[[3, l]], m_prod);
             }
         }
 
