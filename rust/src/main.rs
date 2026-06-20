@@ -70,26 +70,26 @@ fn main() {
         println!("Result: FAILURE! The results differ significantly.");
     }
 
-    println!("\n--- Running Strassen MatMul Verification ---");
-    let c_strassen = mm.strassen_matmul(&a, &b);
+    println!("\n--- Running CP MatMul Verification ---");
+    let c_cp = mm.cp_matmul(&a, &b);
     let c_classical = a.dot(&b);
-    let mut strassen_diff = 0.0;
+    let mut cp_diff = 0.0;
     for i in 0..m {
         for j in 0..p {
-            let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
-            if diff > strassen_diff {
-                strassen_diff = diff;
+            let diff = (c_cp[[i, j]] - c_classical[[i, j]]).abs();
+            if diff > cp_diff {
+                cp_diff = diff;
             }
         }
     }
     println!(
-        "Strassen MatMul completed. Maximum difference between Strassen and classical: {:.6e}",
-        strassen_diff
+        "CP MatMul completed. Maximum difference between CP and classical: {:.6e}",
+        cp_diff
     );
-    if strassen_diff < 1e-10 {
-        println!("Result: SUCCESS! Strassen matrix multiplication is correct.");
+    if cp_diff < 1e-10 {
+        println!("Result: SUCCESS! CP matrix multiplication is correct.");
     } else {
-        println!("Result: FAILURE! Strassen results differ from classical.");
+        println!("Result: FAILURE! CP results differ from classical.");
     }
 
     println!("\n--- Running Matrix Multiplication Benchmarks ---");
@@ -107,7 +107,7 @@ fn classic_matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     a.dot(b)
 }
 
-/// Benchmarks classic_matmul, strassen_matmul_single_thread, and strassen_matmul,
+/// Benchmarks classic_matmul, cp_matmul_single_thread, and cp_matmul,
 /// printing the elapsed times to the console and saving them to a CSV file.
 fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Error> {
     use std::fs::File;
@@ -121,7 +121,7 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
     let mut file = File::create(filename)?;
     writeln!(
         file,
-        "size,classic_matmul,strassen_matmul_single_thread,strassen_matmul"
+        "size,classic_matmul,cp_matmul_single_thread,cp_matmul"
     )?;
 
     let mut rng = rand::thread_rng();
@@ -145,28 +145,28 @@ fn benchmark_matmul(sizes: &[usize], filename: &str) -> Result<(), std::io::Erro
         let duration_classic = start.elapsed().as_secs_f64();
         println!("  classic_matmul:               {:.6} s", duration_classic);
 
-        // 2. Strassen MatMul Single-Thread
+        // 2. CP MatMul Single-Thread
         let start = Instant::now();
-        let _c_strassen_single = mm.strassen_matmul_single_thread(&a, &b);
-        let duration_strassen_single = start.elapsed().as_secs_f64();
+        let _c_cp_single = mm.cp_matmul_single_thread(&a, &b);
+        let duration_cp_single = start.elapsed().as_secs_f64();
         println!(
-            "  strassen_matmul_single_thread: {:.6} s",
-            duration_strassen_single
+            "  cp_matmul_single_thread: {:.6} s",
+            duration_cp_single
         );
 
-        // 3. Strassen MatMul (Parallel/Multi-Thread)
+        // 3. CP MatMul (Parallel/Multi-Thread)
         let start = Instant::now();
-        let _c_strassen_parallel = mm.strassen_matmul(&a, &b);
-        let duration_strassen_parallel = start.elapsed().as_secs_f64();
+        let _c_cp_parallel = mm.cp_matmul(&a, &b);
+        let duration_cp_parallel = start.elapsed().as_secs_f64();
         println!(
-            "  strassen_matmul:              {:.6} s",
-            duration_strassen_parallel
+            "  cp_matmul:              {:.6} s",
+            duration_cp_parallel
         );
 
         writeln!(
             file,
             "{},{},{},{}",
-            size, duration_classic, duration_strassen_single, duration_strassen_parallel
+            size, duration_classic, duration_cp_single, duration_cp_parallel
         )?;
     }
 

@@ -3,22 +3,27 @@ use crate::l_map::{l_map, l_star_map_inv};
 use ndarray::{Array1, Array2, Array3};
 
 /// Matrix Multiplication operations and algorithms.
-pub struct MatMul {
-    cp: &'static CP,
+pub struct MatMul<'a> {
+    cp: &'a CP,
 }
 
-impl Default for MatMul {
+impl Default for MatMul<'static> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MatMul {
+impl<'a> MatMul<'a> {
     /// Creates a new `MatMul` operator instance.
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> MatMul<'static> {
+        MatMul {
             cp: CP::get_strassen(),
         }
+    }
+
+    /// Creates a new `MatMul` operator instance with a custom CP decomposition.
+    pub fn with_cp(cp: &'a CP) -> Self {
+        Self { cp }
     }
 
     /// Returns the matrix multiplication tensor X representing <m, n, p> as defined in report.
@@ -88,13 +93,13 @@ impl MatMul {
     /// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
     /// assuming row-major layout vectorization for A, B, C.
     pub fn matmul_cp(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-        assert_eq!(a.dim(), (2, 2));
-        assert_eq!(b.dim(), (2, 2));
+        assert_eq!(a.dim(), (self.cp.m, self.cp.n));
+        assert_eq!(b.dim(), (self.cp.n, self.cp.p));
 
-        let vec_a = Array1::from_iter([a[[0, 0]], a[[0, 1]], a[[1, 0]], a[[1, 1]]]);
-        let vec_b = Array1::from_iter([b[[0, 0]], b[[0, 1]], b[[1, 0]], b[[1, 1]]]);
+        let vec_a = Array1::from_iter(a.iter().cloned());
+        let vec_b = Array1::from_iter(b.iter().cloned());
 
-        let mut c_vec = Array1::zeros(4);
+        let mut c_vec = Array1::zeros(self.cp.m * self.cp.p);
 
         for l in 0..self.cp.rank {
             let s_l = self.cp.u.column(l).dot(&vec_a);
@@ -104,10 +109,10 @@ impl MatMul {
             c_vec.scaled_add(m_l, &self.cp.w.column(l));
         }
 
-        c_vec.into_shape_with_order((2, 2)).unwrap()
+        c_vec.into_shape_with_order((self.cp.m, self.cp.p)).unwrap()
     }
 
-    /// Pads the matrices `a` and `b` to even dimensions if necessary.
+    /// Pads the matrices `a` and `b` to multiples of the CP decomposition dimensions if necessary.
     pub fn pad_matrices(
         &self,
         a: &Array2<f64>,
@@ -122,16 +127,16 @@ impl MatMul {
         let mut next_p = p;
         let mut need_padding = false;
 
-        if m % 2 != 0 {
-            next_m += 1;
+        if m % self.cp.m != 0 {
+            next_m = m + (self.cp.m - m % self.cp.m);
             need_padding = true;
         }
-        if n % 2 != 0 {
-            next_n += 1;
+        if n % self.cp.n != 0 {
+            next_n = n + (self.cp.n - n % self.cp.n);
             need_padding = true;
         }
-        if p % 2 != 0 {
-            next_p += 1;
+        if p % self.cp.p != 0 {
+            next_p = p + (self.cp.p - p % self.cp.p);
             need_padding = true;
         }
 
@@ -159,7 +164,7 @@ impl MatMul {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.column(l));
         let b_comb = Self::combine_blocks(b_blocks, self.cp.v.column(l));
 
-        self.strassen_matmul_impl(&a_comb, &b_comb, multithreaded)
+        self.cp_matmul_impl(&a_comb, &b_comb, multithreaded)
     }
 
     /// Computes the dot product of a slice of matrix blocks
@@ -177,7 +182,7 @@ impl MatMul {
         comb
     }
 
-    fn strassen_matmul_impl(
+    fn cp_matmul_impl(
         &self,
         a: &Array2<f64>,
         b: &Array2<f64>,
@@ -187,38 +192,47 @@ impl MatMul {
         let (n_b, p) = b.dim();
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
-        if m == 1 || n == 1 || p == 1 || n <= 128 || m <= 128 || p <= 128 {
+        if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= 128 || m <= 128 || p <= 128 {
             return a.dot(b);
         }
 
-        if m == 2 && n == 2 && p == 2 {
+        if m == self.cp.m && n == self.cp.n && p == self.cp.p {
             return self.matmul_cp(a, b);
         }
 
         let (a_padded, b_padded, need_padding, next_m, next_n, next_p) = self.pad_matrices(a, b);
 
-        let m2 = next_m / 2;
-        let n2 = next_n / 2;
-        let p2 = next_p / 2;
+        let m_block = next_m / self.cp.m;
+        let n_block = next_n / self.cp.n;
+        let p_block = next_p / self.cp.p;
 
-        let a11 = a_padded.slice(ndarray::s![..m2, ..n2]).to_owned();
-        let a12 = a_padded.slice(ndarray::s![..m2, n2..]).to_owned();
-        let a21 = a_padded.slice(ndarray::s![m2.., ..n2]).to_owned();
-        let a22 = a_padded.slice(ndarray::s![m2.., n2..]).to_owned();
+        let mut a_blocks = Vec::with_capacity(self.cp.m * self.cp.n);
+        for i in 0..self.cp.m {
+            for j in 0..self.cp.n {
+                let block = a_padded.slice(ndarray::s![
+                    i * m_block .. (i + 1) * m_block,
+                    j * n_block .. (j + 1) * n_block
+                ]).to_owned();
+                a_blocks.push(block);
+            }
+        }
 
-        let b11 = b_padded.slice(ndarray::s![..n2, ..p2]).to_owned();
-        let b12 = b_padded.slice(ndarray::s![..n2, p2..]).to_owned();
-        let b21 = b_padded.slice(ndarray::s![n2.., ..p2]).to_owned();
-        let b22 = b_padded.slice(ndarray::s![n2.., p2..]).to_owned();
-
-        let a_blocks = [a11, a12, a21, a22];
-        let b_blocks = [b11, b12, b21, b22];
+        let mut b_blocks = Vec::with_capacity(self.cp.n * self.cp.p);
+        for i in 0..self.cp.n {
+            for j in 0..self.cp.p {
+                let block = b_padded.slice(ndarray::s![
+                    i * n_block .. (i + 1) * n_block,
+                    j * p_block .. (j + 1) * p_block
+                ]).to_owned();
+                b_blocks.push(block);
+            }
+        }
 
         const PARALLEL_CUTOFF: usize = 64;
         let m_products: Vec<Array2<f64>> = if multithreaded
-            && m2 >= PARALLEL_CUTOFF
-            && n2 >= PARALLEL_CUTOFF
-            && p2 >= PARALLEL_CUTOFF
+            && m_block >= PARALLEL_CUTOFF
+            && n_block >= PARALLEL_CUTOFF
+            && p_block >= PARALLEL_CUTOFF
         {
             use rayon::prelude::*;
             (0..self.cp.rank)
@@ -231,12 +245,7 @@ impl MatMul {
                 .collect()
         };
 
-        let mut c11 = Array2::zeros((m2, p2));
-        let mut c12 = Array2::zeros((m2, p2));
-        let mut c21 = Array2::zeros((m2, p2));
-        let mut c22 = Array2::zeros((m2, p2));
-
-        let mut c_blocks = [&mut c11, &mut c12, &mut c21, &mut c22];
+        let mut c_blocks = vec![Array2::zeros((m_block, p_block)); self.cp.m * self.cp.p];
         for (l, m_prod) in m_products.iter().enumerate() {
             for (i, block) in c_blocks.iter_mut().enumerate() {
                 let coeff = self.cp.w[[i, l]];
@@ -247,10 +256,15 @@ impl MatMul {
         }
 
         let mut c_padded = Array2::zeros((next_m, next_p));
-        c_padded.slice_mut(ndarray::s![..m2, ..p2]).assign(&c11);
-        c_padded.slice_mut(ndarray::s![..m2, p2..]).assign(&c12);
-        c_padded.slice_mut(ndarray::s![m2.., ..p2]).assign(&c21);
-        c_padded.slice_mut(ndarray::s![m2.., p2..]).assign(&c22);
+        for i in 0..self.cp.m {
+            for j in 0..self.cp.p {
+                let block_idx = i * self.cp.p + j;
+                c_padded.slice_mut(ndarray::s![
+                    i * m_block .. (i + 1) * m_block,
+                    j * p_block .. (j + 1) * p_block
+                ]).assign(&c_blocks[block_idx]);
+            }
+        }
 
         if need_padding {
             c_padded.slice(ndarray::s![..m, ..p]).to_owned()
@@ -259,13 +273,13 @@ impl MatMul {
         }
     }
 
-    /// Computes C = A * B using Strassen's algorithm recursively (single-threaded).
-    pub fn strassen_matmul_single_thread(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-        self.strassen_matmul_impl(a, b, false)
+    /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).
+    pub fn cp_matmul_single_thread(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+        self.cp_matmul_impl(a, b, false)
     }
 
-    /// Computes C = A * B using Strassen's algorithm recursively.
-    pub fn strassen_matmul(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-        self.strassen_matmul_impl(a, b, true)
+    /// Computes C = A * B using the CP decomposition algorithm recursively.
+    pub fn cp_matmul(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+        self.cp_matmul_impl(a, b, true)
     }
 }

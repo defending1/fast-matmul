@@ -30,7 +30,7 @@ fn test_strassen_matmul_correctness() {
             *val = rng.gen_range(-10.0..10.0);
         }
 
-        let c_strassen = mm.strassen_matmul(&a, &b);
+        let c_strassen = mm.cp_matmul(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (m, p));
@@ -81,7 +81,7 @@ fn test_strassen_matmul_single_thread_correctness() {
             *val = rng.gen_range(-10.0..10.0);
         }
 
-        let c_strassen = mm.strassen_matmul_single_thread(&a, &b);
+        let c_strassen = mm.cp_matmul_single_thread(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (m, p));
@@ -139,7 +139,7 @@ fn test_strassen_power_of_two_correctness() {
             *val = rng.gen_range(-1.0..1.0);
         }
 
-        let c_strassen = mm.strassen_matmul(&a, &b);
+        let c_strassen = mm.cp_matmul(&a, &b);
         let c_classical = a.dot(&b);
 
         assert_eq!(c_strassen.dim(), (size, size));
