@@ -99,6 +99,7 @@ impl<'a> MatMul<'a> {
         let vec_a = Array1::from_iter(a.iter().cloned());
         let vec_b = Array1::from_iter(b.iter().cloned());
 
+        // Resulting multiplication vector
         let mut c_vec = Array1::zeros(self.cp.m * self.cp.p);
 
         for l in 0..self.cp.rank {
@@ -182,12 +183,30 @@ impl<'a> MatMul<'a> {
         comb
     }
 
-    fn cp_matmul_impl(
-        &self,
-        a: &Array2<f64>,
-        b: &Array2<f64>,
-        multithreaded: bool,
-    ) -> Array2<f64> {
+    /// Splits a matrix into grid blocks of specified block dimensions.
+    fn split_into_blocks(
+        matrix: &Array2<f64>,
+        grid_rows: usize,
+        grid_cols: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> Vec<Array2<f64>> {
+        let mut blocks = Vec::with_capacity(grid_rows * grid_cols);
+        for i in 0..grid_rows {
+            for j in 0..grid_cols {
+                let block = matrix
+                    .slice(ndarray::s![
+                        i * block_rows..(i + 1) * block_rows,
+                        j * block_cols..(j + 1) * block_cols
+                    ])
+                    .to_owned();
+                blocks.push(block);
+            }
+        }
+        blocks
+    }
+
+    fn cp_matmul_impl(&self, a: &Array2<f64>, b: &Array2<f64>, multithreaded: bool) -> Array2<f64> {
         let (m, n) = a.dim();
         let (n_b, p) = b.dim();
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
@@ -206,27 +225,8 @@ impl<'a> MatMul<'a> {
         let n_block = next_n / self.cp.n;
         let p_block = next_p / self.cp.p;
 
-        let mut a_blocks = Vec::with_capacity(self.cp.m * self.cp.n);
-        for i in 0..self.cp.m {
-            for j in 0..self.cp.n {
-                let block = a_padded.slice(ndarray::s![
-                    i * m_block .. (i + 1) * m_block,
-                    j * n_block .. (j + 1) * n_block
-                ]).to_owned();
-                a_blocks.push(block);
-            }
-        }
-
-        let mut b_blocks = Vec::with_capacity(self.cp.n * self.cp.p);
-        for i in 0..self.cp.n {
-            for j in 0..self.cp.p {
-                let block = b_padded.slice(ndarray::s![
-                    i * n_block .. (i + 1) * n_block,
-                    j * p_block .. (j + 1) * p_block
-                ]).to_owned();
-                b_blocks.push(block);
-            }
-        }
+        let a_blocks = Self::split_into_blocks(&a_padded, self.cp.m, self.cp.n, m_block, n_block);
+        let b_blocks = Self::split_into_blocks(&b_padded, self.cp.n, self.cp.p, n_block, p_block);
 
         const PARALLEL_CUTOFF: usize = 64;
         let m_products: Vec<Array2<f64>> = if multithreaded
@@ -259,10 +259,12 @@ impl<'a> MatMul<'a> {
         for i in 0..self.cp.m {
             for j in 0..self.cp.p {
                 let block_idx = i * self.cp.p + j;
-                c_padded.slice_mut(ndarray::s![
-                    i * m_block .. (i + 1) * m_block,
-                    j * p_block .. (j + 1) * p_block
-                ]).assign(&c_blocks[block_idx]);
+                c_padded
+                    .slice_mut(ndarray::s![
+                        i * m_block..(i + 1) * m_block,
+                        j * p_block..(j + 1) * p_block
+                    ])
+                    .assign(&c_blocks[block_idx]);
             }
         }
 
