@@ -4,7 +4,14 @@ use fast_matmul::matmul::MatMul;
 use ndarray::{Array1, Array2};
 use rand::Rng;
 
-fn standard_block_matmul(mm: &MatMul, m: usize, n: usize, p: usize) {
+fn standard_block_matmul() {
+    println!("--- Running Runtime Verification with Random Matrices ---");
+    let m = 3;
+    let n = 4;
+    let p = 5;
+
+    let mm = MatMul::new();
+
     println!("Matrix Multiplication Tensor (m=2, n=2, p=2) Front Slices:\n");
 
     let x = mm.matmul(2, 2, 2);
@@ -64,23 +71,20 @@ fn standard_block_matmul(mm: &MatMul, m: usize, n: usize, p: usize) {
 }
 
 fn main() {
-    // Pre-load CP matrices to avoid disk I/O and initialization overhead during matrix multiplication
-    let _ = CP::get_strassen();
-
-    println!("--- Running Runtime Verification with Random Matrices ---");
-    let m = 3;
-    let n = 4;
-    let p = 5;
-
-    let mm = MatMul::new();
-    standard_block_matmul(&mm, m, n, p);
+    standard_block_matmul();
 
     println!("\n--- Running Matrix Multiplication Benchmarks ---");
-    let sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+    let sizes: Vec<usize> = (1..=12).map(|n| 1usize << n).collect();
     let csv_file = "generated/benchmark_results.csv";
-    
-    let bench = Benchmark::new(&mm);
-    if let Err(e) = bench.run(&sizes, csv_file) {
+
+    let bench = Benchmark::new();
+    let algorithms = &[
+        "strassen",
+        "grey-strassen",
+        "hk323-15-94",
+        "smirnov333-23-139",
+    ];
+    if let Err(e) = bench.run(&sizes, algorithms, csv_file) {
         eprintln!("Failed to write benchmarks to CSV: {:?}", e);
     } else {
         println!("Benchmark results successfully written to {}", csv_file);
