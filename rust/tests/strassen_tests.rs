@@ -1,5 +1,5 @@
 use fast_matmul::matmul::MatMul;
-use ndarray::Array2;
+use faer::Mat;
 use rand::Rng;
 
 #[test]
@@ -21,22 +21,26 @@ fn test_strassen_matmul_correctness() {
     ];
 
     for &(m, n, p) in &test_cases {
-        let mut a = Array2::zeros((m, n));
-        for val in a.iter_mut() {
-            *val = rng.gen_range(-10.0..10.0);
+        let mut a = Mat::<f64>::zeros(m, n);
+        for r in 0..m {
+            for c in 0..n {
+                a[(r, c)] = rng.gen_range(-10.0..10.0);
+            }
         }
-        let mut b = Array2::zeros((n, p));
-        for val in b.iter_mut() {
-            *val = rng.gen_range(-10.0..10.0);
+        let mut b = Mat::<f64>::zeros(n, p);
+        for r in 0..n {
+            for c in 0..p {
+                b[(r, c)] = rng.gen_range(-10.0..10.0);
+            }
         }
 
         let c_strassen = mm.cp_matmul(&a, &b);
-        let c_classical = a.dot(&b);
+        let c_classical = &a * &b;
 
-        assert_eq!(c_strassen.dim(), (m, p));
+        assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));
         for i in 0..m {
             for j in 0..p {
-                let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
+                let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
                 assert!(
                     diff < 1e-10,
                     "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen = {}, Classical = {}",
@@ -45,8 +49,8 @@ fn test_strassen_matmul_correctness() {
                     m,
                     n,
                     p,
-                    c_strassen[[i, j]],
-                    c_classical[[i, j]]
+                    c_strassen[(i, j)],
+                    c_classical[(i, j)]
                 );
             }
         }
@@ -72,22 +76,26 @@ fn test_strassen_matmul_single_thread_correctness() {
     ];
 
     for &(m, n, p) in &test_cases {
-        let mut a = Array2::zeros((m, n));
-        for val in a.iter_mut() {
-            *val = rng.gen_range(-10.0..10.0);
+        let mut a = Mat::<f64>::zeros(m, n);
+        for r in 0..m {
+            for c in 0..n {
+                a[(r, c)] = rng.gen_range(-10.0..10.0);
+            }
         }
-        let mut b = Array2::zeros((n, p));
-        for val in b.iter_mut() {
-            *val = rng.gen_range(-10.0..10.0);
+        let mut b = Mat::<f64>::zeros(n, p);
+        for r in 0..n {
+            for c in 0..p {
+                b[(r, c)] = rng.gen_range(-10.0..10.0);
+            }
         }
 
         let c_strassen = mm.cp_matmul_single_thread(&a, &b);
-        let c_classical = a.dot(&b);
+        let c_classical = &a * &b;
 
-        assert_eq!(c_strassen.dim(), (m, p));
+        assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));
         for i in 0..m {
             for j in 0..p {
-                let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
+                let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
                 assert!(
                     diff < 1e-10,
                     "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen (single thread) = {}, Classical = {}",
@@ -96,8 +104,8 @@ fn test_strassen_matmul_single_thread_correctness() {
                     m,
                     n,
                     p,
-                    c_strassen[[i, j]],
-                    c_classical[[i, j]]
+                    c_strassen[(i, j)],
+                    c_classical[(i, j)]
                 );
             }
         }
@@ -107,19 +115,19 @@ fn test_strassen_matmul_single_thread_correctness() {
 #[test]
 fn test_pad_matrices() {
     let mm = MatMul::new();
-    let a = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-    let b = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+    let a = Mat::from_fn(2, 3, |r, c| vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0][r * 3 + c]);
+    let b = Mat::from_fn(3, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0][r * 2 + c]);
 
     let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = mm.pad_matrices(&a, &b);
     assert!(need_padding);
     assert_eq!(next_m, 2);
     assert_eq!(next_n, 4); // 3 is padded to 4
     assert_eq!(next_p, 2);
-    assert_eq!(a_pad.dim(), (2, 4));
-    assert_eq!(b_pad.dim(), (4, 2));
+    assert_eq!((a_pad.nrows(), a_pad.ncols()), (2, 4));
+    assert_eq!((b_pad.nrows(), b_pad.ncols()), (4, 2));
 
-    let a_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-    let b_even = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+    let a_even = Mat::from_fn(2, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0][r * 2 + c]);
+    let b_even = Mat::from_fn(2, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0][r * 2 + c]);
     let (_, _, need_padding_even, _, _, _) = mm.pad_matrices(&a_even, &b_even);
     assert!(!need_padding_even);
 }
@@ -130,30 +138,31 @@ fn test_strassen_power_of_two_correctness() {
     let mm = MatMul::new();
     for n in 1..=9 {
         let size = 1 << n;
-        let mut a = Array2::zeros((size, size));
-        let mut b = Array2::zeros((size, size));
-        for val in a.iter_mut() {
-            *val = rng.gen_range(-1.0..1.0);
-        }
-        for val in b.iter_mut() {
-            *val = rng.gen_range(-1.0..1.0);
+        println!("Testing power of two size: {}", size);
+        let mut a = Mat::<f64>::zeros(size, size);
+        let mut b = Mat::<f64>::zeros(size, size);
+        for r in 0..size {
+            for c in 0..size {
+                a[(r, c)] = rng.gen_range(-1.0..1.0);
+                b[(r, c)] = rng.gen_range(-1.0..1.0);
+            }
         }
 
         let c_strassen = mm.cp_matmul(&a, &b);
-        let c_classical = a.dot(&b);
+        let c_classical = &a * &b;
 
-        assert_eq!(c_strassen.dim(), (size, size));
+        assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (size, size));
         for i in 0..size {
             for j in 0..size {
-                let diff = (c_strassen[[i, j]] - c_classical[[i, j]]).abs();
+                let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
                 assert!(
                     diff < 1e-9,
                     "Mismatch at ({}, {}) for size 2^{}: Strassen = {}, Classical = {}",
                     i,
                     j,
                     n,
-                    c_strassen[[i, j]],
-                    c_classical[[i, j]]
+                    c_strassen[(i, j)],
+                    c_classical[(i, j)]
                 );
             }
         }

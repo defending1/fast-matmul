@@ -10,7 +10,7 @@ readme = "README.md"
 
 [dependencies]
 rand = "0.8"
-ndarray = "0.16"
+faer = { version = "0.19", features = ["rand"] }
 rayon = "1.10"
 
 [build-dependencies]

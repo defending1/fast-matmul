@@ -1,4 +1,4 @@
-use ndarray::Array2;
+use faer::Mat;
 use std::fs;
 use std::sync::OnceLock;
 
@@ -7,9 +7,9 @@ static STRASSEN_CP: OnceLock<CP> = OnceLock::new();
 /// Canonical Polyadic (CP) decomposition matrices [U, V, W] for matrix multiplication.
 #[derive(Clone, Debug)]
 pub struct CP {
-    pub u: Array2<f64>,
-    pub v: Array2<f64>,
-    pub w: Array2<f64>,
+    pub u: Mat<f64>,
+    pub v: Mat<f64>,
+    pub w: Mat<f64>,
     pub m: usize,
     pub n: usize,
     pub p: usize,
@@ -71,8 +71,7 @@ impl CP {
                     let num_cols = current_rows[0].len();
                     let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
                     matrices.push(
-                        Array2::from_shape_vec((num_rows, num_cols), flat)
-                            .expect("Invalid matrix shape"),
+                        Mat::from_fn(num_rows, num_cols, |r, c| flat[r * num_cols + c]),
                     );
                     current_rows = Vec::new();
                 }
@@ -91,7 +90,7 @@ impl CP {
             let num_cols = current_rows[0].len();
             let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
             matrices.push(
-                Array2::from_shape_vec((num_rows, num_cols), flat).expect("Invalid matrix shape"),
+                Mat::from_fn(num_rows, num_cols, |r, c| flat[r * num_cols + c]),
             );
         }
 

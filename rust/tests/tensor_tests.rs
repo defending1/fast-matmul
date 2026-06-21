@@ -1,5 +1,5 @@
 use fast_matmul::matmul::MatMul;
-use ndarray::{Array1, Array2};
+use faer::{Mat, Col};
 use rand::Rng;
 
 #[test]
@@ -77,20 +77,17 @@ fn test_matmul_tensor_correctness() {
         let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-10.0..10.0)).collect();
         let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-10.0..10.0)).collect();
 
-        let a_t = Array2::from_shape_vec((n, m), vec_a.clone()).unwrap();
-        let a = a_t.t().to_owned();
+        let a = Mat::from_fn(m, n, |r, c| vec_a[c * m + r]);
+        let b = Mat::from_fn(n, p, |r, c| vec_b[c * n + r]);
 
-        let b_t = Array2::from_shape_vec((p, n), vec_b.clone()).unwrap();
-        let b = b_t.t().to_owned();
-
-        let nd_vec_a = Array1::from_vec(vec_a);
-        let nd_vec_b = Array1::from_vec(vec_b);
+        let nd_vec_a = Col::from_fn(m * n, |i| vec_a[i]);
+        let nd_vec_b = Col::from_fn(n * p, |i| vec_b[i]);
 
         let res_tensor = mm.evaluate_tensor_product(&x, &nd_vec_a, &nd_vec_b);
         let res_standard = mm.standard_matmul_vec_wt(&a, &b);
 
-        assert_eq!(res_tensor.len(), res_standard.len());
-        for idx in 0..res_tensor.len() {
+        assert_eq!(res_tensor.nrows(), res_standard.nrows());
+        for idx in 0..res_tensor.nrows() {
             let diff = (res_tensor[idx] - res_standard[idx]).abs();
             assert!(
                 diff < 1e-12,

@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::matmul::MatMul;
-use ndarray::Array2;
+use faer::Mat;
 use rand::Rng;
 use std::fs::File;
 use std::io::Write;
@@ -21,9 +21,9 @@ impl Benchmark {
         Self
     }
 
-    /// Computes C = A * B using classical matrix multiplication (using ndarray's built-in dot).
-    pub fn classic_matmul(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-        a.dot(b)
+    /// Computes C = A * B using classical matrix multiplication (using faer *).
+    pub fn classic_matmul(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
+        a * b
     }
 
     /// Benchmarks classic_matmul and the CP matmul (single/multi-thread) for multiple algorithms,
@@ -61,13 +61,13 @@ impl Benchmark {
         for &size in sizes {
             println!("\nBenchmarking size {}x{}...", size, size);
 
-            let mut a = Array2::zeros((size, size));
-            let mut b = Array2::zeros((size, size));
-            for val in a.iter_mut() {
-                *val = rng.gen_range(-1.0..1.0);
-            }
-            for val in b.iter_mut() {
-                *val = rng.gen_range(-1.0..1.0);
+            let mut a = Mat::<f64>::zeros(size, size);
+            let mut b = Mat::<f64>::zeros(size, size);
+            for r in 0..size {
+                for c in 0..size {
+                    a[(r, c)] = rng.gen_range(-1.0..1.0);
+                    b[(r, c)] = rng.gen_range(-1.0..1.0);
+                }
             }
 
             // 1. Classic/System MatMul
@@ -84,13 +84,21 @@ impl Benchmark {
             println!("  mkl:                     {:.6} s", duration_mkl);
 
             // Verification of MKL against System/Classic
-            let max_diff = (&_c_classic - &_c_mkl)
-                .mapv(|x| x.abs())
-                .fold(0.0f64, |m, &x| m.max(x));
-            if max_diff > 1e-12 {
-                println!("  WARNING: MKL result differs from system by max diff {}", max_diff);
+            let mut max_diff = 0.0f64;
+            for r in 0..size {
+                for c in 0..size {
+                    let diff = (_c_classic[(r, c)] - _c_mkl[(r, c)]).abs();
+                    if diff > max_diff {
+                        max_diff = diff;
+                    }
+                }
             }
-
+            if max_diff > 1e-12 {
+                println!(
+                    "  WARNING: MKL result differs from system by max diff {}",
+                    max_diff
+                );
+            }
 
             write!(file, "{},{},{}", size, duration_classic, duration_mkl)?;
 

@@ -1,7 +1,6 @@
 use fast_matmul::benchmark::Benchmark;
-use fast_matmul::cp::CP;
 use fast_matmul::matmul::MatMul;
-use ndarray::{Array1, Array2};
+use faer::{Mat, Col};
 use rand::Rng;
 
 fn standard_block_matmul() {
@@ -34,25 +33,22 @@ fn standard_block_matmul() {
 
     let mut rng = rand::thread_rng();
 
-    let vec_a: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-5.0..5.0)).collect();
-    let vec_b: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-5.0..5.0)).collect();
+    let vec_a_raw: Vec<f64> = (0..(m * n)).map(|_| rng.gen_range(-5.0..5.0)).collect();
+    let vec_b_raw: Vec<f64> = (0..(n * p)).map(|_| rng.gen_range(-5.0..5.0)).collect();
 
-    // Convert to ndarray matrices (transposed load to achieve column-major layout)
-    let a_t = Array2::from_shape_vec((n, m), vec_a.clone()).unwrap();
-    let a = a_t.t().to_owned();
-
-    let b_t = Array2::from_shape_vec((p, n), vec_b.clone()).unwrap();
-    let b = b_t.t().to_owned();
+    // Convert to faer matrices
+    let a = Mat::from_fn(m, n, |r, c| vec_a_raw[c * m + r]);
+    let b = Mat::from_fn(n, p, |r, c| vec_b_raw[c * n + r]);
 
     // Vectorizations in column-major
-    let nd_vec_a = Array1::from_vec(vec_a);
-    let nd_vec_b = Array1::from_vec(vec_b);
+    let vec_a = Col::from_fn(m * n, |i| vec_a_raw[i]);
+    let vec_b = Col::from_fn(n * p, |i| vec_b_raw[i]);
 
-    let res_tensor = mm.evaluate_tensor_product(&tensor, &nd_vec_a, &nd_vec_b);
+    let res_tensor = mm.evaluate_tensor_product(&tensor, &vec_a, &vec_b);
     let res_standard = mm.standard_matmul_vec_wt(&a, &b);
 
     let mut max_diff = 0.0;
-    for i in 0..res_tensor.len() {
+    for i in 0..res_tensor.nrows() {
         let diff = (res_tensor[i] - res_standard[i]).abs();
         if diff > max_diff {
             max_diff = diff;

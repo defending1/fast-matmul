@@ -1,6 +1,6 @@
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::MatMul;
-use ndarray::Array2;
+use faer::Mat;
 use rand::Rng;
 
 #[test]
@@ -25,26 +25,30 @@ fn test_cp_matmul_correctness() {
         let n = cp.n;
         let p = cp.p;
 
-        let mut a = Array2::zeros((m, n));
-        for val in a.iter_mut() {
-            *val = rng.gen_range(-5.0..5.0);
+        let mut a = Mat::<f64>::zeros(m, n);
+        for r in 0..m {
+            for c in 0..n {
+                a[(r, c)] = rng.gen_range(-5.0..5.0);
+            }
         }
-        let mut b = Array2::zeros((n, p));
-        for val in b.iter_mut() {
-            *val = rng.gen_range(-5.0..5.0);
+        let mut b = Mat::<f64>::zeros(n, p);
+        for r in 0..n {
+            for c in 0..p {
+                b[(r, c)] = rng.gen_range(-5.0..5.0);
+            }
         }
 
         let c_fast = mm.cp_matmul(&a, &b);
-        let c_classical = a.dot(&b);
+        let c_classical = &a * &b;
 
-        assert_eq!(c_fast.dim(), (m, p));
+        assert_eq!((c_fast.nrows(), c_fast.ncols()), (m, p));
         for i in 0..m {
             for j in 0..p {
-                let diff = (c_fast[[i, j]] - c_classical[[i, j]]).abs();
+                let diff = (c_fast[(i, j)] - c_classical[(i, j)]).abs();
                 assert!(
                     diff < 1e-10,
                     "Mismatch for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name, i, j, c_fast[[i, j]], c_classical[[i, j]]
+                    algo_name, i, j, c_fast[(i, j)], c_classical[(i, j)]
                 );
             }
         }
@@ -54,26 +58,30 @@ fn test_cp_matmul_correctness() {
         let n_pad = cp.n * 2 + 1;
         let p_pad = cp.p * 2 + 1;
 
-        let mut a_pad = Array2::zeros((m_pad, n_pad));
-        for val in a_pad.iter_mut() {
-            *val = rng.gen_range(-5.0..5.0);
+        let mut a_pad = Mat::<f64>::zeros(m_pad, n_pad);
+        for r in 0..m_pad {
+            for c in 0..n_pad {
+                a_pad[(r, c)] = rng.gen_range(-5.0..5.0);
+            }
         }
-        let mut b_pad = Array2::zeros((n_pad, p_pad));
-        for val in b_pad.iter_mut() {
-            *val = rng.gen_range(-5.0..5.0);
+        let mut b_pad = Mat::<f64>::zeros(n_pad, p_pad);
+        for r in 0..n_pad {
+            for c in 0..p_pad {
+                b_pad[(r, c)] = rng.gen_range(-5.0..5.0);
+            }
         }
 
         let c_fast_pad = mm.cp_matmul(&a_pad, &b_pad);
-        let c_classical_pad = a_pad.dot(&b_pad);
+        let c_classical_pad = &a_pad * &b_pad;
 
-        assert_eq!(c_fast_pad.dim(), (m_pad, p_pad));
+        assert_eq!((c_fast_pad.nrows(), c_fast_pad.ncols()), (m_pad, p_pad));
         for i in 0..m_pad {
             for j in 0..p_pad {
-                let diff = (c_fast_pad[[i, j]] - c_classical_pad[[i, j]]).abs();
+                let diff = (c_fast_pad[(i, j)] - c_classical_pad[(i, j)]).abs();
                 assert!(
                     diff < 1e-10,
                     "Mismatch with padding for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name, i, j, c_fast_pad[[i, j]], c_classical_pad[[i, j]]
+                    algo_name, i, j, c_fast_pad[(i, j)], c_classical_pad[(i, j)]
                 );
             }
         }
