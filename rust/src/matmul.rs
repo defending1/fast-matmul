@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::l_map::{l_map, l_star_map_inv};
-use faer::{Mat, Col};
+use faer::{Mat, Col, MatRef};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug)]
@@ -222,8 +222,8 @@ impl<'a> MatMul<'a> {
     fn compute_m_l(
         &self,
         l: usize,
-        a_blocks: &[Mat<f64>],
-        b_blocks: &[Mat<f64>],
+        a_blocks: &[MatRef<'_, f64>],
+        b_blocks: &[MatRef<'_, f64>],
         multithreaded: bool,
     ) -> Mat<f64> {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.col(l));
@@ -237,12 +237,12 @@ impl<'a> MatMul<'a> {
     ///
     /// This is an optimized in-place operation that uses loops to avoid allocating
     /// temporary intermediate arrays, and skips operations for zero coefficients.
-    fn combine_blocks(blocks: &[Mat<f64>], coeffs: faer::ColRef<'_, f64>) -> Mat<f64> {
+    fn combine_blocks(blocks: &[MatRef<'_, f64>], coeffs: faer::ColRef<'_, f64>) -> Mat<f64> {
         let mut comb = Mat::<f64>::zeros(blocks[0].nrows(), blocks[0].ncols());
         for (block, &coeff) in blocks.iter().zip(coeffs.iter()) {
             if coeff != 0.0 {
-                for r in 0..comb.nrows() {
-                    for c in 0..comb.ncols() {
+                for c in 0..comb.ncols() {
+                    for r in 0..comb.nrows() {
                         comb[(r, c)] += coeff * block[(r, c)];
                     }
                 }
@@ -252,19 +252,19 @@ impl<'a> MatMul<'a> {
     }
 
     /// Splits a matrix into grid blocks of specified block dimensions.
-    fn split_into_blocks(
-        matrix: &Mat<f64>,
+    fn split_into_blocks<'b>(
+        matrix: &'b Mat<f64>,
         grid_rows: usize,
         grid_cols: usize,
         block_rows: usize,
         block_cols: usize,
-    ) -> Vec<Mat<f64>> {
+    ) -> Vec<MatRef<'b, f64>> {
         let mut blocks = Vec::with_capacity(grid_rows * grid_cols);
         for i in 0..grid_rows {
             for j in 0..grid_cols {
                 let r_range = i * block_rows..(i + 1) * block_rows;
                 let c_range = j * block_cols..(j + 1) * block_cols;
-                let block = matrix.as_ref().get(r_range, c_range).to_owned();
+                let block = matrix.as_ref().get(r_range, c_range);
                 blocks.push(block);
             }
         }
@@ -312,31 +312,23 @@ impl<'a> MatMul<'a> {
                 .collect()
         };
 
-        let mut c_blocks = vec![Mat::<f64>::zeros(m_block, p_block); self.cp.m * self.cp.p];
+        let mut c_padded = Mat::<f64>::zeros(next_m, next_p);
         for (l, m_prod) in m_products.iter().enumerate() {
-            for (i, block) in c_blocks.iter_mut().enumerate() {
-                let coeff = self.cp.w[(i, l)];
-                if coeff != 0.0 {
-                    for r in 0..block.nrows() {
-                        for c in 0..block.ncols() {
-                            block[(r, c)] += coeff * m_prod[(r, c)];
+            for i in 0..self.cp.m {
+                for j in 0..self.cp.p {
+                    let coeff = self.cp.w[(i * self.cp.p + j, l)];
+                    if coeff != 0.0 {
+                        let mut block = c_padded.as_mut().get_mut(
+                            i * m_block..(i + 1) * m_block,
+                            j * p_block..(j + 1) * p_block
+                        );
+                        for c_idx in 0..p_block {
+                            for r_idx in 0..m_block {
+                                block[(r_idx, c_idx)] += coeff * m_prod[(r_idx, c_idx)];
+                            }
                         }
                     }
                 }
-            }
-        }
-
-        let mut c_padded = Mat::<f64>::zeros(next_m, next_p);
-        for i in 0..self.cp.m {
-            for j in 0..self.cp.p {
-                let block_idx = i * self.cp.p + j;
-                c_padded
-                    .as_mut()
-                    .get_mut(
-                        i * m_block..(i + 1) * m_block,
-                        j * p_block..(j + 1) * p_block
-                    )
-                    .copy_from(&c_blocks[block_idx]);
             }
         }
 
@@ -356,55 +348,4 @@ impl<'a> MatMul<'a> {
     pub fn cp_matmul(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
         self.cp_matmul_impl(a, b, true)
     }
-
-    /// Computes C = A * B using Intel MKL dgemm (FFI).
-    pub fn mkl_matmul(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        let m = a.nrows();
-        let k = a.ncols();
-        let k_b = b.nrows();
-        let n = b.ncols();
-        assert_eq!(k, k_b, "Matrix dimensions must agree for multiplication");
-
-        // Convert a and b to contiguous row-major layout
-        let mut a_row_major = Vec::with_capacity(m * k);
-        for r in 0..m {
-            for c in 0..k {
-                a_row_major.push(a[(r, c)]);
-            }
-        }
-
-        let mut b_row_major = Vec::with_capacity(k * n);
-        for r in 0..k {
-            for c in 0..n {
-                b_row_major.push(b[(r, c)]);
-            }
-        }
-
-        let mut c_row_major = vec![0.0; m * n];
-
-        unsafe {
-            mkl_dgemm_wrapper(
-                m as i32,
-                n as i32,
-                k as i32,
-                a_row_major.as_ptr(),
-                b_row_major.as_ptr(),
-                c_row_major.as_mut_ptr(),
-            );
-        }
-
-        // Convert c back to Mat (column-major layout)
-        Mat::from_fn(m, n, |r, c| c_row_major[r * n + c])
-    }
-}
-
-unsafe extern "C" {
-    fn mkl_dgemm_wrapper(
-        m: i32,
-        n: i32,
-        k: i32,
-        a: *const f64,
-        b: *const f64,
-        c: *mut f64,
-    );
 }

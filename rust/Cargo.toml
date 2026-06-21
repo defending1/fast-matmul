@@ -22,11 +22,13 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-debug = false
+debug = true 
 overflow-checks = false
 debug-assertions = false
 strip = "symbols"
 
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clink-arg=-Wl,--no-rosegment"]
 
 [profile.release.package."*"]
 opt-level = 3
