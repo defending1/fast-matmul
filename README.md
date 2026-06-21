@@ -1,6 +1,45 @@
 ## Overview of this fork
 
-My project contributions can be found in the directories ./rust and ./report.
+My project contributions can be found in the directories `./rust` and
+`./report`.
+
+### Rust Benchmarking & Plotting
+
+We use [Criterion.rs](https://github.com/bheisler/criterion.rs) for
+statistically sound benchmarking of the Rust implementation. To run benchmarks
+and generate plots:
+
+1. **Run the Benchmark Suite**: Run all CP algorithms (Strassen, Grey-Strassen,
+   HK323-15-94, Smirnov333-23-139), MKL, and System/Faer across sizes $N=2$ to
+   $N=512$:
+   ```bash
+   cd rust
+   cargo bench --bench matmul_bench
+   # OR run programmatically
+   cargo run --release
+   ```
+   This executes Criterion and automatically exports/saves the results to
+   `rust/generated/benchmark_results.csv`.
+
+2. **Regenerate CSV from Cache (No Re-run)**: If you have already run the
+   benchmarks, you can extract execution times from Criterion's cached estimates
+   to update the CSV without running the benchmarks again:
+   ```bash
+   cd rust
+   cargo run --release -- --plot-only
+   ```
+   _Note: If you run a filtered benchmark (e.g.
+   `cargo bench --bench matmul_bench -- strassen`), the cached values for
+   unmodified algorithms are automatically preserved and merged from the
+   previous CSV._
+
+3. **Generate/Update Performance Plot**: Generate the performance comparison
+   graph using `uv` (or standard python with `pandas` and `matplotlib`
+   installed):
+   ```bash
+   uv run python/plot.py
+   ```
+   The output plot is saved to `rust/generated/benchmark_plot.png`.
 
 TODO:
 

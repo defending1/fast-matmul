@@ -1,6 +1,6 @@
+use faer::{Col, Mat};
 use fast_matmul::benchmark::Benchmark;
 use fast_matmul::matmul::MatMul;
-use faer::{Mat, Col};
 use rand::Rng;
 
 fn standard_block_matmul() {
@@ -67,22 +67,34 @@ fn standard_block_matmul() {
 }
 
 fn main() {
-    standard_block_matmul();
+    let args: Vec<String> = std::env::args().collect();
+    let plot_only = args.iter().any(|arg| arg == "--plot-only" || arg == "-p");
 
-    println!("\n--- Running Matrix Multiplication Benchmarks ---");
-    let sizes: Vec<usize> = (1..=12).map(|n| 1usize << n).collect();
+    let sizes: Vec<usize> = (1..=9).map(|n| 1usize << n).collect(); // 2, 4, 8, 16, 32, 64, 128, 256, 512
     let csv_file = "generated/benchmark_results.csv";
-
-    let bench = Benchmark::new();
     let algorithms = &[
         "strassen",
         "grey-strassen",
         "hk323-15-94",
         "smirnov333-23-139",
     ];
-    if let Err(e) = bench.run(&sizes, algorithms, csv_file) {
-        eprintln!("Failed to write benchmarks to CSV: {:?}", e);
+
+    if plot_only {
+        println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
+        if let Err(e) = Benchmark::export_results_to_csv(&sizes, algorithms, csv_file) {
+            eprintln!("Failed to export CSV: {:?}", e);
+        } else {
+            println!("CSV results successfully updated from cache.");
+        }
     } else {
-        println!("Benchmark results successfully written to {}", csv_file);
+        standard_block_matmul();
+
+        println!("\n--- Running Matrix Multiplication Benchmarks ---");
+        let bench = Benchmark::new();
+        if let Err(e) = bench.run(&sizes, algorithms, csv_file) {
+            eprintln!("Failed to write benchmarks to CSV: {:?}", e);
+        } else {
+            println!("Benchmark results successfully written to {}", csv_file);
+        }
     }
 }

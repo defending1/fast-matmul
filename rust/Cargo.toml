@@ -12,6 +12,15 @@ readme = "README.md"
 rand = "0.8"
 faer = { version = "0.19", features = ["rand"] }
 rayon = "1.10"
+criterion = { version = "0.5", features = ["html_reports"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+
+[[bench]]
+name = "matmul_bench"
+harness = false
 
 [build-dependencies]
 cc = "1.0"
