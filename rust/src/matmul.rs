@@ -284,4 +284,41 @@ impl<'a> MatMul<'a> {
     pub fn cp_matmul(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
         self.cp_matmul_impl(a, b, true)
     }
+
+    /// Computes C = A * B using Intel MKL dgemm (FFI).
+    pub fn mkl_matmul(&self, a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+        let (m, k) = a.dim();
+        let (k_b, n) = b.dim();
+        assert_eq!(k, k_b, "Matrix dimensions must agree for multiplication");
+
+        let mut c = Array2::zeros((m, n));
+
+        let a_layout = a.as_standard_layout();
+        let b_layout = b.as_standard_layout();
+
+        unsafe {
+            mkl_dgemm_wrapper(
+                m as i32,
+                n as i32,
+                k as i32,
+                a_layout.as_ptr(),
+                b_layout.as_ptr(),
+                c.as_mut_ptr(),
+            );
+        }
+
+        c
+    }
 }
+
+unsafe extern "C" {
+    fn mkl_dgemm_wrapper(
+        m: i32,
+        n: i32,
+        k: i32,
+        a: *const f64,
+        b: *const f64,
+        c: *mut f64,
+    );
+}
+

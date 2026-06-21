@@ -48,8 +48,8 @@ impl Benchmark {
 
         let mut file = File::create(filename)?;
 
-        // Write header: size,system,algo1_single,algo1_multithread,algo2_single,...
-        write!(file, "size,system")?;
+        // Write header: size,system,mkl,algo1_single,algo1_multithread,algo2_single,...
+        write!(file, "size,system,mkl")?;
         for &(algo, _) in &cps {
             let clean_name = algo.replace('-', "_").replace('.', "_");
             write!(file, ",{}_single,{}_multithread", clean_name, clean_name)?;
@@ -76,7 +76,23 @@ impl Benchmark {
             let duration_classic = start.elapsed().as_secs_f64();
             println!("  system:                  {:.6} s", duration_classic);
 
-            write!(file, "{},{}", size, duration_classic)?;
+            // 1b. MKL MatMul
+            let mm_mkl = MatMul::new();
+            let start = Instant::now();
+            let _c_mkl = mm_mkl.mkl_matmul(&a, &b);
+            let duration_mkl = start.elapsed().as_secs_f64();
+            println!("  mkl:                     {:.6} s", duration_mkl);
+
+            // Verification of MKL against System/Classic
+            let max_diff = (&_c_classic - &_c_mkl)
+                .mapv(|x| x.abs())
+                .fold(0.0f64, |m, &x| m.max(x));
+            if max_diff > 1e-12 {
+                println!("  WARNING: MKL result differs from system by max diff {}", max_diff);
+            }
+
+
+            write!(file, "{},{},{}", size, duration_classic, duration_mkl)?;
 
             // 2. CP MatMul for each algorithm
             for &(algo, ref cp) in &cps {

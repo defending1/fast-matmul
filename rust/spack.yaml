@@ -1,0 +1,41 @@
+# Spack environment for SpMV benchmarks.
+#
+# Bootstrap (once per machine):
+#   source ~/spack/share/spack/setup-env.sh
+#   spack external find
+#   spack install gcc@14.3.0 languages=fortran,c,c++
+#
+# Usage:
+#   source ~/spack/share/spack/setup-env.sh
+#   spack env activate -d .
+#   spack concretize -f
+#   spack install -v
+#
+# After installation, `spack env activate -d .` makes all packages
+# available without individual `spack load` commands.
+#
+spack:
+  specs:
+  - intel-oneapi-mkl
+  - openblas
+  - openmpi
+  - eigen
+  # LLVM major version must match Rust's bundled LLVM for cross-language LTO.
+  # Bitcode format is stable within a major; @22 resolves to the latest 22.x.
+  # nightly-2026-04-14 ships LLVM 22.x. To check:
+  #   rustc --version --verbose | grep 'LLVM version'
+  - llvm@22 +clang +lld ~lldb ~polly ~mlir ~flang ~gold ~python targets=x86 compiler-rt=none libcxx=none
+  - petsc ~mpi +double ~debug +shared +metis cflags='-g -O3 -march=native -mtune=native -flto' cxxflags='-g -O3 -march=native -mtune=native -flto' fflags='-g -O3 -march=native -mtune=native -flto -ffree-line-length-none' ^intel-oneapi-mkl
+  - psblas@develop +mpi cflags='-g -O3 -march=native -mtune=native -flto -ffat-lto-objects -fPIC' cxxflags='-g -O3 -march=native -mtune=native -flto -ffat-lto-objects -fPIC' fflags='-g -O3 -march=native -mtune=native -flto -ffat-lto-objects -fPIC -ffree-line-length-none' fcopt='-frecursive -fPIC' libs='-lgomp' ^openmpi ^openblas
+
+  packages:
+    gcc:
+      externals: []
+    all:
+      require: '%gcc@14.3.0'
+      target: [sapphirerapids]
+    mpi:
+      require: openmpi
+
+  concretizer:
+    unify: true
