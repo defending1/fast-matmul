@@ -77,9 +77,8 @@ impl Benchmark {
             println!("  system:                  {:.6} s", duration_classic);
 
             // 1b. MKL MatMul
-            let mm_mkl = MatMul::new();
             let start = Instant::now();
-            let _c_mkl = mm_mkl.mkl_matmul(&a, &b);
+            let _c_mkl = crate::mkl::mkl_matmul(&a, &b);
             let duration_mkl = start.elapsed().as_secs_f64();
             println!("  mkl:                     {:.6} s", duration_mkl);
 
