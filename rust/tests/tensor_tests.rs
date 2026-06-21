@@ -1,5 +1,5 @@
+use faer::{Col, Mat};
 use fast_matmul::matmul::MatMul;
-use faer::{Mat, Col};
 use rand::Rng;
 
 #[test]

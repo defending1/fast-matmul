@@ -1,14 +1,7 @@
 use faer::Mat;
 
 unsafe extern "C" {
-    fn mkl_dgemm_wrapper(
-        m: i32,
-        n: i32,
-        k: i32,
-        a: *const f64,
-        b: *const f64,
-        c: *mut f64,
-    );
+    fn mkl_dgemm_wrapper(m: i32, n: i32, k: i32, a: *const f64, b: *const f64, c: *mut f64);
 }
 
 /// Computes C = A * B using Intel MKL dgemm (FFI).

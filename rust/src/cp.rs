@@ -70,9 +70,9 @@ impl CP {
                     let num_rows = current_rows.len();
                     let num_cols = current_rows[0].len();
                     let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-                    matrices.push(
-                        Mat::from_fn(num_rows, num_cols, |r, c| flat[r * num_cols + c]),
-                    );
+                    matrices.push(Mat::from_fn(num_rows, num_cols, |r, c| {
+                        flat[r * num_cols + c]
+                    }));
                     current_rows = Vec::new();
                 }
                 continue;
@@ -89,9 +89,9 @@ impl CP {
             let num_rows = current_rows.len();
             let num_cols = current_rows[0].len();
             let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-            matrices.push(
-                Mat::from_fn(num_rows, num_cols, |r, c| flat[r * num_cols + c]),
-            );
+            matrices.push(Mat::from_fn(num_rows, num_cols, |r, c| {
+                flat[r * num_cols + c]
+            }));
         }
 
         assert_eq!(

@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::l_map::{l_map, l_star_map_inv};
-use faer::{Mat, Col, MatRef};
+use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug)]
@@ -170,9 +170,7 @@ impl<'a> MatMul<'a> {
             }
         }
 
-        Mat::from_fn(self.cp.m, self.cp.p, |r, c| {
-            c_vec[r * self.cp.p + c]
-        })
+        Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
     /// Pads the matrices `a` and `b` to multiples of the CP decomposition dimensions if necessary.
@@ -192,15 +190,15 @@ impl<'a> MatMul<'a> {
         let mut next_p = p;
         let mut need_padding = false;
 
-        if m % self.cp.m != 0 {
+        if !m.is_multiple_of(self.cp.m) {
             next_m = m + (self.cp.m - m % self.cp.m);
             need_padding = true;
         }
-        if n % self.cp.n != 0 {
+        if !n.is_multiple_of(self.cp.n) {
             next_n = n + (self.cp.n - n % self.cp.n);
             need_padding = true;
         }
-        if p % self.cp.p != 0 {
+        if !p.is_multiple_of(self.cp.p) {
             next_p = p + (self.cp.p - p % self.cp.p);
             need_padding = true;
         }
@@ -320,7 +318,7 @@ impl<'a> MatMul<'a> {
                     if coeff != 0.0 {
                         let mut block = c_padded.as_mut().get_mut(
                             i * m_block..(i + 1) * m_block,
-                            j * p_block..(j + 1) * p_block
+                            j * p_block..(j + 1) * p_block,
                         );
                         for c_idx in 0..p_block {
                             for r_idx in 0..m_block {

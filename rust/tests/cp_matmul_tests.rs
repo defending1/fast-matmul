@@ -1,6 +1,6 @@
+use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::MatMul;
-use faer::Mat;
 use rand::Rng;
 
 #[test]
@@ -9,9 +9,9 @@ fn test_cp_matmul_correctness() {
 
     // List of algorithms to test, representing various shapes (M, N, P)
     let algorithms = vec![
-        "classical222-8-24", // 2x2x2
-        "grey322-11-50",     // 3x2x2
-        "grey332-15-103",    // 3x3x2
+        "classical222-8-24",  // 2x2x2
+        "grey322-11-50",      // 3x2x2
+        "grey332-15-103",     // 3x3x2
         "classical333-27-81", // 3x3x3
     ];
 
@@ -48,7 +48,11 @@ fn test_cp_matmul_correctness() {
                 assert!(
                     diff < 1e-10,
                     "Mismatch for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name, i, j, c_fast[(i, j)], c_classical[(i, j)]
+                    algo_name,
+                    i,
+                    j,
+                    c_fast[(i, j)],
+                    c_classical[(i, j)]
                 );
             }
         }
@@ -81,7 +85,11 @@ fn test_cp_matmul_correctness() {
                 assert!(
                     diff < 1e-10,
                     "Mismatch with padding for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name, i, j, c_fast_pad[(i, j)], c_classical_pad[(i, j)]
+                    algo_name,
+                    i,
+                    j,
+                    c_fast_pad[(i, j)],
+                    c_classical_pad[(i, j)]
                 );
             }
         }

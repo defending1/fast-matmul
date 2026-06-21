@@ -1,5 +1,5 @@
-use fast_matmul::matmul::MatMul;
 use faer::Mat;
+use fast_matmul::matmul::MatMul;
 use rand::Rng;
 
 #[test]
