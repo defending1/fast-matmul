@@ -101,8 +101,12 @@ impl Benchmark {
                 folder: "System_Faer".to_string(),
             },
             ColumnMapping {
-                header: "mkl".to_string(),
-                folder: "MKL".to_string(),
+                header: "mkl_seq".to_string(),
+                folder: "MKL-Sequential".to_string(),
+            },
+            ColumnMapping {
+                header: "mkl_par".to_string(),
+                folder: "MKL-Parallel".to_string(),
             },
         ];
 
@@ -216,10 +220,25 @@ impl Benchmark {
                 },
             );
 
-            // 2. Intel MKL MatMul
-            group.bench_with_input(BenchmarkId::new("MKL", size), &size, |bench, &_size| {
-                bench.iter(|| crate::mkl::mkl_matmul(&a, &b));
-            });
+            // 2. Intel MKL MatMul (Sequential)
+            group.bench_with_input(
+                BenchmarkId::new("MKL-Sequential", size),
+                &size,
+                |bench, &_size| {
+                    crate::mkl::mkl_set_threads(1);
+                    bench.iter(|| crate::mkl::mkl_matmul(&a, &b));
+                },
+            );
+
+            // 3. Intel MKL MatMul (Parallel)
+            group.bench_with_input(
+                BenchmarkId::new("MKL-Parallel", size),
+                &size,
+                |bench, &_size| {
+                    crate::mkl::mkl_set_threads(0);
+                    bench.iter(|| crate::mkl::mkl_matmul(&a, &b));
+                },
+            );
 
             // 3. CP MatMul for each algorithm
             for &(algo, ref cp) in &cps {

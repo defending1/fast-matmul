@@ -23,7 +23,7 @@ fn main() {
     // Force the linker to keep all MKL libraries even if not directly referenced by our object files
     // We pass them as a single comma-separated linker argument to bypass rustc reordering
     println!(
-        "cargo::rustc-link-arg=-Wl,--no-as-needed,-lmkl_intel_lp64,-lmkl_sequential,-lmkl_core,--as-needed"
+        "cargo::rustc-link-arg=-Wl,--no-as-needed,-lmkl_intel_lp64,-lmkl_gnu_thread,-lmkl_core,-lgomp,--as-needed"
     );
     println!("cargo::rustc-link-lib=dylib=pthread");
     println!("cargo::rustc-link-lib=dylib=m");

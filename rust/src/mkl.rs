@@ -1,7 +1,27 @@
 use faer::Mat;
 
+use std::sync::OnceLock;
+
 unsafe extern "C" {
     fn mkl_dgemm_wrapper(m: i32, n: i32, k: i32, a: *const f64, b: *const f64, c: *mut f64);
+    fn mkl_set_num_threads_wrapper(nt: i32);
+    fn mkl_get_max_threads_wrapper() -> i32;
+}
+
+static MAX_THREADS: OnceLock<i32> = OnceLock::new();
+
+/// Set the number of threads used by MKL dynamically.
+/// Setting to 1 runs sequentially; setting to 0 restores all possible threads (caching system default at startup).
+pub fn mkl_set_threads(num_threads: i32) {
+    // Cache maximum threads at initialization before any adjustments are made
+    let max = *MAX_THREADS.get_or_init(|| unsafe { mkl_get_max_threads_wrapper() });
+    unsafe {
+        if num_threads <= 0 {
+            mkl_set_num_threads_wrapper(max);
+        } else {
+            mkl_set_num_threads_wrapper(num_threads);
+        }
+    }
 }
 
 /// Computes C = A * B using Intel MKL dgemm (FFI).

@@ -24,3 +24,11 @@ void mkl_dgemm_wrapper(
                 b, n,
                 0.0, c, n);
 }
+
+void mkl_set_num_threads_wrapper(int32_t nt) {
+    mkl_set_num_threads(nt);
+}
+
+int32_t mkl_get_max_threads_wrapper(void) {
+    return mkl_get_max_threads();
+}

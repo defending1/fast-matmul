@@ -65,10 +65,25 @@ fn bench_matmul(c: &mut Criterion) {
             },
         );
 
-        // 2. Intel MKL MatMul
-        group.bench_with_input(BenchmarkId::new("MKL", size), &size, |bench, &_size| {
-            bench.iter(|| fast_matmul::mkl::mkl_matmul(&a, &b));
-        });
+        // 2. Intel MKL MatMul (Sequential)
+        group.bench_with_input(
+            BenchmarkId::new("MKL-Sequential", size),
+            &size,
+            |bench, &_size| {
+                fast_matmul::mkl::mkl_set_threads(1);
+                bench.iter(|| fast_matmul::mkl::mkl_matmul(&a, &b));
+            },
+        );
+
+        // 3. Intel MKL MatMul (Parallel)
+        group.bench_with_input(
+            BenchmarkId::new("MKL-Parallel", size),
+            &size,
+            |bench, &_size| {
+                fast_matmul::mkl::mkl_set_threads(0);
+                bench.iter(|| fast_matmul::mkl::mkl_matmul(&a, &b));
+            },
+        );
 
         // 3. CP MatMul (both single-thread and multi-thread)
         for &(name, ref mm) in &mm_runs {
