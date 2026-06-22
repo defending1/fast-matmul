@@ -1,5 +1,5 @@
 use crate::cp::CP;
-use crate::l_map::{l_map, l_star_map_inv};
+use crate::dynamic_peeling::DynamicPeeling;
 use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
@@ -61,62 +61,11 @@ impl<'a> MatMul<'a> {
         Self { cp }
     }
 
-    /// Returns the matrix multiplication tensor X representing <m, n, p> as defined in report.
-    /// The shape of X will be (m*n, n*p, m*p).
-    pub fn matmul(&self, m: usize, n: usize, p: usize) -> Tensor3 {
-        let mut x = Tensor3::zeros((m * n, n * p, m * p));
-
-        for k in 1..=(m * p) {
-            let (k_r, k_c) = l_star_map_inv(k, m, p);
-
-            for h in 1..=n {
-                let i = l_map(k_r, h, m, n);
-                let j = l_map(h, k_c, n, p);
-
-                x[[i - 1, j - 1, k - 1]] = 1.0;
-            }
-        }
-
-        x
+    /// Returns a reference to the underlying CP decomposition.
+    pub(crate) fn cp(&self) -> &CP {
+        self.cp
     }
 
-    /// Evaluates the mode product X x_1 vec_a^T x_2 vec_b^T.
-    /// The result is a 1D Col of size K = m * p.
-    pub fn evaluate_tensor_product(
-        &self,
-        x: &Tensor3,
-        vec_a: &Col<f64>,
-        vec_b: &Col<f64>,
-    ) -> Col<f64> {
-        let (shape_i, shape_j, shape_k) = x.dim();
-        assert_eq!(
-            vec_a.nrows(),
-            shape_i,
-            "vec_a length must match mode-1 dimension"
-        );
-        assert_eq!(
-            vec_b.nrows(),
-            shape_j,
-            "vec_b length must match mode-2 dimension"
-        );
-
-        let mut vec_c = Col::<f64>::zeros(shape_k);
-
-        for k in 0..shape_k {
-            let mut sum_k = 0.0;
-            for j in 0..shape_j {
-                for i in 0..shape_i {
-                    let x_val = x[[i, j, k]];
-                    if x_val != 0.0 {
-                        sum_k += x_val * vec_a[i] * vec_b[j];
-                    }
-                }
-            }
-            vec_c[k] = sum_k;
-        }
-
-        vec_c
-    }
 
     /// Flatten a matrix in row-major order into a 1D column vector.
     fn flatten_row_major(matrix: &Mat<f64>) -> Col<f64> {
@@ -170,88 +119,24 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Core Strassen/CP recursive product step of the dynamic peeling algorithm.
-    fn peel_core(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool, c: &mut Mat<f64>) {
-        let core_m = a.nrows() - a.nrows() % self.cp.m;
-        let core_n = a.ncols() - a.ncols() % self.cp.n;
-        let core_p = b.ncols() - b.ncols() % self.cp.p;
-
-        if core_m > 0 && core_n > 0 && core_p > 0 {
-            let a_core = a.as_ref().get(0..core_m, 0..core_n);
-            let b_core = b.as_ref().get(0..core_n, 0..core_p);
-            let c_core = self.cp_matmul_impl(&a_core.to_owned(), &b_core.to_owned(), multithreaded);
-            c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
-        }
-    }
-
-    /// Correction for the core product using the peeled column-row strip multiplication.
-    fn correct_inner_dimension(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
-        let core_m = a.nrows() - a.nrows() % self.cp.m;
-        let core_n = a.ncols() - a.ncols() % self.cp.n;
-        let core_p = b.ncols() - b.ncols() % self.cp.p;
-        let extra_n = a.ncols() % self.cp.n;
-        let n = a.ncols();
-
-        if extra_n > 0 && core_m > 0 && core_p > 0 {
-            let a_extra = a.as_ref().get(0..core_m, core_n..n);
-            let b_extra = b.as_ref().get(core_n..n, 0..core_p);
-            let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
-            let mut c_core_block = c.as_mut().get_mut(0..core_m, 0..core_p);
-            for j in 0..core_p {
-                for i in 0..core_m {
-                    c_core_block[(i, j)] += c_extra[(i, j)];
-                }
-            }
-        }
-    }
-
-    /// Computes the peeled far right columns of the matrix product.
-    fn correct_right_columns(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
-        let n = a.ncols();
-        let p = b.ncols();
-        let m = a.nrows();
-        let extra_p = p % self.cp.p;
-        let core_p = p - extra_p;
-
-        if extra_p > 0 {
-            let b_extra = b.as_ref().get(0..n, core_p..p);
-            let c_extra = a * &b_extra.to_owned();
-            c.as_mut().get_mut(0..m, core_p..p).copy_from(&c_extra);
-        }
-    }
-
-    /// Computes the peeled bottom rows of the matrix product (excluding rightmost columns).
-    fn correct_bottom_rows(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
-        let n = a.ncols();
-        let m = a.nrows();
-        let extra_m = m % self.cp.m;
-        let core_m = m - extra_m;
-        let extra_p = b.ncols() % self.cp.p;
-        let core_p = b.ncols() - extra_p;
-
-        if extra_m > 0 && core_p > 0 {
-            let a_extra = a.as_ref().get(core_m..m, 0..n);
-            let b_extra = b.as_ref().get(0..n, 0..core_p);
-            let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
-            c.as_mut().get_mut(core_m..m, 0..core_p).copy_from(&c_extra);
-        }
+    /// Performs standard matrix multiplication using faer's low-level API with controlled parallelism.
+    pub fn base_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
+        let mut c = Mat::zeros(a.nrows(), b.ncols());
+        let par = if multithreaded {
+            faer::get_global_parallelism()
+        } else {
+            faer::Parallelism::None
+        };
+        faer::linalg::matmul::matmul(c.as_mut(), a.as_ref(), b.as_ref(), None, 1.0, par);
+        c
     }
 
     /// Performs one step of dynamic peeling in the multiplication C = A * B.
     ///
-    /// The input matrices `a` (M x N) and `b` (N x P) are split into a divisible core
-    /// of dimensions `(m - extra_m) x (n - extra_n)` and `(n - extra_n) x (p - extra_p)`, respectively.
-    /// The core multiplication is performed recursively using the CP fast matrix multiplication,
-    /// and the peeled boundaries (extra rows/columns) are corrected using standard GEMM.
+    /// Delegates to [`DynamicPeeling`], which handles the core CP product and
+    /// the GEMM-based boundary corrections for odd or non-power-of-two dimensions.
     fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-        let mut c = Mat::<f64>::zeros(a.nrows(), b.ncols());
-
-        self.peel_core(a, b, multithreaded, &mut c);
-        self.correct_inner_dimension(a, b, &mut c);
-        self.correct_right_columns(a, b, &mut c);
-        self.correct_bottom_rows(a, b, &mut c);
-
-        c
+        DynamicPeeling::new(self, a, b, multithreaded).run()
     }
 
     /// Helper to compute a single Strassen product M_l
@@ -307,7 +192,7 @@ impl<'a> MatMul<'a> {
         blocks
     }
 
-    fn cp_matmul_impl(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
+    pub(crate) fn cp_matmul_impl(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
         let n_b = b.nrows();
@@ -315,7 +200,7 @@ impl<'a> MatMul<'a> {
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
         if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= 128 || m <= 128 || p <= 128 {
-            return a * b;
+            return self.base_matmul(a, b, multithreaded);
         }
 
         if m == self.cp.m && n == self.cp.n && p == self.cp.p {
