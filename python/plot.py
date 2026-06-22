@@ -30,8 +30,14 @@ def main():
     # Line styles, markers, and colors
     styles = {
         "system": {"color": "#1f77b4", "marker": "o", "linestyle": "-"},
+        "mkl_seq": {"color": "#9467bd", "marker": "p", "linestyle": "--"},
+        "mkl_par": {"color": "#9467bd", "marker": "*", "linestyle": "-"},
+        "faer_seq": {"color": "#17becf", "marker": "x", "linestyle": "--"},
+        "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
         "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
         "strassen_multithread": {"color": "#ff7f0e", "marker": "D", "linestyle": "-"},
+        "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
+        "grey_strassen_multithread": {"color": "#8c564b", "marker": "H", "linestyle": "-"},
         "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
         "hk323_15_94_multithread": {
             "color": "#2ca02c",
