@@ -113,26 +113,6 @@ fn test_strassen_matmul_single_thread_correctness() {
 }
 
 #[test]
-fn test_pad_matrices() {
-    let mm = MatMul::new();
-    let a = Mat::from_fn(2, 3, |r, c| vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0][r * 3 + c]);
-    let b = Mat::from_fn(3, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0][r * 2 + c]);
-
-    let (a_pad, b_pad, need_padding, next_m, next_n, next_p) = mm.pad_matrices(&a, &b);
-    assert!(need_padding);
-    assert_eq!(next_m, 2);
-    assert_eq!(next_n, 4); // 3 is padded to 4
-    assert_eq!(next_p, 2);
-    assert_eq!((a_pad.nrows(), a_pad.ncols()), (2, 4));
-    assert_eq!((b_pad.nrows(), b_pad.ncols()), (4, 2));
-
-    let a_even = Mat::from_fn(2, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0][r * 2 + c]);
-    let b_even = Mat::from_fn(2, 2, |r, c| vec![1.0, 2.0, 3.0, 4.0][r * 2 + c]);
-    let (_, _, need_padding_even, _, _, _) = mm.pad_matrices(&a_even, &b_even);
-    assert!(!need_padding_even);
-}
-
-#[test]
 fn test_strassen_power_of_two_correctness() {
     let mut rng = rand::thread_rng();
     let mm = MatMul::new();

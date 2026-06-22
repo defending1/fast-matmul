@@ -173,47 +173,68 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Pads the matrices `a` and `b` to multiples of the CP decomposition dimensions if necessary.
-    pub fn pad_matrices(
-        &self,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
-    ) -> (Mat<f64>, Mat<f64>, bool, usize, usize, usize) {
+    /// Performs one step of dynamic peeling in the multiplication C = A * B.
+    ///
+    /// The input matrices `a` (M x N) and `b` (N x P) are split into a divisible core
+    /// of dimensions `(m - extra_m) x (n - extra_n)` and `(n - extra_n) x (p - extra_p)`, respectively.
+    /// The core multiplication is performed recursively using the CP fast matrix multiplication,
+    /// and the peeled boundaries (extra rows/columns) are corrected using standard GEMM.
+    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
-        let n_b = b.nrows();
         let p = b.ncols();
-        assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
-        let mut next_m = m;
-        let mut next_n = n;
-        let mut next_p = p;
-        let mut need_padding = false;
+        let extra_m = m % self.cp.m;
+        let extra_n = n % self.cp.n;
+        let extra_p = p % self.cp.p;
 
-        if !m.is_multiple_of(self.cp.m) {
-            next_m = m + (self.cp.m - m % self.cp.m);
-            need_padding = true;
+        let mut c = Mat::<f64>::zeros(m, p);
+
+        let core_m = m - extra_m;
+        let core_n = n - extra_n;
+        let core_p = p - extra_p;
+
+        // 1. Core Strassen product on the divisible submatrix:
+        // C(0..core_m, 0..core_p) = A_core * B_core
+        if core_m > 0 && core_n > 0 && core_p > 0 {
+            let a_core = a.as_ref().get(0..core_m, 0..core_n);
+            let b_core = b.as_ref().get(0..core_n, 0..core_p);
+            let c_core = self.cp_matmul_impl(&a_core.to_owned(), &b_core.to_owned(), multithreaded);
+            c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
         }
-        if !n.is_multiple_of(self.cp.n) {
-            next_n = n + (self.cp.n - n % self.cp.n);
-            need_padding = true;
-        }
-        if !p.is_multiple_of(self.cp.p) {
-            next_p = p + (self.cp.p - p % self.cp.p);
-            need_padding = true;
+
+        // 2. Adjust core part if extra_n > 0:
+        // C_core += A_col_extra * B_row_extra
+        if extra_n > 0 && core_m > 0 && core_p > 0 {
+            let a_extra = a.as_ref().get(0..core_m, core_n..n);
+            let b_extra = b.as_ref().get(core_n..n, 0..core_p);
+            let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
+            let mut c_core_block = c.as_mut().get_mut(0..core_m, 0..core_p);
+            for j in 0..core_p {
+                for i in 0..core_m {
+                    c_core_block[(i, j)] += c_extra[(i, j)];
+                }
+            }
         }
 
-        if need_padding {
-            let mut a_new = Mat::<f64>::zeros(next_m, next_n);
-            a_new.as_mut().get_mut(0..m, 0..n).copy_from(a);
-
-            let mut b_new = Mat::<f64>::zeros(next_n, next_p);
-            b_new.as_mut().get_mut(0..n, 0..p).copy_from(b);
-
-            (a_new, b_new, true, next_m, next_n, next_p)
-        } else {
-            (a.clone(), b.clone(), false, m, n, p)
+        // 3. Adjust for far right columns of C if extra_p > 0:
+        // C_right = A * B_col_extra
+        if extra_p > 0 {
+            let b_extra = b.as_ref().get(0..n, core_p..p);
+            let c_extra = a * &b_extra.to_owned();
+            c.as_mut().get_mut(0..m, core_p..p).copy_from(&c_extra);
         }
+
+        // 4. Adjust for bottom rows of C if extra_m > 0:
+        // C_bottom = A_row_extra * B_core_wide
+        if extra_m > 0 && core_p > 0 {
+            let a_extra = a.as_ref().get(core_m..m, 0..n);
+            let b_extra = b.as_ref().get(0..n, 0..core_p);
+            let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
+            c.as_mut().get_mut(core_m..m, 0..core_p).copy_from(&c_extra);
+        }
+
+        c
     }
 
     /// Helper to compute a single Strassen product M_l
@@ -289,49 +310,7 @@ impl<'a> MatMul<'a> {
         let extra_p = p % self.cp.p;
 
         if extra_m > 0 || extra_n > 0 || extra_p > 0 {
-            let mut c = Mat::<f64>::zeros(m, p);
-
-            let core_m = m - extra_m;
-            let core_n = n - extra_n;
-            let core_p = p - extra_p;
-
-            if core_m > 0 && core_n > 0 && core_p > 0 {
-                let a_core = a.as_ref().get(0..core_m, 0..core_n);
-                let b_core = b.as_ref().get(0..core_n, 0..core_p);
-                let c_core =
-                    self.cp_matmul_impl(&a_core.to_owned(), &b_core.to_owned(), multithreaded);
-                c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
-            }
-
-            // Adjust core part if extra_n > 0
-            if extra_n > 0 && core_m > 0 && core_p > 0 {
-                let a_extra = a.as_ref().get(0..core_m, core_n..n);
-                let b_extra = b.as_ref().get(core_n..n, 0..core_p);
-                let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
-                let mut c_core_block = c.as_mut().get_mut(0..core_m, 0..core_p);
-                for j in 0..core_p {
-                    for i in 0..core_m {
-                        c_core_block[(i, j)] += c_extra[(i, j)];
-                    }
-                }
-            }
-
-            // Adjust for far right columns of C
-            if extra_p > 0 {
-                let b_extra = b.as_ref().get(0..n, core_p..p);
-                let c_extra = a * &b_extra.to_owned();
-                c.as_mut().get_mut(0..m, core_p..p).copy_from(&c_extra);
-            }
-
-            // Adjust for bottom rows of C
-            if extra_m > 0 && core_p > 0 {
-                let a_extra = a.as_ref().get(core_m..m, 0..n);
-                let b_extra = b.as_ref().get(0..n, 0..core_p);
-                let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
-                c.as_mut().get_mut(core_m..m, 0..core_p).copy_from(&c_extra);
-            }
-
-            return c;
+            return self.dynamic_peeling(a, b, multithreaded);
         }
 
         let m_block = m / self.cp.m;
