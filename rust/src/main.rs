@@ -1,7 +1,4 @@
-use faer::{Col, Mat};
 use fast_matmul::benchmark::Benchmark;
-use fast_matmul::matmul::MatMul;
-use rand::Rng;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

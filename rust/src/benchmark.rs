@@ -28,11 +28,6 @@ impl Benchmark {
         Self
     }
 
-    /// Computes C = A * B using classical matrix multiplication (using faer *).
-    pub fn classic_matmul(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        a * b
-    }
-
     /// Helper to read a single point estimate of the mean from Criterion's JSON files, converting it to seconds.
     fn get_criterion_time(folder_name: &str, size: usize) -> Option<f64> {
         let path = Path::new("target/criterion/Matrix Multiplication")
@@ -97,16 +92,20 @@ impl Benchmark {
 
         let mut mappings = vec![
             ColumnMapping {
-                header: "system".to_string(),
-                folder: "System_Faer".to_string(),
-            },
-            ColumnMapping {
                 header: "mkl_seq".to_string(),
                 folder: "MKL-Sequential".to_string(),
             },
             ColumnMapping {
                 header: "mkl_par".to_string(),
                 folder: "MKL-Parallel".to_string(),
+            },
+            ColumnMapping {
+                header: "faer_seq".to_string(),
+                folder: "Faer-Sequential".to_string(),
+            },
+            ColumnMapping {
+                header: "faer_par".to_string(),
+                folder: "Faer-Parallel".to_string(),
             },
         ];
 
@@ -128,7 +127,7 @@ impl Benchmark {
 
         let mut file = File::create(filename)?;
 
-        // Write header: size,system,mkl,algo1_single,algo1_multithread,...
+        // Write header: size,mkl,faer,faer_multi,algo1_single,algo1_multithread,...
         write!(file, "size")?;
         for col in &mappings {
             write!(file, ",{}", col.header)?;
@@ -211,16 +210,7 @@ impl Benchmark {
                 }
             }
 
-            // 1. Classic/System MatMul (faer * operator)
-            group.bench_with_input(
-                BenchmarkId::new("System/Faer", size),
-                &size,
-                |bench, &_size| {
-                    bench.iter(|| &a * &b);
-                },
-            );
-
-            // 2. Intel MKL MatMul (Sequential)
+            // Intel MKL MatMul (Sequential)
             group.bench_with_input(
                 BenchmarkId::new("MKL-Sequential", size),
                 &size,
@@ -240,7 +230,27 @@ impl Benchmark {
                 },
             );
 
-            // 3. CP MatMul for each algorithm
+            let mm_base = MatMul::new();
+
+            // Faer MatMul (Sequential)
+            group.bench_with_input(
+                BenchmarkId::new("Faer-Sequential", size),
+                &size,
+                |bench, &_size| {
+                    bench.iter(|| mm_base.base_matmul(&a, &b, false));
+                },
+            );
+
+            // Faer MatMul (Parallel)
+            group.bench_with_input(
+                BenchmarkId::new("Faer-Parallel", size),
+                &size,
+                |bench, &_size| {
+                    bench.iter(|| mm_base.base_matmul(&a, &b, true));
+                },
+            );
+
+            // CP MatMul for each algorithm
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
 
