@@ -23,6 +23,7 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{nccmath}
+\setlength {\marginparwidth }{2cm}
 \usepackage{todonotes}
 \usepackage[most]{tcolorbox}
 \usepackage{wrapfig}
@@ -187,7 +188,8 @@ reduces the number of active multiplications to the rank $ r $ of $ \Tn{x} $.
 
 When $ m,n,p >2 $ we can always partition them in blocks as:
 
-\begin{equation*}
+\begin{equation}
+  \label{eq:blocks}
   \begin{bNiceArray}{cc}[first-row, first-col, margin, xdots/horizontal-labels]
     & \Hbrace{1}{\lfloor n/2 \rfloor} & \Hbrace{1}{\lceil n/2 \rceil} \\
     \Vbrace{1}{\lfloor m/2 \rfloor} & A_{11} & A_{12} \\[2ex]
@@ -198,7 +200,7 @@ When $ m,n,p >2 $ we can always partition them in blocks as:
     \Vbrace{1}{\lfloor n/2 \rfloor} & B_{11} & B_{12} \\[2ex]
     \Vbrace{1}{\lceil n/2 \rceil}   & B_{21} & B_{22}
   \end{bNiceArray},
-\end{equation*}
+\end{equation}
 
 where $ A_{11} \in \R^{\left\lfloor \frac{m}{2} \right\rfloor\times \left\lfloor \frac{n}{2} \right\rfloor} 
 $, $ B_{11} \in \R^{\left\lfloor \frac{n}{2} \right\rfloor \times \left\lfloor \frac{p}{2}
@@ -301,6 +303,66 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
   s_l = u_l^{\top}\Vec(A) = \sum_{i=1}^4 U_{li}\Vec(A)_i, \quad t_l = V_l^{\top}\Vec(B) =
   \sum_{i=1}^4 V_{li}\Vec(B)_i
 \end{equation*}
+
+We follow the work \cite{bensonballard2015}.
+
+
+Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
+implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
+former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
+
+\section{}
+
+\section{Dynamic Peeling}
+\label{sec:dynpeel}
+
+In Strassen algorithm we want to multiply $ \angb{m,n,p} $ matrices by splitting in four blocks as
+in Equation~\ref{eq:blocks}. If $ m,n $ and $ p $ are even, then it is not possible to split blocks
+in even sizes. The easiest fix for this is padding the matrix with zeros until an even size is
+reached, but this adds a significant memory waste. A more efficient approach, called \emph{dynamic
+peeling}, consists in stripping the extra row off and/or column and adding their contribution to the
+final results. In detail,
+
+For the matrix multiplication $C = AB$, where $A$ is an $m \times n$ matrix and $B$ is an $n \times
+p$ matrix. The matrix $A$ is split into an $(m-1) \times (n-1)$ core matrix $A_{11}$, alongside its
+peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22}$. Similarly, the matrix $B$ is split into an $(n-1) \times (p-1)$ core matrix $B_{11}$, with its corresponding peeled components $b_{12}$, $b_{21}$, and $b_{22}$:
+
+
+\begin{equation*}
+  A = \begin{bNiceArray}{c|c}[first-row, first-col, margin, xdots/horizontal-labels]
+    & \Hbrace{1}{n-1} & \Hbrace{1}{1} \\
+    & &  \\
+    \Vbrace{1}{m-1} & A_{11} & a_{12} \\
+    & &  \\ \hline
+    \Vbrace{1}{1}   & a_{21} & a_{22}
+  \end{bNiceArray}, 
+  \qquad
+  B = \begin{bNiceArray}{c|c}[first-row, first-col, margin, xdots/horizontal-labels]
+    & \Hbrace{1}{p-1} & \Hbrace{1}{1} \\
+    & &  \\
+    \Vbrace{1}{n-1} & B_{11} & b_{12} \\
+    & &  \\ \hline
+    \Vbrace{1}{1}   & b_{21} & b_{22}
+  \end{bNiceArray}
+\end{equation*}
+
+The final block matrix product is computed directly through a combination of the core Strassen multiplication ($A_{11}B_{11}$) and low-rank vector/scalar fixup modifications:
+\begin{equation*}
+\begin{bNiceArray}{c|c}[first-row, first-col, margin, xdots/horizontal-labels]
+    & \Hbrace{1}{p-1} & \Hbrace{1}{1} \\
+    & &  \\
+  \Vbrace{1}{m-1} & C_{11} & c_{12} \\
+    & &  \\ \hline
+    \Vbrace{1}{1}   & c_{21} & c_{22}
+  \end{bNiceArray} = 
+\begin{bNiceArray}{c|c}[]
+    &   \\
+    A_{11}B_{11} + a_{12}b_{21} & A_{11}b_{12} + a_{12}b_{22} \\
+    &   \\ \hline
+     a_{21}B_{11} + a_{22}b_{21} & a_{21}b_{12} + a_{22}b_{22}
+  \end{bNiceArray}
+\end{equation*}
+Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix multiplication, while all other terms represent the optimized boundary fixup steps.
 
 
 \clearpage
