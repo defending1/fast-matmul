@@ -284,14 +284,62 @@ impl<'a> MatMul<'a> {
             return self.matmul_cp(a, b);
         }
 
-        let (a_padded, b_padded, need_padding, next_m, next_n, next_p) = self.pad_matrices(a, b);
+        let extra_m = m % self.cp.m;
+        let extra_n = n % self.cp.n;
+        let extra_p = p % self.cp.p;
 
-        let m_block = next_m / self.cp.m;
-        let n_block = next_n / self.cp.n;
-        let p_block = next_p / self.cp.p;
+        if extra_m > 0 || extra_n > 0 || extra_p > 0 {
+            let mut c = Mat::<f64>::zeros(m, p);
 
-        let a_blocks = Self::split_into_blocks(&a_padded, self.cp.m, self.cp.n, m_block, n_block);
-        let b_blocks = Self::split_into_blocks(&b_padded, self.cp.n, self.cp.p, n_block, p_block);
+            let core_m = m - extra_m;
+            let core_n = n - extra_n;
+            let core_p = p - extra_p;
+
+            if core_m > 0 && core_n > 0 && core_p > 0 {
+                let a_core = a.as_ref().get(0..core_m, 0..core_n);
+                let b_core = b.as_ref().get(0..core_n, 0..core_p);
+                let c_core =
+                    self.cp_matmul_impl(&a_core.to_owned(), &b_core.to_owned(), multithreaded);
+                c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
+            }
+
+            // Adjust core part if extra_n > 0
+            if extra_n > 0 && core_m > 0 && core_p > 0 {
+                let a_extra = a.as_ref().get(0..core_m, core_n..n);
+                let b_extra = b.as_ref().get(core_n..n, 0..core_p);
+                let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
+                let mut c_core_block = c.as_mut().get_mut(0..core_m, 0..core_p);
+                for j in 0..core_p {
+                    for i in 0..core_m {
+                        c_core_block[(i, j)] += c_extra[(i, j)];
+                    }
+                }
+            }
+
+            // Adjust for far right columns of C
+            if extra_p > 0 {
+                let b_extra = b.as_ref().get(0..n, core_p..p);
+                let c_extra = a * &b_extra.to_owned();
+                c.as_mut().get_mut(0..m, core_p..p).copy_from(&c_extra);
+            }
+
+            // Adjust for bottom rows of C
+            if extra_m > 0 && core_p > 0 {
+                let a_extra = a.as_ref().get(core_m..m, 0..n);
+                let b_extra = b.as_ref().get(0..n, 0..core_p);
+                let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
+                c.as_mut().get_mut(core_m..m, 0..core_p).copy_from(&c_extra);
+            }
+
+            return c;
+        }
+
+        let m_block = m / self.cp.m;
+        let n_block = n / self.cp.n;
+        let p_block = p / self.cp.p;
+
+        let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
+        let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
         const PARALLEL_CUTOFF: usize = 256;
         let m_products: Vec<Mat<f64>> = if multithreaded
@@ -310,13 +358,13 @@ impl<'a> MatMul<'a> {
                 .collect()
         };
 
-        let mut c_padded = Mat::<f64>::zeros(next_m, next_p);
+        let mut c = Mat::<f64>::zeros(m, p);
         for (l, m_prod) in m_products.iter().enumerate() {
             for i in 0..self.cp.m {
                 for j in 0..self.cp.p {
                     let coeff = self.cp.w[(i * self.cp.p + j, l)];
                     if coeff != 0.0 {
-                        let mut block = c_padded.as_mut().get_mut(
+                        let mut block = c.as_mut().get_mut(
                             i * m_block..(i + 1) * m_block,
                             j * p_block..(j + 1) * p_block,
                         );
@@ -330,11 +378,7 @@ impl<'a> MatMul<'a> {
             }
         }
 
-        if need_padding {
-            c_padded.as_ref().get(0..m, 0..p).to_owned()
-        } else {
-            c_padded
-        }
+        c
     }
 
     /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).
