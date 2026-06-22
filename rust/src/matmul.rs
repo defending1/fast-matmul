@@ -118,14 +118,19 @@ impl<'a> MatMul<'a> {
         vec_c
     }
 
+    /// Flatten a matrix in row-major order into a 1D column vector.
+    fn flatten_row_major(matrix: &Mat<f64>) -> Col<f64> {
+        let ncols = matrix.ncols();
+        Col::from_fn(matrix.nrows() * ncols, |idx| {
+            let r = idx / ncols;
+            let c = idx % ncols;
+            matrix[(r, c)]
+        })
+    }
+
     /// Computes the standard matrix multiplication C = A * B and returns vec(C^T).
     pub fn standard_matmul_vec_wt(&self, a: &Mat<f64>, b: &Mat<f64>) -> Col<f64> {
-        let c = a * b;
-        Col::from_fn(c.nrows() * c.ncols(), |idx| {
-            let r = idx / c.ncols();
-            let col = idx % c.ncols();
-            c[(r, col)]
-        })
+        Self::flatten_row_major(&(a * b))
     }
 
     /// Computes C = A * B using the CP decomposition formula:
@@ -135,16 +140,8 @@ impl<'a> MatMul<'a> {
         assert_eq!((a.nrows(), a.ncols()), (self.cp.m, self.cp.n));
         assert_eq!((b.nrows(), b.ncols()), (self.cp.n, self.cp.p));
 
-        let vec_a = Col::from_fn(a.nrows() * a.ncols(), |idx| {
-            let r = idx / a.ncols();
-            let c = idx % a.ncols();
-            a[(r, c)]
-        });
-        let vec_b = Col::from_fn(b.nrows() * b.ncols(), |idx| {
-            let r = idx / b.ncols();
-            let c = idx % b.ncols();
-            b[(r, c)]
-        });
+        let vec_a = Self::flatten_row_major(a);
+        let vec_b = Self::flatten_row_major(b);
 
         // Resulting multiplication vector
         let mut c_vec = Col::<f64>::zeros(self.cp.m * self.cp.p);
@@ -173,38 +170,28 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Performs one step of dynamic peeling in the multiplication C = A * B.
-    ///
-    /// The input matrices `a` (M x N) and `b` (N x P) are split into a divisible core
-    /// of dimensions `(m - extra_m) x (n - extra_n)` and `(n - extra_n) x (p - extra_p)`, respectively.
-    /// The core multiplication is performed recursively using the CP fast matrix multiplication,
-    /// and the peeled boundaries (extra rows/columns) are corrected using standard GEMM.
-    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-        let m = a.nrows();
-        let n = a.ncols();
-        let p = b.ncols();
+    /// Core Strassen/CP recursive product step of the dynamic peeling algorithm.
+    fn peel_core(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool, c: &mut Mat<f64>) {
+        let core_m = a.nrows() - a.nrows() % self.cp.m;
+        let core_n = a.ncols() - a.ncols() % self.cp.n;
+        let core_p = b.ncols() - b.ncols() % self.cp.p;
 
-        let extra_m = m % self.cp.m;
-        let extra_n = n % self.cp.n;
-        let extra_p = p % self.cp.p;
-
-        let mut c = Mat::<f64>::zeros(m, p);
-
-        let core_m = m - extra_m;
-        let core_n = n - extra_n;
-        let core_p = p - extra_p;
-
-        // 1. Core Strassen product on the divisible submatrix:
-        // C(0..core_m, 0..core_p) = A_core * B_core
         if core_m > 0 && core_n > 0 && core_p > 0 {
             let a_core = a.as_ref().get(0..core_m, 0..core_n);
             let b_core = b.as_ref().get(0..core_n, 0..core_p);
             let c_core = self.cp_matmul_impl(&a_core.to_owned(), &b_core.to_owned(), multithreaded);
             c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
         }
+    }
 
-        // 2. Adjust core part if extra_n > 0:
-        // C_core += A_col_extra * B_row_extra
+    /// Correction for the core product using the peeled column-row strip multiplication.
+    fn correct_inner_dimension(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
+        let core_m = a.nrows() - a.nrows() % self.cp.m;
+        let core_n = a.ncols() - a.ncols() % self.cp.n;
+        let core_p = b.ncols() - b.ncols() % self.cp.p;
+        let extra_n = a.ncols() % self.cp.n;
+        let n = a.ncols();
+
         if extra_n > 0 && core_m > 0 && core_p > 0 {
             let a_extra = a.as_ref().get(0..core_m, core_n..n);
             let b_extra = b.as_ref().get(core_n..n, 0..core_p);
@@ -216,23 +203,53 @@ impl<'a> MatMul<'a> {
                 }
             }
         }
+    }
 
-        // 3. Adjust for far right columns of C if extra_p > 0:
-        // C_right = A * B_col_extra
+    /// Computes the peeled far right columns of the matrix product.
+    fn correct_right_columns(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
+        let n = a.ncols();
+        let p = b.ncols();
+        let m = a.nrows();
+        let extra_p = p % self.cp.p;
+        let core_p = p - extra_p;
+
         if extra_p > 0 {
             let b_extra = b.as_ref().get(0..n, core_p..p);
             let c_extra = a * &b_extra.to_owned();
             c.as_mut().get_mut(0..m, core_p..p).copy_from(&c_extra);
         }
+    }
 
-        // 4. Adjust for bottom rows of C if extra_m > 0:
-        // C_bottom = A_row_extra * B_core_wide
+    /// Computes the peeled bottom rows of the matrix product (excluding rightmost columns).
+    fn correct_bottom_rows(&self, a: &Mat<f64>, b: &Mat<f64>, c: &mut Mat<f64>) {
+        let n = a.ncols();
+        let m = a.nrows();
+        let extra_m = m % self.cp.m;
+        let core_m = m - extra_m;
+        let extra_p = b.ncols() % self.cp.p;
+        let core_p = b.ncols() - extra_p;
+
         if extra_m > 0 && core_p > 0 {
             let a_extra = a.as_ref().get(core_m..m, 0..n);
             let b_extra = b.as_ref().get(0..n, 0..core_p);
             let c_extra = &a_extra.to_owned() * &b_extra.to_owned();
             c.as_mut().get_mut(core_m..m, 0..core_p).copy_from(&c_extra);
         }
+    }
+
+    /// Performs one step of dynamic peeling in the multiplication C = A * B.
+    ///
+    /// The input matrices `a` (M x N) and `b` (N x P) are split into a divisible core
+    /// of dimensions `(m - extra_m) x (n - extra_n)` and `(n - extra_n) x (p - extra_p)`, respectively.
+    /// The core multiplication is performed recursively using the CP fast matrix multiplication,
+    /// and the peeled boundaries (extra rows/columns) are corrected using standard GEMM.
+    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
+        let mut c = Mat::<f64>::zeros(a.nrows(), b.ncols());
+
+        self.peel_core(a, b, multithreaded, &mut c);
+        self.correct_inner_dimension(a, b, &mut c);
+        self.correct_right_columns(a, b, &mut c);
+        self.correct_bottom_rows(a, b, &mut c);
 
         c
     }

@@ -12,20 +12,14 @@ pub fn mkl_matmul(a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
     let n = b.ncols();
     assert_eq!(k, k_b, "Matrix dimensions must agree for multiplication");
 
-    // Convert a and b to contiguous row-major layout
-    let mut a_row_major = Vec::with_capacity(m * k);
-    for r in 0..m {
-        for c in 0..k {
-            a_row_major.push(a[(r, c)]);
-        }
-    }
+    // Convert a and b to contiguous row-major layout using functional iterators
+    let a_row_major: Vec<f64> = (0..m)
+        .flat_map(|r| (0..k).map(move |c| a[(r, c)]))
+        .collect();
 
-    let mut b_row_major = Vec::with_capacity(k * n);
-    for r in 0..k {
-        for c in 0..n {
-            b_row_major.push(b[(r, c)]);
-        }
-    }
+    let b_row_major: Vec<f64> = (0..k)
+        .flat_map(|r| (0..n).map(move |c| b[(r, c)]))
+        .collect();
 
     let mut c_row_major = vec![0.0; m * n];
 

@@ -60,21 +60,24 @@ impl CP {
         let mut matrices = Vec::new();
         let mut current_rows: Vec<Vec<f64>> = Vec::new();
 
+        let mut push_matrix_if_not_empty = |rows: &mut Vec<Vec<f64>>| {
+            if !rows.is_empty() {
+                let num_rows = rows.len();
+                let num_cols = rows[0].len();
+                let flat: Vec<f64> = rows.drain(..).flatten().collect();
+                matrices.push(Mat::from_fn(num_rows, num_cols, |r, c| {
+                    flat[r * num_cols + c]
+                }));
+            }
+        };
+
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
             }
             if trimmed.starts_with('#') {
-                if !current_rows.is_empty() {
-                    let num_rows = current_rows.len();
-                    let num_cols = current_rows[0].len();
-                    let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-                    matrices.push(Mat::from_fn(num_rows, num_cols, |r, c| {
-                        flat[r * num_cols + c]
-                    }));
-                    current_rows = Vec::new();
-                }
+                push_matrix_if_not_empty(&mut current_rows);
                 continue;
             }
 
@@ -85,14 +88,7 @@ impl CP {
             current_rows.push(row);
         }
 
-        if !current_rows.is_empty() {
-            let num_rows = current_rows.len();
-            let num_cols = current_rows[0].len();
-            let flat: Vec<f64> = current_rows.into_iter().flatten().collect();
-            matrices.push(Mat::from_fn(num_rows, num_cols, |r, c| {
-                flat[r * num_cols + c]
-            }));
-        }
+        push_matrix_if_not_empty(&mut current_rows);
 
         assert_eq!(
             matrices.len(),
