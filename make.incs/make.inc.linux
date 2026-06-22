@@ -7,14 +7,14 @@
 
 # Makefile configurations for building on the Linux box at Sandia.
 
-CXX = icpc
+CXX = g++
 
 MODE = sequential
 #MODE = openmp
 
-MKL_ROOT := /opt/intel/composer_xe_2013_sp1/mkl
+MKL_ROOT := /home/alberto/spack/opt/spack/linux-zen4/intel-oneapi-mkl-2026.0.0-bjxcm3rcibayqwhf3fsgb6wvzsmgrwrz/mkl/latest
 
-DEFINES := -DNDEBUG
+DEFINES := -DNDEBUG -D__INTEL_MKL__
 
 # Defining BLAS_POST means that the BLAS routines are like "dgemm_" instead of
 # just "dgemm".

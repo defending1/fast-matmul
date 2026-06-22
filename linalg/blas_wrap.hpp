@@ -53,10 +53,12 @@ extern "C" {
                          int *m, int *n, float *alpha, float *T, int *ldt,
                          float *B, int *ldb);
 
-  double BLAS_NAME(dlange) (char *norm, int *m, int *n, double *A, int *lda,
+#ifndef __INTEL_MKL__
+  double BLAS_NAME(dlange) (const char *norm, const int *m, const int *n, const double *A, const int *lda,
                             double *work);
-  float BLAS_NAME(slange) (char *norm, int *m, int *n, float *A, int *lda,
+  float BLAS_NAME(slange) (const char *norm, const int *m, const int *n, const float *A, const int *lda,
                            float *work);
+#endif
 }
 
 
