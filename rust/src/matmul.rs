@@ -66,7 +66,6 @@ impl<'a> MatMul<'a> {
         self.cp
     }
 
-
     /// Flatten a matrix in row-major order into a 1D column vector.
     fn flatten_row_major(matrix: &Mat<f64>) -> Col<f64> {
         let ncols = matrix.ncols();
@@ -119,15 +118,21 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Performs standard matrix multiplication using faer's low-level API with controlled parallelism.
     pub fn base_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
         let mut c = Mat::zeros(a.nrows(), b.ncols());
-        let par = if multithreaded {
+        let par = if multithreaded && a.nrows() >= 384 && a.ncols() >= 384 && b.ncols() >= 384 {
             faer::get_global_parallelism()
         } else {
-            faer::Parallelism::None
+            faer::Par::Seq
         };
-        faer::linalg::matmul::matmul(c.as_mut(), a.as_ref(), b.as_ref(), None, 1.0, par);
+        faer::linalg::matmul::matmul(
+            c.as_mut(),
+            faer::Accum::Replace,
+            a.as_ref(),
+            b.as_ref(),
+            1.0,
+            par,
+        );
         c
     }
 
@@ -192,7 +197,12 @@ impl<'a> MatMul<'a> {
         blocks
     }
 
-    pub(crate) fn cp_matmul_impl(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
+    pub(crate) fn cp_matmul_impl(
+        &self,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        multithreaded: bool,
+    ) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
         let n_b = b.nrows();
