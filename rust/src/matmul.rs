@@ -3,13 +3,17 @@ use crate::dynamic_peeling::DynamicPeeling;
 use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
+/// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
 pub struct Tensor3 {
+    /// Flat vector containing the elements of the tensor.
     pub data: Vec<f64>,
+    /// The shape (dimensions) of the tensor as (depth, rows, cols).
     pub shape: (usize, usize, usize),
 }
 
 impl Tensor3 {
+    /// Creates a new `Tensor3` of the specified shape with all elements initialized to zero.
     pub fn zeros(shape: (usize, usize, usize)) -> Self {
         Self {
             data: vec![0.0; shape.0 * shape.1 * shape.2],
@@ -17,6 +21,7 @@ impl Tensor3 {
         }
     }
 
+    /// Returns the shape dimensions (depth, rows, cols) of the 3D tensor.
     pub fn dim(&self) -> (usize, usize, usize) {
         self.shape
     }
@@ -118,6 +123,8 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
+    /// Computes classical matrix multiplication C = A * B using the underlying `faer` library,
+    /// with optional multithreading.
     pub fn base_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
         let mut c = Mat::zeros(a.nrows(), b.ncols());
         let par = if multithreaded && a.nrows() >= 384 && a.ncols() >= 384 && b.ncols() >= 384 {
