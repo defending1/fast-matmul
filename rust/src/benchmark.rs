@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::matmul::MatMul;
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
+use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use rand::Rng;
 use std::collections::HashMap;
@@ -149,6 +149,31 @@ impl Benchmark {
         }
 
         println!("Successfully wrote benchmark CSV output to: {}", filename);
+
+        let plot_script = if std::path::Path::new("python/plot.py").exists() {
+            "python/plot.py"
+        } else if std::path::Path::new("../python/plot.py").exists() {
+            "../python/plot.py"
+        } else {
+            "python/plot.py"
+        };
+
+        println!("Generating plot automatically using '{}'...", plot_script);
+        let plot_status = std::process::Command::new("uv")
+            .args(&["run", plot_script])
+            .status();
+        match plot_status {
+            Ok(status) if status.success() => {
+                println!("Plot generated successfully.");
+            }
+            Ok(status) => {
+                eprintln!("Plot generation failed with status: {:?}", status);
+            }
+            Err(e) => {
+                eprintln!("Failed to execute plot script: {:?}", e);
+            }
+        }
+
         Ok(())
     }
 
@@ -170,32 +195,60 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
+    fn base_matmul(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
+        let mut c = Mat::zeros(a.nrows(), b.ncols());
+        let par = if multithreaded {
+            faer::get_global_parallelism()
+        } else {
+            faer::Par::Seq
+        };
+        faer::linalg::matmul::matmul(
+            c.as_mut(),
+            faer::Accum::Replace,
+            a.as_ref(),
+            b.as_ref(),
+            1.0,
+            par,
+        );
+        c
+    }
+
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
     fn bench_mkl(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
-        group.bench_with_input(BenchmarkId::new("MKL-Sequential", size), &size, |bench, &_| {
-            crate::mkl::mkl_set_threads(1);
-            bench.iter(|| crate::mkl::mkl_matmul(a, b));
-        });
-        group.bench_with_input(BenchmarkId::new("MKL-Parallel", size), &size, |bench, &_| {
-            crate::mkl::mkl_set_threads(0);
-            bench.iter(|| crate::mkl::mkl_matmul(a, b));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("MKL-Sequential", size),
+            &size,
+            |bench, &_| {
+                crate::mkl::mkl_set_threads(1);
+                bench.iter(|| crate::mkl::mkl_matmul(a, b));
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("MKL-Parallel", size),
+            &size,
+            |bench, &_| {
+                crate::mkl::mkl_set_threads(0);
+                bench.iter(|| crate::mkl::mkl_matmul(a, b));
+            },
+        );
     }
 
     /// Registers the Faer sequential and parallel benchmarks for one matrix size.
-    fn bench_faer(
-        group: &mut BenchmarkGroup<WallTime>,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
-        size: usize,
-        mm: &MatMul<'_>,
-    ) {
-        group.bench_with_input(BenchmarkId::new("Faer-Sequential", size), &size, |bench, &_| {
-            bench.iter(|| mm.base_matmul(a, b, false));
-        });
-        group.bench_with_input(BenchmarkId::new("Faer-Parallel", size), &size, |bench, &_| {
-            bench.iter(|| mm.base_matmul(a, b, true));
-        });
+    fn bench_faer(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
+        group.bench_with_input(
+            BenchmarkId::new("Faer-Sequential", size),
+            &size,
+            |bench, &_| {
+                bench.iter(|| Self::base_matmul(a, b, false));
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("Faer-Parallel", size),
+            &size,
+            |bench, &_| {
+                bench.iter(|| Self::base_matmul(a, b, true));
+            },
+        );
     }
 
     /// Registers single-thread and multi-thread CP benchmarks for one algorithm and matrix size.
@@ -249,8 +302,7 @@ impl Benchmark {
 
             Self::bench_mkl(&mut group, &a, &b, size);
 
-            let mm_base = MatMul::new();
-            Self::bench_faer(&mut group, &a, &b, size, &mm_base);
+            Self::bench_faer(&mut group, &a, &b, size);
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
