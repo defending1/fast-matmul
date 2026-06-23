@@ -4,8 +4,12 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let plot_only = args.iter().any(|arg| arg == "--plot-only" || arg == "-p");
 
-    const N: i32 = 10;
-    let sizes: Vec<usize> = (1..=N).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
+    let full = args.iter().any(|arg| arg == "--full");
+
+    // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
+    // which will dynamically check system memory and stop before exceeding limits.
+    let n_limit = if full { 20 } else { 10 };
+    let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
     let csv_file = "generated/benchmark_results.csv";
     let algorithms = &["strassen", "grey-strassen"];
 
