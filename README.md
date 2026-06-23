@@ -14,9 +14,7 @@ and generate plots:
    $N=512$:
    ```bash
    cd rust
-   cargo bench --bench matmul_bench
-   # OR run programmatically
-   cargo run --release
+   cargo bench --bench bench
    ```
    This executes Criterion and automatically exports/saves the results to
    `rust/generated/benchmark_results.csv`.
@@ -26,10 +24,10 @@ and generate plots:
    to update the CSV without running the benchmarks again:
    ```bash
    cd rust
-   cargo run --release -- --plot-only
+   cargo bench --bench bench -- --plot-only
    ```
    _Note: If you run a filtered benchmark (e.g.
-   `cargo bench --bench matmul_bench -- strassen`), the cached values for
+   `cargo bench --bench bench -- strassen`), the cached values for
    unmodified algorithms are automatically preserved and merged from the
    previous CSV._
 

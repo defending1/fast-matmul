@@ -1,5 +1,5 @@
-use crate::cp::CP;
-use crate::matmul::MatMul;
+use fast_matmul::cp::CP;
+use fast_matmul::matmul::MatMul;
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use rand::Rng;
@@ -11,6 +11,7 @@ use std::path::Path;
 /// A struct for running benchmarks on various matrix multiplication algorithms.
 pub struct Benchmark;
 
+/// Mapping from a benchmark name folder to its corresponding CSV header.
 struct ColumnMapping {
     header: String,
     folder: String,
@@ -213,6 +214,7 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
+    /// Run the baseline sequential or parallel matrix multiplication.
     fn base_matmul(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
         let mut c = Mat::zeros(a.nrows(), b.ncols());
         let par = if multithreaded {
@@ -237,16 +239,16 @@ impl Benchmark {
             BenchmarkId::new("MKL-Sequential", size),
             &size,
             |bench, &_| {
-                crate::mkl::mkl_set_threads(1);
-                bench.iter(|| crate::mkl::mkl_matmul(a, b));
+                fast_matmul::mkl::mkl_set_threads(1);
+                bench.iter(|| fast_matmul::mkl::mkl_matmul(a, b));
             },
         );
         group.bench_with_input(
             BenchmarkId::new("MKL-Parallel", size),
             &size,
             |bench, &_| {
-                crate::mkl::mkl_set_threads(0);
-                bench.iter(|| crate::mkl::mkl_matmul(a, b));
+                fast_matmul::mkl::mkl_set_threads(0);
+                bench.iter(|| fast_matmul::mkl::mkl_matmul(a, b));
             },
         );
     }
@@ -419,4 +421,36 @@ fn get_available_memory() -> Option<u64> {
         }
     }
     None
+}
+
+/// Entry point for running the matrix multiplication benchmarks.
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let plot_only = args.iter().any(|arg| arg == "--plot-only" || arg == "-p");
+
+    let full = args.iter().any(|arg| arg == "--full");
+
+    // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
+    // which will dynamically check system memory and stop before exceeding limits.
+    let n_limit = if full { 20 } else { 10 };
+    let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
+    let csv_file = "generated/benchmark_results.csv";
+    let algorithms = &["strassen", "grey-strassen"];
+
+    if plot_only {
+        println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
+        if let Err(e) = Benchmark::export_results_to_csv(&sizes, algorithms, csv_file) {
+            eprintln!("Failed to export CSV: {:?}", e);
+        } else {
+            println!("CSV results successfully updated from cache.");
+        }
+    } else {
+        println!("\n--- Running Matrix Multiplication Benchmarks ---");
+        let bench = Benchmark::new();
+        if let Err(e) = bench.run(&sizes, algorithms, csv_file) {
+            eprintln!("Failed to write benchmarks to CSV: {:?}", e);
+        } else {
+            println!("Benchmark results successfully written to {}", csv_file);
+        }
+    }
 }
