@@ -185,6 +185,29 @@ impl<'a> MatMul<'a> {
     }
 
     /// Splits a matrix into grid blocks of specified block dimensions.
+    ///
+    /// # Visualizing a 2^N x 2^N matrix split into 4 blocks (grid_rows = 2, grid_cols = 2):
+    ///
+    /// ```text
+    ///                     2^N columns
+    ///         <--------------------------------->
+    ///       +-------------------+-------------------+  ^
+    ///       |                   |                   |  |
+    ///       |      Block 0      |      Block 1      |  |
+    ///       |      A_{0,0}      |      A_{0,1}      |  |
+    ///       |                   |                   |  |
+    ///       +-------------------+-------------------+  | 2^N rows
+    ///       |                   |                   |  |
+    ///       |      Block 2      |      Block 3      |  |
+    ///       |      A_{1,0}      |      A_{1,1}      |  |
+    ///       |                   |                   |  |
+    ///       +-------------------+-------------------+  v
+    ///       <------------------>
+    ///           2^{N-1} cols
+    /// ```
+    ///
+    /// The returned blocks are flattened in row-major order:
+    /// `[A_{0,0}, A_{0,1}, A_{1,0}, A_{1,1}]`.
     fn split_into_blocks<'b>(
         matrix: &'b Mat<f64>,
         grid_rows: usize,
@@ -204,6 +227,76 @@ impl<'a> MatMul<'a> {
         blocks
     }
 
+    /// Computes the intermediate matrix products M_l = A_blocks * B_blocks for each CP component.
+    ///
+    /// Depending on `multithreaded` and block dimensions, this may compute the products
+    /// in parallel using Rayon or sequentially.
+    fn compute_block_products(
+        &self,
+        a_blocks: &[MatRef<'_, f64>],
+        b_blocks: &[MatRef<'_, f64>],
+        m_block: usize,
+        n_block: usize,
+        p_block: usize,
+        multithreaded: bool,
+    ) -> Vec<Mat<f64>> {
+        const PARALLEL_CUTOFF: usize = 256;
+        if multithreaded
+            && m_block >= PARALLEL_CUTOFF
+            && n_block >= PARALLEL_CUTOFF
+            && p_block >= PARALLEL_CUTOFF
+        {
+            use rayon::prelude::*;
+            (0..self.cp.rank)
+                .into_par_iter()
+                .map(|l| self.compute_m_l(l, a_blocks, b_blocks, true))
+                .collect()
+        } else {
+            (0..self.cp.rank)
+                .map(|l| self.compute_m_l(l, a_blocks, b_blocks, multithreaded))
+                .collect()
+        }
+    }
+
+    /// Reconstructs the product matrix C from the computed CP block products.
+    ///
+    /// The matrix block products `M_l` are weighted by the coefficients in the
+    /// W matrix of the CP decomposition and accumulated into the correct block positions
+    /// of the final matrix C.
+    fn reconstruct_from_products(
+        &self,
+        m: usize,
+        p: usize,
+        m_block: usize,
+        p_block: usize,
+        m_products: &[Mat<f64>],
+    ) -> Mat<f64> {
+        let mut c = Mat::<f64>::zeros(m, p);
+        for (l, m_prod) in m_products.iter().enumerate() {
+            for i in 0..self.cp.m {
+                for j in 0..self.cp.p {
+                    let coeff = self.cp.w[(i * self.cp.p + j, l)];
+                    if coeff != 0.0 {
+                        let mut block = c.as_mut().get_mut(
+                            i * m_block..(i + 1) * m_block,
+                            j * p_block..(j + 1) * p_block,
+                        );
+                        for c_idx in 0..p_block {
+                            for r_idx in 0..m_block {
+                                block[(r_idx, c_idx)] += coeff * m_prod[(r_idx, c_idx)];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        c
+    }
+
+    /// Internal implementation of the recursive matrix multiplication algorithm.
+    ///
+    /// Depending on dimensions, this may perform base matrix multiplication, standard
+    /// CP-decomposition multiplication, dynamic peeling, or recursive splitting of blocks.
     pub(crate) fn cp_matmul_impl(
         &self,
         a: &Mat<f64>,
@@ -239,44 +332,16 @@ impl<'a> MatMul<'a> {
         let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
         let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
-        const PARALLEL_CUTOFF: usize = 256;
-        let m_products: Vec<Mat<f64>> = if multithreaded
-            && m_block >= PARALLEL_CUTOFF
-            && n_block >= PARALLEL_CUTOFF
-            && p_block >= PARALLEL_CUTOFF
-        {
-            use rayon::prelude::*;
-            (0..self.cp.rank)
-                .into_par_iter()
-                .map(|l| self.compute_m_l(l, &a_blocks, &b_blocks, true))
-                .collect()
-        } else {
-            (0..self.cp.rank)
-                .map(|l| self.compute_m_l(l, &a_blocks, &b_blocks, multithreaded))
-                .collect()
-        };
+        let m_products = self.compute_block_products(
+            &a_blocks,
+            &b_blocks,
+            m_block,
+            n_block,
+            p_block,
+            multithreaded,
+        );
 
-        let mut c = Mat::<f64>::zeros(m, p);
-        for (l, m_prod) in m_products.iter().enumerate() {
-            for i in 0..self.cp.m {
-                for j in 0..self.cp.p {
-                    let coeff = self.cp.w[(i * self.cp.p + j, l)];
-                    if coeff != 0.0 {
-                        let mut block = c.as_mut().get_mut(
-                            i * m_block..(i + 1) * m_block,
-                            j * p_block..(j + 1) * p_block,
-                        );
-                        for c_idx in 0..p_block {
-                            for r_idx in 0..m_block {
-                                block[(r_idx, c_idx)] += coeff * m_prod[(r_idx, c_idx)];
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        c
+        self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
     }
 
     /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).

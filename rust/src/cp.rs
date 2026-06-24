@@ -5,6 +5,8 @@ use std::sync::OnceLock;
 static STRASSEN_CP: OnceLock<CP> = OnceLock::new();
 
 /// Canonical Polyadic (CP) decomposition matrices [U, V, W] for matrix multiplication.
+///
+/// Here, if r = rank, U is m x r, V is n x r, W is p x r.
 #[derive(Clone, Debug)]
 pub struct CP {
     pub u: Mat<f64>,
