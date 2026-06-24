@@ -27,6 +27,11 @@ name = "bench"
 path = "benches/benchmark.rs"
 harness = false
 
+[[bench]]
+name = "dgemm_curves"
+path = "benches/dgemm_curves.rs"
+harness = false
+
 [build-dependencies]
 cc = "1.0"
 
