@@ -165,14 +165,25 @@ impl<'a> MatMul<'a> {
         self.cp_matmul_impl(&a_comb, &b_comb, multithreaded)
     }
 
-    /// Computes the dot product of a slice of matrix blocks
-    /// weighted by a 1D vector of coefficients.
+    /// Computes the linear combination of matrix blocks for a single CP decomposition component.
     ///
-    /// This is an optimized in-place operation that uses loops to avoid allocating
-    /// temporary intermediate arrays, and skips operations for zero coefficients.
+    /// According to the CP-decomposition formulation in the report, for each rank component $l$,
+    /// the matrix blocks are combined using the coefficients from matrices $U$ and $V$ of the
+    /// decomposition:
+    ///
+    /// ```text
+    ///   A_comb_l = sum_i ( U_{i, l} * A_i )
+    ///   B_comb_l = sum_j ( V_{j, l} * B_j )
+    /// ```
+    ///
+    /// This method computes these weighted sums. It takes a slice of matrix blocks (either $A_i$ or $B_j$)
+    /// and accumulates their sum, scaling each block by the corresponding coefficient from
+    /// the column `coeffs` (which represents the $l$-th column of matrix $U$ or $V$).
     fn combine_blocks(blocks: &[MatRef<'_, f64>], coeffs: faer::ColRef<'_, f64>) -> Mat<f64> {
         let mut comb = Mat::<f64>::zeros(blocks[0].nrows(), blocks[0].ncols());
         for (block, &coeff) in blocks.iter().zip(coeffs.iter()) {
+            // To optimize performance, it skips blocks with a coefficient of exactly `0.0` and
+            // accumulates directly into the output matrix `comb` without allocating temporary arrays.
             if coeff != 0.0 {
                 for c in 0..comb.ncols() {
                     for r in 0..comb.nrows() {
@@ -227,7 +238,8 @@ impl<'a> MatMul<'a> {
         blocks
     }
 
-    /// Computes the intermediate matrix products M_l = A_blocks * B_blocks for each CP component.
+    /// Computes the intermediate matrix products M_l = A_blocks * B_blocks for each CP component
+    /// and returns array [M_1,..., M_l].
     ///
     /// Depending on `multithreaded` and block dimensions, this may compute the products
     /// in parallel using Rayon or sequentially.
@@ -263,6 +275,27 @@ impl<'a> MatMul<'a> {
     /// The matrix block products `M_l` are weighted by the coefficients in the
     /// W matrix of the CP decomposition and accumulated into the correct block positions
     /// of the final matrix C.
+    ///
+    /// # Example (Strassen's Algorithm, m = p = 2, rank = 7):
+    ///
+    /// The final matrix C is partitioned into 4 blocks of size `m_block` x `p_block`:
+    /// - `C_{0,0}` (flat index 0)
+    /// - `C_{0,1}` (flat index 1)
+    /// - `C_{1,0}` (flat index 2)
+    /// - `C_{1,1}` (flat index 3)
+    ///
+    /// For Strassen's algorithm, the output blocks are reconstructed using the 7 products $M_1 \dots M_7$:
+    /// - `C_{0,0} = M_1 + M_4 - M_5 + M_7`
+    /// - `C_{0,1} = M_3 + M_5`
+    /// - `C_{1,0} = M_2 + M_4`
+    /// - `C_{1,1} = M_1 - M_2 + M_3 + M_6`
+    ///
+    /// In this function:
+    /// - For block `C_{0,1}` (flat index 1), the coefficients `self.cp.w[(1, l)]` are:
+    ///   `1.0` for $l$ corresponding to $M_3$ and $M_5$, and `0.0` otherwise.
+    /// - The loops iterate over each product index `l` (from 0 to 6), retrieve the coefficient,
+    ///   and add the weighted product `coeff * M_l` to the slice of the target matrix `C`
+    ///   corresponding to the `C_{i,j}` block.
     fn reconstruct_from_products(
         &self,
         m: usize,
