@@ -7,6 +7,12 @@
       "skillPath": "skills/clean-code/SKILL.md",
       "computedHash": "74bf6ded4f61ddcb593e7a29beb96c284f888cbe0639ad6e23710447c36ff19a"
     },
+    "grill-with-docs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
+      "computedHash": "e7ef25bbee50cda2eb7b3a8ef541db0a0396dad7d369f7d14fb610671dd1864b"
+    },
     "m15-anti-pattern": {
       "source": "zhanghandong/rust-skills",
       "sourceType": "github",
