@@ -314,7 +314,8 @@ Fast matrix multiplication algorithm such as Strassen face two significant probl
 implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
 former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
 
-\section{}
+
+\section{Algorithm schema}
 
 \section{Dynamic Peeling}
 \label{sec:dynpeel}
@@ -333,15 +334,15 @@ peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22
 
 \begin{equation*}
   A = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{2}{n} & \\
-    & & &\Vbrace{3}{m}  \\
+    & \Hbrace{1}{n-1} & \Hbrace{1}{1} \\
+    & & &\Vbrace{3}{m-1}  \\
     & A_{11} & a_{12} & \\
     & & & \\ \hline
     & a_{21} & a_{22} & \Vbrace{1}{1}
   \end{bNiceArray} \qquad,\qquad
   B = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{2}{p} & \\
-    & & &\Vbrace{3}{n}  \\
+    & \Hbrace{1}{p-1} & \Hbrace{1}{1} \\
+    & & &\Vbrace{3}{n-1}  \\
     & B_{11} & b_{12} & \\
     & & & \\ \hline
     & b_{21} & b_{22} & \Vbrace{1}{1}
@@ -351,12 +352,12 @@ peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22
 The final block matrix product is computed directly through a combination of the core Strassen multiplication ($A_{11}B_{11}$) and low-rank vector/scalar fixup modifications:
 \begin{equation*}
 \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{2}{p} & \\
-    & & &  \Vbrace{3}{m} \\
+    & \Hbrace{1}{p-1} &\Hbrace{1}{1} \\
+    & & &  \Vbrace{3}{m-1} \\
     & C_{11} & c_{12} & \\
     & & & \\ \hline
     & c_{21} & c_{22} & \Vbrace{1}{1} 
-  \end{bNiceArray} \quad =
+  \end{bNiceArray} \qquad =
 \begin{bNiceArray}{c|c}[]
     &   \\
     A_{11}B_{11} + a_{12}b_{21} & A_{11}b_{12} + a_{12}b_{22} \\
