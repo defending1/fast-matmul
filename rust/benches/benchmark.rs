@@ -1,7 +1,7 @@
 use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::{MatMul, ParallelismMode};
+use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode};
 use rand::Rng;
 use std::collections::HashMap;
 use std::fs::File;
@@ -296,17 +296,19 @@ impl Benchmark {
         group.bench_with_input(
             BenchmarkId::new(format!("{}/DFS", algo), size),
             &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Dfs)),
+            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Dfs, BaseMatMul::Faer)),
         );
         group.bench_with_input(
             BenchmarkId::new(format!("{}/BFS", algo), size),
             &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Bfs)),
+            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Bfs, BaseMatMul::Faer)),
         );
         group.bench_with_input(
             BenchmarkId::new(format!("{}/Hybrid", algo), size),
             &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Hybrid)),
+            |bench, &_| {
+                bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Hybrid, BaseMatMul::Faer))
+            },
         );
     }
 

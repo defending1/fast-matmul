@@ -38,3 +38,32 @@ impl TryFrom<i32> for ParallelismMode {
         }
     }
 }
+
+/// The base matrix multiplication implementation to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaseMatMul {
+    /// Use classical matrix multiplication from the `faer` library.
+    Faer = 0,
+    /// Use Intel MKL `dgemm` (via FFI wrappers).
+    Dgemm = 1,
+}
+
+impl TryFrom<i32> for BaseMatMul {
+    type Error = String;
+
+    /// Attempts to convert an `i32` value to a `BaseMatMul`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is not `0` or `1`.
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(BaseMatMul::Faer),
+            1 => Ok(BaseMatMul::Dgemm),
+            _ => Err(format!(
+                "Invalid base matmul choice: {}. Must be 0 (Faer) or 1 (Dgemm).",
+                value
+            )),
+        }
+    }
+}

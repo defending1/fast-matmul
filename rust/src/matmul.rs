@@ -3,7 +3,7 @@ use crate::dynamic_peeling::DynamicPeeling;
 use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
-pub use crate::parallelism_mode::ParallelismMode;
+pub use crate::parallelism_mode::{BaseMatMul, ParallelismMode};
 
 /// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
@@ -125,24 +125,41 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Computes classical matrix multiplication C = A * B using the underlying `faer` library,
+    /// Computes classical matrix multiplication C = A * B using the underlying library (faer or MKL/dgemm),
     /// with optional multithreading.
-    pub fn base_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-        let mut c = Mat::zeros(a.nrows(), b.ncols());
-        let par = if multithreaded && a.nrows() >= 384 && a.ncols() >= 384 && b.ncols() >= 384 {
-            faer::get_global_parallelism()
-        } else {
-            faer::Par::Seq
-        };
-        faer::linalg::matmul::matmul(
-            c.as_mut(),
-            faer::Accum::Replace,
-            a.as_ref(),
-            b.as_ref(),
-            1.0,
-            par,
-        );
-        c
+    pub fn base_matmul(
+        &self,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        multithreaded: bool,
+        base_choice: BaseMatMul,
+    ) -> Mat<f64> {
+        match base_choice {
+            BaseMatMul::Faer => {
+                let mut c = Mat::zeros(a.nrows(), b.ncols());
+                let par =
+                    if multithreaded && a.nrows() >= 384 && a.ncols() >= 384 && b.ncols() >= 384 {
+                        faer::get_global_parallelism()
+                    } else {
+                        faer::Par::Seq
+                    };
+                faer::linalg::matmul::matmul(
+                    c.as_mut(),
+                    faer::Accum::Replace,
+                    a.as_ref(),
+                    b.as_ref(),
+                    1.0,
+                    par,
+                );
+                c
+            }
+            BaseMatMul::Dgemm => {
+                // Adjust thread count for MKL dynamically based on concurrency requirements.
+                // Single-threaded GEMM runs sequentially; multithreaded GEMM uses all available cores.
+                crate::mkl::mkl_set_threads(if multithreaded { 0 } else { 1 });
+                crate::mkl::mkl_matmul(a, b)
+            }
+        }
     }
 
     /// Calculate the total number of recursion levels for the given input matrix shape.
@@ -150,8 +167,14 @@ impl<'a> MatMul<'a> {
     ///
     /// Delegates to [`DynamicPeeling`], which handles the core CP product and
     /// the GEMM-based boundary corrections for odd or non-power-of-two dimensions.
-    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, mode: ParallelismMode) -> Mat<f64> {
-        DynamicPeeling::new(self, a, b, mode).run()
+    fn dynamic_peeling(
+        &self,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        mode: ParallelismMode,
+        base_choice: BaseMatMul,
+    ) -> Mat<f64> {
+        DynamicPeeling::new(self, a, b, mode, base_choice).run()
     }
 
     /// Helper to compute a single Strassen product M_l
@@ -161,11 +184,12 @@ impl<'a> MatMul<'a> {
         a_blocks: &[MatRef<'_, f64>],
         b_blocks: &[MatRef<'_, f64>],
         mode: ParallelismMode,
+        base_choice: BaseMatMul,
     ) -> Mat<f64> {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.col(l));
         let b_comb = Self::combine_blocks(b_blocks, self.cp.v.col(l));
 
-        self.cp_matmul_impl(&a_comb, &b_comb, mode)
+        self.cp_matmul_impl(&a_comb, &b_comb, mode, base_choice)
     }
 
     /// Computes the linear combination of matrix blocks for a single CP decomposition component.
@@ -242,6 +266,7 @@ impl<'a> MatMul<'a> {
     ///
     /// Depending on `multithreaded` and block dimensions, this may compute the products
     /// in parallel using Rayon or sequentially.
+    #[allow(clippy::too_many_arguments)]
     fn compute_block_products(
         &self,
         a_blocks: &[MatRef<'_, f64>],
@@ -250,6 +275,7 @@ impl<'a> MatMul<'a> {
         n_block: usize,
         p_block: usize,
         mode: ParallelismMode,
+        base_choice: BaseMatMul,
     ) -> Vec<Mat<f64>> {
         const PARALLEL_CUTOFF: usize = 256;
 
@@ -257,7 +283,9 @@ impl<'a> MatMul<'a> {
             ParallelismMode::Dfs => {
                 // DFS: recursive steps are sequential
                 (0..self.cp.rank)
-                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs))
+                    .map(|l| {
+                        self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs, base_choice)
+                    })
                     .collect()
             }
             ParallelismMode::Bfs => {
@@ -265,7 +293,9 @@ impl<'a> MatMul<'a> {
                 use rayon::prelude::*;
                 (0..self.cp.rank)
                     .into_par_iter()
-                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Bfs))
+                    .map(|l| {
+                        self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Bfs, base_choice)
+                    })
                     .collect()
             }
             ParallelismMode::Hybrid => {
@@ -277,18 +307,42 @@ impl<'a> MatMul<'a> {
                     use rayon::prelude::*;
                     (0..self.cp.rank)
                         .into_par_iter()
-                        .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Hybrid))
+                        .map(|l| {
+                            self.compute_m_l(
+                                l,
+                                a_blocks,
+                                b_blocks,
+                                ParallelismMode::Hybrid,
+                                base_choice,
+                            )
+                        })
                         .collect()
                 } else {
                     (0..self.cp.rank)
-                        .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs))
+                        .map(|l| {
+                            self.compute_m_l(
+                                l,
+                                a_blocks,
+                                b_blocks,
+                                ParallelismMode::Dfs,
+                                base_choice,
+                            )
+                        })
                         .collect()
                 }
             }
             ParallelismMode::Sequential => {
                 // Sequential: all steps sequential
                 (0..self.cp.rank)
-                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Sequential))
+                    .map(|l| {
+                        self.compute_m_l(
+                            l,
+                            a_blocks,
+                            b_blocks,
+                            ParallelismMode::Sequential,
+                            base_choice,
+                        )
+                    })
                     .collect()
             }
         }
@@ -355,6 +409,7 @@ impl<'a> MatMul<'a> {
         a: &Mat<f64>,
         b: &Mat<f64>,
         mode: ParallelismMode,
+        base_choice: BaseMatMul,
     ) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
@@ -364,7 +419,7 @@ impl<'a> MatMul<'a> {
 
         if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= 128 || m <= 128 || p <= 128 {
             let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
-            return self.base_matmul(a, b, leaf_multithreaded);
+            return self.base_matmul(a, b, leaf_multithreaded, base_choice);
         }
 
         if m == self.cp.m && n == self.cp.n && p == self.cp.p {
@@ -376,7 +431,7 @@ impl<'a> MatMul<'a> {
         let extra_p = p % self.cp.p;
 
         if extra_m > 0 || extra_n > 0 || extra_p > 0 {
-            return self.dynamic_peeling(a, b, mode);
+            return self.dynamic_peeling(a, b, mode, base_choice);
         }
 
         let m_block = m / self.cp.m;
@@ -386,19 +441,32 @@ impl<'a> MatMul<'a> {
         let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
         let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
-        let m_products =
-            self.compute_block_products(&a_blocks, &b_blocks, m_block, n_block, p_block, mode);
+        let m_products = self.compute_block_products(
+            &a_blocks,
+            &b_blocks,
+            m_block,
+            n_block,
+            p_block,
+            mode,
+            base_choice,
+        );
 
         self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
     }
 
     /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).
     pub fn cp_matmul_single_thread(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, ParallelismMode::Sequential)
+        self.cp_matmul_impl(a, b, ParallelismMode::Sequential, BaseMatMul::Faer)
     }
 
-    /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode.
-    pub fn cp_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, mode: ParallelismMode) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, mode)
+    /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode and base matrix multiplication choice.
+    pub fn cp_matmul(
+        &self,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        mode: ParallelismMode,
+        base_choice: BaseMatMul,
+    ) -> Mat<f64> {
+        self.cp_matmul_impl(a, b, mode, base_choice)
     }
 }
