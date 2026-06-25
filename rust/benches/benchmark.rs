@@ -1,4 +1,4 @@
-use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
+use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{MatMul, ParallelismMode};
@@ -340,7 +340,10 @@ impl Benchmark {
         if bytes_per_matrix > isize::MAX as usize {
             return Err(format!(
                 "Matrix size {}x{} requires {} bytes, which exceeds Rust's maximum allocation limit of {} bytes.",
-                size, size, bytes_per_matrix, isize::MAX
+                size,
+                size,
+                bytes_per_matrix,
+                isize::MAX
             ));
         }
 
@@ -363,7 +366,10 @@ impl Benchmark {
             if estimated_required_bytes + safety_buffer > avail_bytes {
                 return Err(format!(
                     "Matrix size {}x{} requires estimated {} MB of memory (with safety buffer), but only {} MB is available.",
-                    size, size, (estimated_required_bytes + safety_buffer) / (1024 * 1024), avail_bytes / (1024 * 1024)
+                    size,
+                    size,
+                    (estimated_required_bytes + safety_buffer) / (1024 * 1024),
+                    avail_bytes / (1024 * 1024)
                 ));
             }
         }

@@ -66,7 +66,9 @@ fn main() {
     if positional_args.is_empty() {
         println!("Usage: cargo bench --bench dgemm_curves -- <TYPE> [NUM_THREADS]");
         println!("  TYPE: 1 (SQUARE), 2 (OUTER_PRODUCT), 3 (TS_SQUARE)");
-        println!("  NUM_THREADS: number of threads (1 for sequential, 0 or omitted for maximum parallel)");
+        println!(
+            "  NUM_THREADS: number of threads (1 for sequential, 0 or omitted for maximum parallel)"
+        );
         return;
     }
 
