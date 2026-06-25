@@ -1,7 +1,7 @@
-use fast_matmul::cp::CP;
-use fast_matmul::matmul::{MatMul, ParallelismMode};
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
+use fast_matmul::cp::CP;
+use fast_matmul::matmul::{MatMul, ParallelismMode};
 use rand::Rng;
 use std::collections::HashMap;
 use std::fs::File;
@@ -320,13 +320,21 @@ impl Benchmark {
         }
 
         // 1. Check for arithmetic overflow in size calculations
-        let elements = size
-            .checked_mul(size)
-            .ok_or_else(|| format!("Matrix size {}x{} would overflow usize elements count.", size, size))?;
-        
+        let elements = size.checked_mul(size).ok_or_else(|| {
+            format!(
+                "Matrix size {}x{} would overflow usize elements count.",
+                size, size
+            )
+        })?;
+
         let bytes_per_matrix = elements
             .checked_mul(std::mem::size_of::<f64>())
-            .ok_or_else(|| format!("Matrix size {}x{} would overflow memory byte count.", size, size))?;
+            .ok_or_else(|| {
+                format!(
+                    "Matrix size {}x{} would overflow memory byte count.",
+                    size, size
+                )
+            })?;
 
         // Rust's allocator limit is isize::MAX
         if bytes_per_matrix > isize::MAX as usize {
@@ -345,7 +353,7 @@ impl Benchmark {
         let num_threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
-        
+
         let multiplier = 3.0 + (num_threads as f64).min(7.0) * 1.5;
         let estimated_required_bytes = (bytes_per_matrix as f64 * multiplier) as u64;
 
@@ -393,7 +401,10 @@ impl Benchmark {
             if let Err(e) = self.check_size_supported(size) {
                 println!("\n--- Gracefully Stopping Benchmarks ---");
                 println!("Reason: {}", e);
-                println!("Writing results for completed sizes {:?} and exiting...", successful_sizes);
+                println!(
+                    "Writing results for completed sizes {:?} and exiting...",
+                    successful_sizes
+                );
                 break;
             }
 
@@ -450,7 +461,7 @@ fn main() {
 
     // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
     // which will dynamically check system memory and stop before exceeding limits.
-    let n_limit = if full { 20 } else { 10 };
+    let n_limit = if full { 20 } else { 11 };
     let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
     let csv_file = "generated/benchmark_results.csv";
     let algorithms = &["strassen", "grey-strassen"];
