@@ -34,26 +34,26 @@ def main():
         "mkl_par": {"color": "#9467bd", "marker": "*", "linestyle": "-"},
         "faer_seq": {"color": "#17becf", "marker": "x", "linestyle": "--"},
         "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
+        # Strassen
         "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
-        "strassen_multithread": {"color": "#ff7f0e", "marker": "D", "linestyle": "-"},
+        "strassen_dfs": {"color": "#d95f02", "marker": "^", "linestyle": "-."},
+        "strassen_bfs": {"color": "#fdbb84", "marker": "v", "linestyle": ":"},
+        "strassen_hybrid": {"color": "#e34a33", "marker": "D", "linestyle": "-"},
+        # Grey-Strassen
         "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
-        "grey_strassen_multithread": {"color": "#8c564b", "marker": "H", "linestyle": "-"},
+        "grey_strassen_dfs": {"color": "#a6761d", "marker": "^", "linestyle": "-."},
+        "grey_strassen_bfs": {"color": "#dfc27d", "marker": "v", "linestyle": ":"},
+        "grey_strassen_hybrid": {"color": "#543005", "marker": "H", "linestyle": "-"},
+        # HK323_15_94
         "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
-        "hk323_15_94_multithread": {
-            "color": "#2ca02c",
-            "marker": "v",
-            "linestyle": "-",
-        },
-        "smirnov333_23_139_single": {
-            "color": "#d62728",
-            "marker": "<",
-            "linestyle": "--",
-        },
-        "smirnov333_23_139_multithread": {
-            "color": "#d62728",
-            "marker": ">",
-            "linestyle": "-",
-        },
+        "hk323_15_94_dfs": {"color": "#1b9e77", "marker": "<", "linestyle": "-."},
+        "hk323_15_94_bfs": {"color": "#a1d99b", "marker": ">", "linestyle": ":"},
+        "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
+        # Smirnov333_23_139
+        "smirnov333_23_139_single": {"color": "#d62728", "marker": "<", "linestyle": "--"},
+        "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "d", "linestyle": "-."},
+        "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "p", "linestyle": ":"},
+        "smirnov333_23_139_hybrid": {"color": "#980043", "marker": ">", "linestyle": "-"},
     }
 
     # Plot each column except size

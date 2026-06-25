@@ -19,7 +19,7 @@ where
     duration.as_secs_f64() * 1000.0
 }
 
-/// Classical matrix multiplication using `faer` matrix multiplication, adapted for timing curves.
+/// Classical matrix multiplication using `faer` matrix multiplication.
 fn base_matmul(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
     let mut c = Mat::zeros(a.nrows(), b.ncols());
     let par = if multithreaded {
@@ -46,7 +46,14 @@ fn run_single_test(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) {
             let _c = base_matmul(a, b, multithreaded);
         }
     });
-    print!(" {} {} {} {} {:.6};", a.nrows(), a.ncols(), b.ncols(), num_trials, time);
+    print!(
+        " {} {} {} {} {:.6};",
+        a.nrows(),
+        a.ncols(),
+        b.ncols(),
+        num_trials,
+        time
+    );
     std::io::stdout().flush().unwrap();
 }
 
@@ -63,9 +70,13 @@ fn main() {
         return;
     }
 
-    let type_opt: i32 = positional_args[0].parse().expect("Invalid type option (must be 1, 2, or 3)");
+    let type_opt: i32 = positional_args[0]
+        .parse()
+        .expect("Invalid type option (must be 1, 2, or 3)");
     let num_threads: i32 = if positional_args.len() > 1 {
-        positional_args[1].parse().expect("Invalid thread count option")
+        positional_args[1]
+            .parse()
+            .expect("Invalid thread count option")
     } else {
         0
     };

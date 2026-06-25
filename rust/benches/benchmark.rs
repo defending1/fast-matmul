@@ -1,5 +1,5 @@
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::MatMul;
+use fast_matmul::matmul::{MatMul, ParallelismMode};
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use rand::Rng;
@@ -117,8 +117,16 @@ impl Benchmark {
                 folder: format!("{}_Single-Thread", algo),
             });
             mappings.push(ColumnMapping {
-                header: format!("{}_multithread", clean),
-                folder: format!("{}_Multi-Thread", algo),
+                header: format!("{}_dfs", clean),
+                folder: format!("{}_DFS", algo),
+            });
+            mappings.push(ColumnMapping {
+                header: format!("{}_bfs", clean),
+                folder: format!("{}_BFS", algo),
+            });
+            mappings.push(ColumnMapping {
+                header: format!("{}_hybrid", clean),
+                folder: format!("{}_Hybrid", algo),
             });
         }
 
@@ -271,7 +279,7 @@ impl Benchmark {
         );
     }
 
-    /// Registers single-thread and multi-thread CP benchmarks for one algorithm and matrix size.
+    /// Registers single-thread and all parallel CP benchmarks for one algorithm and matrix size.
     fn bench_cp(
         group: &mut BenchmarkGroup<WallTime>,
         a: &Mat<f64>,
@@ -286,9 +294,19 @@ impl Benchmark {
             |bench, &_| bench.iter(|| mm.cp_matmul_single_thread(a, b)),
         );
         group.bench_with_input(
-            BenchmarkId::new(format!("{}/Multi-Thread", algo), size),
+            BenchmarkId::new(format!("{}/DFS", algo), size),
             &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b)),
+            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Dfs)),
+        );
+        group.bench_with_input(
+            BenchmarkId::new(format!("{}/BFS", algo), size),
+            &size,
+            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Bfs)),
+        );
+        group.bench_with_input(
+            BenchmarkId::new(format!("{}/Hybrid", algo), size),
+            &size,
+            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Hybrid)),
         );
     }
 
