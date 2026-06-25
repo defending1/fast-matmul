@@ -1,47 +1,51 @@
-## Overview of this fork
+## Rust fork
 
 My project contributions can be found in the directories `./rust` and
 `./report`.
 
-### Rust Benchmarking & Plotting
+### Installation (rust project)
 
-We use [Criterion.rs](https://github.com/bheisler/criterion.rs) for
-statistically sound benchmarking of the Rust implementation. To run benchmarks
-and generate plots:
+To run the automated installation:
 
-1. **Run the Benchmark Suite**: Run all CP algorithms (Strassen, Grey-Strassen,
-   HK323-15-94, Smirnov333-23-139), MKL, and System/Faer across sizes $N=2$ to
-   $N=512$:
-   ```bash
-   cd rust
-   cargo bench --bench bench
-   ```
-   This executes Criterion and automatically exports/saves the results to
-   `rust/generated/benchmark_results.csv`.
+```bash
+cd rust
+./setup.sh
+```
 
-2. **Regenerate CSV from Cache (No Re-run)**: If you have already run the
-   benchmarks, you can extract execution times from Criterion's cached estimates
-   to update the CSV without running the benchmarks again:
-   ```bash
-   cd rust
-   cargo bench --bench bench -- --plot-only
-   ```
-   _Note: If you run a filtered benchmark (e.g.
-   `cargo bench --bench bench -- strassen`), the cached values for
-   unmodified algorithms are automatically preserved and merged from the
-   previous CSV._
+Then run
 
-3. **Generate/Update Performance Plot**: Generate the performance comparison
-   graph using `uv` (or standard python with `pandas` and `matplotlib`
-   installed):
-   ```bash
-   uv run python/plot.py
-   ```
-   The output plot is saved to `rust/generated/benchmark_plot.png`.
+```bash
+cargo bench
+```
 
-TODO:
+to run benchmarks and generate plots.
 
-- HOw to dynamic peeling instead of matrix padding?
+### Dependencies
+
+- **Rust nightly compiler:** Get [rustup](https://rustup.rs/) and switch to
+  nightly:
+  ```bash
+  rustup default nightly
+  ```
+- **Spack**: This project depends on Spack package manager for running
+  comparison with Intel's
+  [MKL dgemm](https://www.intel.com/content/www/us/en/docs/onemkl/tutorial-c/2021-4/multiplying-matrices-using-dgemm.html)
+  library.
+
+### Running
+
+Benchmark algorithms and generate plots:
+
+```bash
+cargo bench --bench bench
+
+Options:
+  --full 
+    When this argument is passed, full benchmark runs up to machine's physical limit for matrix
+    storage.
+  -- SIZE
+    Benchmarks only a specific size
+```
 
 ## Fast matrix multiplication
 
