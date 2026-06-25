@@ -50,13 +50,24 @@ def main():
         "hk323_15_94_bfs": {"color": "#a1d99b", "marker": ">", "linestyle": ":"},
         "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
         # Smirnov333_23_139
-        "smirnov333_23_139_single": {"color": "#d62728", "marker": "<", "linestyle": "--"},
+        "smirnov333_23_139_single": {
+            "color": "#d62728",
+            "marker": "<",
+            "linestyle": "--",
+        },
         "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "d", "linestyle": "-."},
         "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "p", "linestyle": ":"},
-        "smirnov333_23_139_hybrid": {"color": "#980043", "marker": ">", "linestyle": "-"},
+        "smirnov333_23_139_hybrid": {
+            "color": "#980043",
+            "marker": ">",
+            "linestyle": "-",
+        },
     }
 
-    # Plot each column except size
+    # Filter out very small sizes to focus on regions with algorithm differences
+    df = df[df["size"] >= 128]
+
+    # Plot each column except size (converting time to milliseconds)
     for col in df.columns:
         if col == "size":
             continue
@@ -64,7 +75,7 @@ def main():
         style = styles.get(col, {"marker": "x", "linestyle": ":"})
         ax.plot(
             df["size"],
-            df[col],
+            df[col] * 1000.0,
             label=col.replace("_", " ").title(),
             linewidth=2,
             markersize=6,
@@ -76,7 +87,7 @@ def main():
     ax.set_yscale("log")
     ax.set_xlabel("Matrix Size (N x N)", fontsize=12, fontweight="bold", labelpad=10)
     ax.set_ylabel(
-        "Execution Time (seconds)", fontsize=12, fontweight="bold", labelpad=10
+        "Execution Time (milliseconds)", fontsize=12, fontweight="bold", labelpad=10
     )
     ax.set_title(
         "Matrix Multiplication Performance Comparison",
