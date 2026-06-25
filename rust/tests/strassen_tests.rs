@@ -1,5 +1,5 @@
 use faer::Mat;
-use fast_matmul::matmul::MatMul;
+use fast_matmul::matmul::{MatMul, ParallelismMode};
 use rand::Rng;
 
 #[test]
@@ -34,24 +34,34 @@ fn test_strassen_matmul_correctness() {
             }
         }
 
-        let c_strassen = mm.cp_matmul(&a, &b);
-        let c_classical = &a * &b;
+        let modes = [
+            ParallelismMode::Dfs,
+            ParallelismMode::Bfs,
+            ParallelismMode::Hybrid,
+            ParallelismMode::Sequential,
+        ];
 
-        assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));
-        for i in 0..m {
-            for j in 0..p {
-                let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
-                assert!(
-                    diff < 1e-10,
-                    "Mismatch at ({}, {}) for shape ({}, {}, {}): Strassen = {}, Classical = {}",
-                    i,
-                    j,
-                    m,
-                    n,
-                    p,
-                    c_strassen[(i, j)],
-                    c_classical[(i, j)]
-                );
+        for &mode in &modes {
+            let c_strassen = mm.cp_matmul(&a, &b, mode);
+            let c_classical = &a * &b;
+
+            assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));
+            for i in 0..m {
+                for j in 0..p {
+                    let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
+                    assert!(
+                        diff < 1e-10,
+                        "Mismatch at ({}, {}) for shape ({}, {}, {}) with mode {:?}: Strassen = {}, Classical = {}",
+                        i,
+                        j,
+                        m,
+                        n,
+                        p,
+                        mode,
+                        c_strassen[(i, j)],
+                        c_classical[(i, j)]
+                    );
+                }
             }
         }
     }
@@ -128,22 +138,32 @@ fn test_strassen_power_of_two_correctness() {
             }
         }
 
-        let c_strassen = mm.cp_matmul(&a, &b);
-        let c_classical = &a * &b;
+        let modes = [
+            ParallelismMode::Dfs,
+            ParallelismMode::Bfs,
+            ParallelismMode::Hybrid,
+            ParallelismMode::Sequential,
+        ];
 
-        assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (size, size));
-        for i in 0..size {
-            for j in 0..size {
-                let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
-                assert!(
-                    diff < 1e-9,
-                    "Mismatch at ({}, {}) for size 2^{}: Strassen = {}, Classical = {}",
-                    i,
-                    j,
-                    n,
-                    c_strassen[(i, j)],
-                    c_classical[(i, j)]
-                );
+        for &mode in &modes {
+            let c_strassen = mm.cp_matmul(&a, &b, mode);
+            let c_classical = &a * &b;
+
+            assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (size, size));
+            for i in 0..size {
+                for j in 0..size {
+                    let diff = (c_strassen[(i, j)] - c_classical[(i, j)]).abs();
+                    assert!(
+                        diff < 1e-9,
+                        "Mismatch at ({}, {}) for size 2^{} with mode {:?}: Strassen = {}, Classical = {}",
+                        i,
+                        j,
+                        n,
+                        mode,
+                        c_strassen[(i, j)],
+                        c_classical[(i, j)]
+                    );
+                }
             }
         }
     }

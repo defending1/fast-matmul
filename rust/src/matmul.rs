@@ -3,6 +3,39 @@ use crate::dynamic_peeling::DynamicPeeling;
 use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
+use std::convert::TryFrom;
+
+/// The mode of parallel task execution to use in the fast matrix multiplication algorithm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParallelismMode {
+    /// Depth-First Search (DFS) parallelism:
+    /// Processes recursive steps sequentially and parallelizes inside the base/leaf GEMM calls.
+    Dfs = 0,
+    /// Breadth-First Search (BFS) parallelism:
+    /// Spawns recursive tasks in parallel and runs the base/leaf GEMM calls sequentially.
+    Bfs = 1,
+    /// Hybrid parallelism:
+    /// Spawns recursive tasks in parallel at the top levels, and switches to DFS style (sequential tasks
+    /// with multithreaded GEMM) at the lower levels once thread capacity is saturated.
+    Hybrid = 2,
+    /// Single-threaded execution (completely sequential).
+    Sequential = 3,
+}
+
+impl TryFrom<i32> for ParallelismMode {
+    type Error = String;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ParallelismMode::Dfs),
+            1 => Ok(ParallelismMode::Bfs),
+            2 => Ok(ParallelismMode::Hybrid),
+            3 => Ok(ParallelismMode::Sequential),
+            _ => Err(format!("Invalid parallelism mode: {}. Must be 0 (Dfs), 1 (Bfs), 2 (Hybrid), or 3 (Sequential).", value)),
+        }
+    }
+}
+
+
 /// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
 pub struct Tensor3 {
@@ -143,12 +176,13 @@ impl<'a> MatMul<'a> {
         c
     }
 
+    /// Calculate the total number of recursion levels for the given input matrix shape.
     /// Performs one step of dynamic peeling in the multiplication C = A * B.
     ///
     /// Delegates to [`DynamicPeeling`], which handles the core CP product and
     /// the GEMM-based boundary corrections for odd or non-power-of-two dimensions.
-    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-        DynamicPeeling::new(self, a, b, multithreaded).run()
+    fn dynamic_peeling(&self, a: &Mat<f64>, b: &Mat<f64>, mode: ParallelismMode) -> Mat<f64> {
+        DynamicPeeling::new(self, a, b, mode).run()
     }
 
     /// Helper to compute a single Strassen product M_l
@@ -157,12 +191,12 @@ impl<'a> MatMul<'a> {
         l: usize,
         a_blocks: &[MatRef<'_, f64>],
         b_blocks: &[MatRef<'_, f64>],
-        multithreaded: bool,
+        mode: ParallelismMode,
     ) -> Mat<f64> {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.col(l));
         let b_comb = Self::combine_blocks(b_blocks, self.cp.v.col(l));
 
-        self.cp_matmul_impl(&a_comb, &b_comb, multithreaded)
+        self.cp_matmul_impl(&a_comb, &b_comb, mode)
     }
 
     /// Computes the linear combination of matrix blocks for a single CP decomposition component.
@@ -250,23 +284,48 @@ impl<'a> MatMul<'a> {
         m_block: usize,
         n_block: usize,
         p_block: usize,
-        multithreaded: bool,
+        mode: ParallelismMode,
     ) -> Vec<Mat<f64>> {
         const PARALLEL_CUTOFF: usize = 256;
-        if multithreaded
-            && m_block >= PARALLEL_CUTOFF
-            && n_block >= PARALLEL_CUTOFF
-            && p_block >= PARALLEL_CUTOFF
-        {
-            use rayon::prelude::*;
-            (0..self.cp.rank)
-                .into_par_iter()
-                .map(|l| self.compute_m_l(l, a_blocks, b_blocks, true))
-                .collect()
-        } else {
-            (0..self.cp.rank)
-                .map(|l| self.compute_m_l(l, a_blocks, b_blocks, multithreaded))
-                .collect()
+
+        match mode {
+            ParallelismMode::Dfs => {
+                // DFS: recursive steps are sequential
+                (0..self.cp.rank)
+                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs))
+                    .collect()
+            }
+            ParallelismMode::Bfs => {
+                // BFS: recursive steps are parallel
+                use rayon::prelude::*;
+                (0..self.cp.rank)
+                    .into_par_iter()
+                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Bfs))
+                    .collect()
+            }
+            ParallelismMode::Hybrid => {
+                // Hybrid: BFS style at top levels, switch to DFS once blocks are small
+                if m_block >= PARALLEL_CUTOFF
+                    && n_block >= PARALLEL_CUTOFF
+                    && p_block >= PARALLEL_CUTOFF
+                {
+                    use rayon::prelude::*;
+                    (0..self.cp.rank)
+                        .into_par_iter()
+                        .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Hybrid))
+                        .collect()
+                } else {
+                    (0..self.cp.rank)
+                        .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs))
+                        .collect()
+                }
+            }
+            ParallelismMode::Sequential => {
+                // Sequential: all steps sequential
+                (0..self.cp.rank)
+                    .map(|l| self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Sequential))
+                    .collect()
+            }
         }
     }
 
@@ -328,13 +387,13 @@ impl<'a> MatMul<'a> {
 
     /// Internal implementation of the recursive matrix multiplication algorithm.
     ///
-    /// Depending on dimensions, this may perform base matrix multiplication, standard
-    /// CP-decomposition multiplication, dynamic peeling, or recursive splitting of blocks.
+    /// Depending on dimensions and the parallelism mode, this may perform base matrix multiplication,
+    /// standard CP-decomposition multiplication, dynamic peeling, or recursive splitting of blocks.
     pub(crate) fn cp_matmul_impl(
         &self,
         a: &Mat<f64>,
         b: &Mat<f64>,
-        multithreaded: bool,
+        mode: ParallelismMode,
     ) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
@@ -343,7 +402,8 @@ impl<'a> MatMul<'a> {
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
         if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= 128 || m <= 128 || p <= 128 {
-            return self.base_matmul(a, b, multithreaded);
+            let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
+            return self.base_matmul(a, b, leaf_multithreaded);
         }
 
         if m == self.cp.m && n == self.cp.n && p == self.cp.p {
@@ -355,7 +415,7 @@ impl<'a> MatMul<'a> {
         let extra_p = p % self.cp.p;
 
         if extra_m > 0 || extra_n > 0 || extra_p > 0 {
-            return self.dynamic_peeling(a, b, multithreaded);
+            return self.dynamic_peeling(a, b, mode);
         }
 
         let m_block = m / self.cp.m;
@@ -371,7 +431,7 @@ impl<'a> MatMul<'a> {
             m_block,
             n_block,
             p_block,
-            multithreaded,
+            mode,
         );
 
         self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
@@ -379,11 +439,11 @@ impl<'a> MatMul<'a> {
 
     /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).
     pub fn cp_matmul_single_thread(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, false)
+        self.cp_matmul_impl(a, b, ParallelismMode::Sequential)
     }
 
-    /// Computes C = A * B using the CP decomposition algorithm recursively.
-    pub fn cp_matmul(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, true)
+    /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode.
+    pub fn cp_matmul(&self, a: &Mat<f64>, b: &Mat<f64>, mode: ParallelismMode) -> Mat<f64> {
+        self.cp_matmul_impl(a, b, mode)
     }
 }

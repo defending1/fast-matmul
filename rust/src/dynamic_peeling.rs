@@ -1,4 +1,4 @@
-use crate::matmul::MatMul;
+use crate::matmul::{MatMul, ParallelismMode};
 use faer::Mat;
 
 /// Handles a single dynamic-peeling step of the multiplication C = A × B.
@@ -7,9 +7,8 @@ use faer::Mat;
 /// up to three boundary regions (inner strip, right columns, bottom rows). The core is
 /// computed via the fast CP algorithm; the boundary regions fall back to standard GEMM.
 ///
-/// # Matrix Partitioning Diagram
 ///
-/// Following the Dynamic Peeling formulation, input matrices `A` and `B` are partitioned as:
+/// For example, in Strassen algorithm, input matrices `A` and `B` are partitioned as:
 ///
 /// ```text
 ///            <--- n-1 --->  < 1 >                  <--- p-1 --->  < 1 >
@@ -51,7 +50,7 @@ pub(crate) struct DynamicPeeling<'a> {
     matmul: &'a MatMul<'a>,
     a: &'a Mat<f64>,
     b: &'a Mat<f64>,
-    multithreaded: bool,
+    mode: ParallelismMode,
 }
 
 impl<'a> DynamicPeeling<'a> {
@@ -60,13 +59,13 @@ impl<'a> DynamicPeeling<'a> {
         matmul: &'a MatMul<'a>,
         a: &'a Mat<f64>,
         b: &'a Mat<f64>,
-        multithreaded: bool,
+        mode: ParallelismMode,
     ) -> Self {
         Self {
             matmul,
             a,
             b,
-            multithreaded,
+            mode,
         }
     }
 
@@ -92,7 +91,7 @@ impl<'a> DynamicPeeling<'a> {
             let b_core = self.b.as_ref().get(0..core_n, 0..core_p).to_owned();
             let c_core = self
                 .matmul
-                .cp_matmul_impl(&a_core, &b_core, self.multithreaded);
+                .cp_matmul_impl(&a_core, &b_core, self.mode);
             c.as_mut().get_mut(0..core_m, 0..core_p).copy_from(&c_core);
         }
     }
@@ -109,9 +108,10 @@ impl<'a> DynamicPeeling<'a> {
         if extra_n > 0 && core_m > 0 && core_p > 0 {
             let a_extra = self.a.as_ref().get(0..core_m, core_n..n).to_owned();
             let b_extra = self.b.as_ref().get(core_n..n, 0..core_p).to_owned();
+            let multithreaded = matches!(self.mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
             let correction = self
                 .matmul
-                .base_matmul(&a_extra, &b_extra, self.multithreaded);
+                .base_matmul(&a_extra, &b_extra, multithreaded);
             let mut c_block = c.as_mut().get_mut(0..core_m, 0..core_p);
             for j in 0..core_p {
                 for i in 0..core_m {
@@ -131,9 +131,10 @@ impl<'a> DynamicPeeling<'a> {
 
         if extra_p > 0 {
             let b_extra = self.b.as_ref().get(0..n, core_p..p).to_owned();
+            let multithreaded = matches!(self.mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
             let correction = self
                 .matmul
-                .base_matmul(self.a, &b_extra, self.multithreaded);
+                .base_matmul(self.a, &b_extra, multithreaded);
             c.as_mut().get_mut(0..m, core_p..p).copy_from(&correction);
         }
     }
@@ -150,9 +151,10 @@ impl<'a> DynamicPeeling<'a> {
         if extra_m > 0 && core_p > 0 {
             let a_extra = self.a.as_ref().get(core_m..m, 0..n).to_owned();
             let b_extra = self.b.as_ref().get(0..n, 0..core_p).to_owned();
+            let multithreaded = matches!(self.mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
             let correction = self
                 .matmul
-                .base_matmul(&a_extra, &b_extra, self.multithreaded);
+                .base_matmul(&a_extra, &b_extra, multithreaded);
             c.as_mut()
                 .get_mut(core_m..m, 0..core_p)
                 .copy_from(&correction);

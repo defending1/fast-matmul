@@ -1,6 +1,6 @@
 use faer::Mat;
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::MatMul;
+use fast_matmul::matmul::{MatMul, ParallelismMode};
 use rand::Rng;
 
 #[test]
@@ -38,22 +38,32 @@ fn test_cp_matmul_correctness() {
             }
         }
 
-        let c_fast = mm.cp_matmul(&a, &b);
-        let c_classical = &a * &b;
+        let modes = [
+            ParallelismMode::Dfs,
+            ParallelismMode::Bfs,
+            ParallelismMode::Hybrid,
+            ParallelismMode::Sequential,
+        ];
 
-        assert_eq!((c_fast.nrows(), c_fast.ncols()), (m, p));
-        for i in 0..m {
-            for j in 0..p {
-                let diff = (c_fast[(i, j)] - c_classical[(i, j)]).abs();
-                assert!(
-                    diff < 1e-10,
-                    "Mismatch for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name,
-                    i,
-                    j,
-                    c_fast[(i, j)],
-                    c_classical[(i, j)]
-                );
+        for &mode in &modes {
+            let c_fast = mm.cp_matmul(&a, &b, mode);
+            let c_classical = &a * &b;
+
+            assert_eq!((c_fast.nrows(), c_fast.ncols()), (m, p));
+            for i in 0..m {
+                for j in 0..p {
+                    let diff = (c_fast[(i, j)] - c_classical[(i, j)]).abs();
+                    assert!(
+                        diff < 1e-10,
+                        "Mismatch for algorithm {} with mode {:?} at ({}, {}): fast = {}, classical = {}",
+                        algo_name,
+                        mode,
+                        i,
+                        j,
+                        c_fast[(i, j)],
+                        c_classical[(i, j)]
+                    );
+                }
             }
         }
 
@@ -75,22 +85,25 @@ fn test_cp_matmul_correctness() {
             }
         }
 
-        let c_fast_pad = mm.cp_matmul(&a_pad, &b_pad);
-        let c_classical_pad = &a_pad * &b_pad;
+        for &mode in &modes {
+            let c_fast_pad = mm.cp_matmul(&a_pad, &b_pad, mode);
+            let c_classical_pad = &a_pad * &b_pad;
 
-        assert_eq!((c_fast_pad.nrows(), c_fast_pad.ncols()), (m_pad, p_pad));
-        for i in 0..m_pad {
-            for j in 0..p_pad {
-                let diff = (c_fast_pad[(i, j)] - c_classical_pad[(i, j)]).abs();
-                assert!(
-                    diff < 1e-10,
-                    "Mismatch with padding for algorithm {} at ({}, {}): fast = {}, classical = {}",
-                    algo_name,
-                    i,
-                    j,
-                    c_fast_pad[(i, j)],
-                    c_classical_pad[(i, j)]
-                );
+            assert_eq!((c_fast_pad.nrows(), c_fast_pad.ncols()), (m_pad, p_pad));
+            for i in 0..m_pad {
+                for j in 0..p_pad {
+                    let diff = (c_fast_pad[(i, j)] - c_classical_pad[(i, j)]).abs();
+                    assert!(
+                        diff < 1e-10,
+                        "Mismatch with padding for algorithm {} with mode {:?} at ({}, {}): fast = {}, classical = {}",
+                        algo_name,
+                        mode,
+                        i,
+                        j,
+                        c_fast_pad[(i, j)],
+                        c_classical_pad[(i, j)]
+                    );
+                }
             }
         }
     }
