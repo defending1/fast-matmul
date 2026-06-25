@@ -219,11 +219,7 @@ impl<'a> MatMul<'a> {
             // To optimize performance, it skips blocks with a coefficient of exactly `0.0` and
             // accumulates directly into the output matrix `comb` without allocating temporary arrays.
             if coeff != 0.0 {
-                for c in 0..comb.ncols() {
-                    for r in 0..comb.nrows() {
-                        comb[(r, c)] += coeff * block[(r, c)];
-                    }
-                }
+                comb += faer::Scale(coeff) * block;
             }
         }
         comb
@@ -373,11 +369,7 @@ impl<'a> MatMul<'a> {
                             i * m_block..(i + 1) * m_block,
                             j * p_block..(j + 1) * p_block,
                         );
-                        for c_idx in 0..p_block {
-                            for r_idx in 0..m_block {
-                                block[(r_idx, c_idx)] += coeff * m_prod[(r_idx, c_idx)];
-                            }
-                        }
+                        block += faer::Scale(coeff) * m_prod;
                     }
                 }
             }

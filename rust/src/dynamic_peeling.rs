@@ -113,11 +113,7 @@ impl<'a> DynamicPeeling<'a> {
                 .matmul
                 .base_matmul(&a_extra, &b_extra, multithreaded);
             let mut c_block = c.as_mut().get_mut(0..core_m, 0..core_p);
-            for j in 0..core_p {
-                for i in 0..core_m {
-                    c_block[(i, j)] += correction[(i, j)];
-                }
-            }
+            c_block += &correction;
         }
     }
 
