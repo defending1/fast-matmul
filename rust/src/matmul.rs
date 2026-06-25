@@ -3,38 +3,7 @@ use crate::dynamic_peeling::DynamicPeeling;
 use faer::{Col, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
-use std::convert::TryFrom;
-
-/// The mode of parallel task execution to use in the fast matrix multiplication algorithm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParallelismMode {
-    /// Depth-First Search (DFS) parallelism:
-    /// Processes recursive steps sequentially and parallelizes inside the base/leaf GEMM calls.
-    Dfs = 0,
-    /// Breadth-First Search (BFS) parallelism:
-    /// Spawns recursive tasks in parallel and runs the base/leaf GEMM calls sequentially.
-    Bfs = 1,
-    /// Hybrid parallelism:
-    /// Spawns recursive tasks in parallel at the top levels, and switches to DFS style (sequential tasks
-    /// with multithreaded GEMM) at the lower levels once thread capacity is saturated.
-    Hybrid = 2,
-    /// Single-threaded execution (completely sequential).
-    Sequential = 3,
-}
-
-impl TryFrom<i32> for ParallelismMode {
-    type Error = String;
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(ParallelismMode::Dfs),
-            1 => Ok(ParallelismMode::Bfs),
-            2 => Ok(ParallelismMode::Hybrid),
-            3 => Ok(ParallelismMode::Sequential),
-            _ => Err(format!("Invalid parallelism mode: {}. Must be 0 (Dfs), 1 (Bfs), 2 (Hybrid), or 3 (Sequential).", value)),
-        }
-    }
-}
-
+pub use crate::parallelism_mode::ParallelismMode;
 
 /// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
@@ -417,14 +386,8 @@ impl<'a> MatMul<'a> {
         let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
         let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
-        let m_products = self.compute_block_products(
-            &a_blocks,
-            &b_blocks,
-            m_block,
-            n_block,
-            p_block,
-            mode,
-        );
+        let m_products =
+            self.compute_block_products(&a_blocks, &b_blocks, m_block, n_block, p_block, mode);
 
         self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
     }
