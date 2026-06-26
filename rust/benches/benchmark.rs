@@ -271,22 +271,14 @@ impl Benchmark {
         }
     }
 
-    /// Helper to register a benchmark with Criterion using a wrapped syntax.
-    fn register_bench<F, O>(
-        group: &mut BenchmarkGroup<WallTime>,
-        name: &str,
-        size: usize,
-        mut f: F,
-    ) where
+    /// Helper to register a benchmark with Criterion.
+    fn register_bench<F, O>(group: &mut BenchmarkGroup<WallTime>, name: &str, size: usize, mut f: F)
+    where
         F: FnMut() -> O,
     {
-        group.bench_with_input(
-            BenchmarkId::new(name, size),
-            &size,
-            move |bench, &_| {
-                bench.iter(&mut f);
-            },
-        );
+        group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
+            bench.iter(&mut f);
+        });
     }
 
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
@@ -329,24 +321,15 @@ impl Benchmark {
             size,
             || mm.cp_matmul(a, b, ParallelismMode::Sequential, base_choice),
         );
-        Self::register_bench(
-            group,
-            &format!("{}-{}/DFS", algo, suffix),
-            size,
-            || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice),
-        );
-        Self::register_bench(
-            group,
-            &format!("{}-{}/BFS", algo, suffix),
-            size,
-            || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice),
-        );
-        Self::register_bench(
-            group,
-            &format!("{}-{}/Hybrid", algo, suffix),
-            size,
-            || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice),
-        );
+        Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
+            mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice)
+        });
+        Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
+            mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice)
+        });
+        Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
+            mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice)
+        });
     }
 
     /// Checks if the matrix size is supported by the machine's memory and limits.
