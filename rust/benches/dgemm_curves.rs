@@ -1,9 +1,11 @@
 mod base_matmul;
 
+use criterion::{
+    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion,
+};
 use faer::Mat;
 use fast_matmul::matmul::BaseMatMul;
 use rand::Rng;
-use std::io::Write;
 
 /// Helper function to generate a random matrix of double precision floats.
 fn random_matrix(rows: usize, cols: usize) -> Mat<f64> {
@@ -11,100 +13,43 @@ fn random_matrix(rows: usize, cols: usize) -> Mat<f64> {
     Mat::from_fn(rows, cols, |_, _| rng.gen_range(-1.0..1.0))
 }
 
-/// Helper function to time an execution and return duration in milliseconds.
-fn time_fn<F>(mut func: F) -> f64
-where
-    F: FnMut(),
-{
-    let t1 = std::time::Instant::now();
-    func();
-    let duration = t1.elapsed();
-    duration.as_secs_f64() * 1000.0
+/// Adjusts Criterion group sampling parameters based on matrix size.
+fn configure_group_for_size(group: &mut BenchmarkGroup<WallTime>, size: usize) {
+    let (samples, warmup_ms, measure_ms) = match size {
+        ..=16 => (10, 50, 100),
+        17..=64 => (10, 100, 200),
+        65..=256 => (10, 200, 500),
+        257..=1024 => (10, 500, 1000),
+        _ => (10, 100, 200),
+    };
+    group.sample_size(samples);
+    group.warm_up_time(std::time::Duration::from_millis(warmup_ms));
+    group.measurement_time(std::time::Duration::from_millis(measure_ms));
 }
 
-
-
-/// Run a single timing test and output in the same format as the C++ benchmark.
-fn run_single_test(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) {
-    let num_trials = 5;
-    let time = time_fn(|| {
-        for _ in 0..num_trials {
-            let _c = base_matmul::base_matmul(a, b, multithreaded, BaseMatMul::Faer);
-        }
-    });
-    print!(
-        " {} {} {} {} {:.6};",
-        a.nrows(),
-        a.ncols(),
-        b.ncols(),
-        num_trials,
-        time
-    );
-    std::io::stdout().flush().unwrap();
-}
-
-fn main() {
-    let positional_args: Vec<String> = std::env::args()
-        .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .collect();
-
-    if positional_args.is_empty() {
-        println!("Usage: cargo bench --bench dgemm_curves -- <TYPE> [NUM_THREADS]");
-        println!("  TYPE: 1 (SQUARE), 2 (OUTER_PRODUCT), 3 (TS_SQUARE)");
-        println!(
-            "  NUM_THREADS: number of threads (1 for sequential, 0 or omitted for maximum parallel)"
-        );
-        return;
-    }
-
-    let type_opt: i32 = positional_args[0]
-        .parse()
-        .expect("Invalid type option (must be 1, 2, or 3)");
-    let num_threads: i32 = if positional_args.len() > 1 {
-        positional_args[1]
-            .parse()
-            .expect("Invalid thread count option")
-    } else {
-        0
-    };
-
-    // Configure threads if needed (faer uses Rayon thread pool internally by default)
-    let multithreaded = num_threads != 1;
-    if num_threads > 1 {
-        // Build thread pool with requested threads if it doesn't already exist or configure rayon
-        let _ = rayon::ThreadPoolBuilder::new()
-            .num_threads(num_threads as usize)
-            .build_global();
-    }
-
-    let n_vals: Vec<usize> = if !multithreaded {
-        (25..=3000).step_by(25).collect()
-    } else {
-        (200..=8000).step_by(100).collect()
-    };
+/// Registers the curves benchmarks for all shapes, threading modes, and libraries with Criterion.
+fn bench_dgemm_curves(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dgemm_curves");
+    let n_vals: Vec<usize> = (1..=10).map(|n| 1usize << n).collect();
 
     for &n in &n_vals {
-        let (a, b) = match type_opt {
-            1 => {
-                // SQUARE: N x N x N
-                (random_matrix(n, n), random_matrix(n, n))
-            }
-            2 => {
-                // OUTER_PRODUCT: N x 800 x N
-                (random_matrix(n, 800), random_matrix(800, n))
-            }
-            3 => {
-                // TS_SQUARE: N x 800 x 800
-                (random_matrix(n, 800), random_matrix(800, 800))
-            }
-            _ => panic!("Incorrect type option (must be 1, 2, or 3)"),
-        };
+        configure_group_for_size(&mut group, n);
+        {
+            let a = random_matrix(n, n);
+            let b = random_matrix(n, n);
 
-        run_single_test(&a, &b, multithreaded);
-        if n % 1000 == 0 {
-            println!("...");
+            group.bench_with_input(
+                BenchmarkId::new("Square/Faer-Sequential", n),
+                &n,
+                |bencher, _| {
+                    bencher.iter(|| base_matmul::base_matmul(&a, &b, false, BaseMatMul::Faer));
+                },
+            );
         }
     }
-    println!();
+
+    group.finish();
 }
+
+criterion_group!(benches, bench_dgemm_curves);
+criterion_main!(benches);
