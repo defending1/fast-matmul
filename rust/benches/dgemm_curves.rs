@@ -1,4 +1,7 @@
+mod base_matmul;
+
 use faer::Mat;
+use fast_matmul::matmul::BaseMatMul;
 use rand::Rng;
 use std::io::Write;
 
@@ -19,31 +22,14 @@ where
     duration.as_secs_f64() * 1000.0
 }
 
-/// Classical matrix multiplication using `faer` matrix multiplication.
-fn base_matmul(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-    let mut c = Mat::zeros(a.nrows(), b.ncols());
-    let par = if multithreaded {
-        faer::get_global_parallelism()
-    } else {
-        faer::Par::Seq
-    };
-    faer::linalg::matmul::matmul(
-        c.as_mut(),
-        faer::Accum::Replace,
-        a.as_ref(),
-        b.as_ref(),
-        1.0,
-        par,
-    );
-    c
-}
+
 
 /// Run a single timing test and output in the same format as the C++ benchmark.
 fn run_single_test(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) {
     let num_trials = 5;
     let time = time_fn(|| {
         for _ in 0..num_trials {
-            let _c = base_matmul(a, b, multithreaded);
+            let _c = base_matmul::base_matmul(a, b, multithreaded, BaseMatMul::Faer);
         }
     });
     print!(

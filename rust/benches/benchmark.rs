@@ -1,3 +1,5 @@
+mod base_matmul;
+
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use fast_matmul::cp::CP;
@@ -41,6 +43,7 @@ impl Benchmark {
         let content = std::fs::read_to_string(&path).ok()?;
         let json: serde_json::Value = serde_json::from_str(&content).ok()?;
         let nanoseconds = json.get("mean")?.get("point_estimate")?.as_f64()?;
+        // Convert nanoseconds to seconds
         Some(nanoseconds / 1_000_000_000.0)
     }
 
@@ -236,41 +239,6 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
-    /// Run the baseline sequential or parallel matrix multiplication,
-    /// selectively using `faer` or Intel MKL `dgemm` based on the specified choice.
-    fn base_matmul(
-        a: &Mat<f64>,
-        b: &Mat<f64>,
-        multithreaded: bool,
-        base_choice: BaseMatMul,
-    ) -> Mat<f64> {
-        match base_choice {
-            BaseMatMul::Faer => {
-                let mut c = Mat::zeros(a.nrows(), b.ncols());
-                let par = if multithreaded {
-                    faer::get_global_parallelism()
-                } else {
-                    faer::Par::Seq
-                };
-                faer::linalg::matmul::matmul(
-                    c.as_mut(),
-                    faer::Accum::Replace,
-                    a.as_ref(),
-                    b.as_ref(),
-                    1.0,
-                    par,
-                );
-                c
-            }
-            BaseMatMul::Dgemm => {
-                // Adjust thread count for MKL dynamically based on concurrency requirements.
-                // Single-threaded GEMM runs sequentially; multithreaded GEMM uses all available cores.
-                fast_matmul::mkl::mkl_set_threads(if multithreaded { 0 } else { 1 });
-                fast_matmul::mkl::mkl_matmul(a, b)
-            }
-        }
-    }
-
     /// Helper to register a benchmark with Criterion.
     fn register_bench<F, O>(group: &mut BenchmarkGroup<WallTime>, name: &str, size: usize, mut f: F)
     where
@@ -284,20 +252,20 @@ impl Benchmark {
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
     fn bench_mkl(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
         Self::register_bench(group, "MKL-Sequential", size, || {
-            Self::base_matmul(a, b, false, BaseMatMul::Dgemm)
+            base_matmul::base_matmul(a, b, false, BaseMatMul::Dgemm)
         });
         Self::register_bench(group, "MKL-Parallel", size, || {
-            Self::base_matmul(a, b, true, BaseMatMul::Dgemm)
+            base_matmul::base_matmul(a, b, true, BaseMatMul::Dgemm)
         });
     }
 
     /// Registers the Faer sequential and parallel benchmarks for one matrix size.
     fn bench_faer(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
         Self::register_bench(group, "Faer-Sequential", size, || {
-            Self::base_matmul(a, b, false, BaseMatMul::Faer)
+            base_matmul::base_matmul(a, b, false, BaseMatMul::Faer)
         });
         Self::register_bench(group, "Faer-Parallel", size, || {
-            Self::base_matmul(a, b, true, BaseMatMul::Faer)
+            base_matmul::base_matmul(a, b, true, BaseMatMul::Faer)
         });
     }
 
