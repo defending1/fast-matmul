@@ -1,5 +1,6 @@
 use faer::Mat;
 use fast_matmul::matmul::BaseMatMul;
+use rand::Rng;
 use splinefit::CubicSplineFit;
 use spliny::SplineCurve;
 use std::io::Write;
@@ -96,21 +97,28 @@ pub fn evaluate_spline_derivative<const K: usize>(
     }
 }
 
-/// Runs baseline sequential matrix multiplication for N = 2, 4, 8, ..., 1024,
+fn random_matrix(rows: usize, cols: usize) -> Mat<f64> {
+    let mut rng = rand::thread_rng();
+    Mat::from_fn(rows, cols, |_, _| rng.gen_range(-1.0..1.0))
+}
+
+/// Runs baseline sequential matrix multiplication for the given sizes,
 /// records execution times, calculates effective GFLOPS, fits an interpolating spline,
 /// computes the spline derivative (dGFLOPS/dN) at those sizes, exports results to a CSV file,
 /// and returns the GFLOPS and derivatives.
 #[allow(dead_code)]
-pub fn fit_and_differentiate_spline(csv_path: &str) -> std::result::Result<(Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
-    let n_vals = vec![2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0];
+pub fn fit_and_differentiate_spline(
+    csv_path: &str,
+    n_vals: &[f64],
+) -> std::result::Result<(Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
     let mut times = Vec::new();
 
-    println!("Measuring execution times for N = [2, 4, 8, ..., 1024]...");
+    println!("Measuring execution times for specified N values...");
 
-    for &n in &n_vals {
+    for &n in n_vals {
         let size = n as usize;
-        let a = Mat::zeros(size, size);
-        let b = Mat::zeros(size, size);
+        let a = random_matrix(size, size);
+        let b = random_matrix(size, size);
 
         // Warmup
         let _ = base_matmul(&a, &b, false, BaseMatMul::Faer);
@@ -121,26 +129,25 @@ pub fn fit_and_differentiate_spline(csv_path: &str) -> std::result::Result<(Vec<
         for _ in 0..num_trials {
             let _ = base_matmul(&a, &b, false, BaseMatMul::Faer);
         }
-        let duration_ms = start.elapsed().as_secs_f64() * 1000.0 / (num_trials as f64);
-        times.push(duration_ms);
+        let duration_s = start.elapsed().as_secs_f64() / (num_trials as f64);
+        times.push(duration_s);
     }
 
-    // Calculate effective GFLOPS: (2n^3 - n^2) / (time_ms * 1e6)
+    // Calculate effective GFLOPS: (2n^3 - n^2) / (time_s * 1e9)
     let mut gflops = Vec::new();
     for i in 0..n_vals.len() {
         let n: f64 = n_vals[i];
-        let time_ms = times[i];
+        let time_s = times[i];
         let flops = 2.0 * n * n * n - n * n;
-        let gflops_val = flops / (time_ms * 1e6);
+        let gflops_val = flops / (time_s * 1e9);
         gflops.push(gflops_val);
     }
 
     // Fit cubic interpolating spline on GFLOPS
-    let spline = CubicSplineFit::new(n_vals.clone(), gflops.clone())
-        .interpolating_spline()?;
+    let spline = CubicSplineFit::new(n_vals.to_vec(), gflops.clone()).interpolating_spline()?;
 
     // Compute derivative of GFLOPS spline at points
-    let derivatives = evaluate_spline_derivative(&spline, &n_vals)
+    let derivatives = evaluate_spline_derivative(&spline, n_vals)
         .map_err(|ier| format!("Dierckx spalder error: {}", ier))?;
 
     // Create containing folder if it does not exist
