@@ -136,15 +136,17 @@ def plot_csv(csv_path: str, output_path: str) -> None:
     # Filter out very small sizes to focus on regions with algorithm differences
     df = df[df["size"] >= 8]
 
-    # Plot each column except size (converting time to milliseconds)
+    # Plot each column except size (converting time to Effective GFLOPS)
     for col in df.columns:
         if col == "size":
             continue
 
         style = styles.get(col, {"marker": "x", "linestyle": ":"})
+        flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
+        gflops = flops / (df[col] * 1e9)
         ax.plot(
             df["size"],
-            df[col] * 1000.0,
+            gflops,
             label=format_label(col),
             linewidth=1.2,
             markersize=4.5,
@@ -153,9 +155,9 @@ def plot_csv(csv_path: str, output_path: str) -> None:
 
     # Configure axes
     ax.set_xscale("log", base=2)
-    ax.set_yscale("log")
+    ax.set_yscale("linear")
     ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    ax.set_ylabel(r"Execution Time (ms)", labelpad=10)
+    ax.set_ylabel(r"Effective GFLOPS", labelpad=10)
     ax.set_title("Matrix Multiplication Performance Comparison", pad=15)
 
     # Set x-ticks explicitly to size values
@@ -283,7 +285,7 @@ def generate_grid_plot(
     # Helper to plot on a specific axis
     def plot_on_ax(ax, df, filter_fn, title):
         ax.set_xscale("log", base=2)
-        ax.set_yscale("log")
+        ax.set_yscale("linear")
         ax.set_title(title, pad=10)
 
         has_lines = False
@@ -296,9 +298,11 @@ def generate_grid_plot(
                 continue
 
             style = styles.get(col, {"marker": "x", "linestyle": ":"})
+            flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
+            gflops = flops / (df[col] * 1e9)
             ax.plot(
                 df["size"],
-                df[col] * 1000.0,  # seconds to milliseconds
+                gflops,
                 label=format_label(col),
                 linewidth=1.2,
                 markersize=4.5,
@@ -324,7 +328,7 @@ def generate_grid_plot(
     for ax in axs[1, :]:
         ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
     for ax in axs[:, 0]:
-        ax.set_ylabel(r"Execution Time (ms)", labelpad=8)
+        ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
 
     plt.suptitle(
         "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
