@@ -365,7 +365,38 @@ The final block matrix product is computed directly through a combination of the
      a_{21}B_{11} + a_{22}b_{21} & a_{21}b_{12} + a_{22}b_{22}
   \end{bNiceArray}
 \end{equation*}
-Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix multiplication, while all other terms represent the optimized boundary fixup steps.
+Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix
+multiplication, while all other terms are computed via standard matrix multiplication.
+
+\section{Parallel algorithms for shared memory}
+
+\subsection{Implementation}
+
+We use Rust's Rayon to handle parallelization, and we can summarize the parallel scheduling as following: 
+
+\begin{itemize}
+  \item \textbf{BFS:} Each recursive matrix multiplication routine and the associated matrix
+    additions are launched by Rayon as an iterable, and then are collected in an array of matrices $
+    \left[M_1, \ldots, M_r \right]$.
+  \item \textbf{DFS:} Each Faer matrix multiplication call uses all thread, and matrix
+    multiplications are always fully parallelized. \todo{implement}
+  \item \textbf{Hybrid:} TODO.
+\end{itemize}
+
+\subsection{Benchmarking}
+
+All benchmarks are run with Rust's Criterion library which performs warm-up before doing
+measurements. In order to compare the performance of matrix multiplication algorithms with different
+ocmputational costs, we use the \emph{effective} GFLOPS metric for $ \angb{m,n,r} $ matrix
+multiplication:
+\begin{equation}
+  \text{effective GFLOPS} = \frac{2mnp - mp}{\text{time in seconds} \cdot 10^9},
+\end{equation}
+where the numerator can be rewritten as $2mnp - mp = mnp + m(n-1)p$, which is the number of
+multiplications and additions performed for classical matrix multiplication. This allows us to
+compare all of the algorithms on an inverse-time scale, normalized by problem size
+\cite{bensonballard2015}. For fast algorithms, considering both multiplications and additions in the metric is more
+accurate than taking multiplications only \cite{commavoidingstrass}.
 
 
 \clearpage
