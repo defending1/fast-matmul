@@ -454,11 +454,6 @@ impl<'a> MatMul<'a> {
         self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
     }
 
-    /// Computes C = A * B using the CP decomposition algorithm recursively (single-threaded).
-    pub fn cp_matmul_single_thread(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, ParallelismMode::Sequential, BaseMatMul::Faer)
-    }
-
     /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode and base matrix multiplication choice.
     pub fn cp_matmul(
         &self,
