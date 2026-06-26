@@ -1,4 +1,4 @@
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
+use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode};
@@ -88,8 +88,14 @@ impl Benchmark {
         sizes: &[usize],
         algorithms: &[&str],
         filename: &str,
+        base_choice: BaseMatMul,
     ) -> Result<(), std::io::Error> {
         let existing = Self::read_existing_csv(filename);
+
+        let suffix = match base_choice {
+            BaseMatMul::Faer => "Faer",
+            BaseMatMul::Dgemm => "Dgemm",
+        };
 
         let mut mappings = vec![
             ColumnMapping {
@@ -114,19 +120,19 @@ impl Benchmark {
             let clean = algo.replace(['-', '.'], "_");
             mappings.push(ColumnMapping {
                 header: format!("{}_single", clean),
-                folder: format!("{}_Single-Thread", algo),
+                folder: format!("{}-{}_Single-Thread", algo, suffix),
             });
             mappings.push(ColumnMapping {
                 header: format!("{}_dfs", clean),
-                folder: format!("{}_DFS", algo),
+                folder: format!("{}-{}_DFS", algo, suffix),
             });
             mappings.push(ColumnMapping {
                 header: format!("{}_bfs", clean),
-                folder: format!("{}_BFS", algo),
+                folder: format!("{}-{}_BFS", algo, suffix),
             });
             mappings.push(ColumnMapping {
                 header: format!("{}_hybrid", clean),
-                folder: format!("{}_Hybrid", algo),
+                folder: format!("{}-{}_Hybrid", algo, suffix),
             });
         }
 
@@ -184,9 +190,17 @@ impl Benchmark {
             "python/plot.py"
         };
 
-        println!("Generating plot automatically using '{}'...", plot_script);
+        println!(
+            "Generating plot automatically using '{}' for '{}'...",
+            plot_script, filename
+        );
+
+        let absolute_filename = std::path::Path::new(filename)
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(filename));
+
         let plot_status = std::process::Command::new("uv")
-            .args(["run", plot_script])
+            .args(["run", plot_script, &absolute_filename.to_string_lossy()])
             .status();
         match plot_status {
             Ok(status) if status.success() => {
@@ -222,64 +236,80 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
-    /// Run the baseline sequential or parallel matrix multiplication.
-    fn base_matmul(a: &Mat<f64>, b: &Mat<f64>, multithreaded: bool) -> Mat<f64> {
-        let mut c = Mat::zeros(a.nrows(), b.ncols());
-        let par = if multithreaded {
-            faer::get_global_parallelism()
-        } else {
-            faer::Par::Seq
-        };
-        faer::linalg::matmul::matmul(
-            c.as_mut(),
-            faer::Accum::Replace,
-            a.as_ref(),
-            b.as_ref(),
-            1.0,
-            par,
+    /// Run the baseline sequential or parallel matrix multiplication,
+    /// selectively using `faer` or Intel MKL `dgemm` based on the specified choice.
+    fn base_matmul(
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        multithreaded: bool,
+        base_choice: BaseMatMul,
+    ) -> Mat<f64> {
+        match base_choice {
+            BaseMatMul::Faer => {
+                let mut c = Mat::zeros(a.nrows(), b.ncols());
+                let par = if multithreaded {
+                    faer::get_global_parallelism()
+                } else {
+                    faer::Par::Seq
+                };
+                faer::linalg::matmul::matmul(
+                    c.as_mut(),
+                    faer::Accum::Replace,
+                    a.as_ref(),
+                    b.as_ref(),
+                    1.0,
+                    par,
+                );
+                c
+            }
+            BaseMatMul::Dgemm => {
+                // Adjust thread count for MKL dynamically based on concurrency requirements.
+                // Single-threaded GEMM runs sequentially; multithreaded GEMM uses all available cores.
+                fast_matmul::mkl::mkl_set_threads(if multithreaded { 0 } else { 1 });
+                fast_matmul::mkl::mkl_matmul(a, b)
+            }
+        }
+    }
+
+    /// Helper to register a benchmark with Criterion using a wrapped syntax.
+    fn register_bench<F, O>(
+        group: &mut BenchmarkGroup<WallTime>,
+        name: &str,
+        size: usize,
+        mut f: F,
+    ) where
+        F: FnMut() -> O,
+    {
+        group.bench_with_input(
+            BenchmarkId::new(name, size),
+            &size,
+            move |bench, &_| {
+                bench.iter(&mut f);
+            },
         );
-        c
     }
 
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
     fn bench_mkl(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
-        group.bench_with_input(
-            BenchmarkId::new("MKL-Sequential", size),
-            &size,
-            |bench, &_| {
-                fast_matmul::mkl::mkl_set_threads(1);
-                bench.iter(|| fast_matmul::mkl::mkl_matmul(a, b));
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("MKL-Parallel", size),
-            &size,
-            |bench, &_| {
-                fast_matmul::mkl::mkl_set_threads(0);
-                bench.iter(|| fast_matmul::mkl::mkl_matmul(a, b));
-            },
-        );
+        Self::register_bench(group, "MKL-Sequential", size, || {
+            Self::base_matmul(a, b, false, BaseMatMul::Dgemm)
+        });
+        Self::register_bench(group, "MKL-Parallel", size, || {
+            Self::base_matmul(a, b, true, BaseMatMul::Dgemm)
+        });
     }
 
     /// Registers the Faer sequential and parallel benchmarks for one matrix size.
     fn bench_faer(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
-        group.bench_with_input(
-            BenchmarkId::new("Faer-Sequential", size),
-            &size,
-            |bench, &_| {
-                bench.iter(|| Self::base_matmul(a, b, false));
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("Faer-Parallel", size),
-            &size,
-            |bench, &_| {
-                bench.iter(|| Self::base_matmul(a, b, true));
-            },
-        );
+        Self::register_bench(group, "Faer-Sequential", size, || {
+            Self::base_matmul(a, b, false, BaseMatMul::Faer)
+        });
+        Self::register_bench(group, "Faer-Parallel", size, || {
+            Self::base_matmul(a, b, true, BaseMatMul::Faer)
+        });
     }
 
-    /// Registers single-thread and all parallel CP benchmarks for one algorithm and matrix size.
+    /// Registers single-thread and all parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
     fn bench_cp(
         group: &mut BenchmarkGroup<WallTime>,
         a: &Mat<f64>,
@@ -287,28 +317,35 @@ impl Benchmark {
         size: usize,
         algo: &str,
         mm: &MatMul<'_>,
+        base_choice: BaseMatMul,
     ) {
-        group.bench_with_input(
-            BenchmarkId::new(format!("{}/Single-Thread", algo), size),
-            &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul_single_thread(a, b)),
+        let suffix = match base_choice {
+            BaseMatMul::Faer => "Faer",
+            BaseMatMul::Dgemm => "Dgemm",
+        };
+        Self::register_bench(
+            group,
+            &format!("{}-{}/Single-Thread", algo, suffix),
+            size,
+            || mm.cp_matmul(a, b, ParallelismMode::Sequential, base_choice),
         );
-        group.bench_with_input(
-            BenchmarkId::new(format!("{}/DFS", algo), size),
-            &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Dfs, BaseMatMul::Faer)),
+        Self::register_bench(
+            group,
+            &format!("{}-{}/DFS", algo, suffix),
+            size,
+            || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice),
         );
-        group.bench_with_input(
-            BenchmarkId::new(format!("{}/BFS", algo), size),
-            &size,
-            |bench, &_| bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Bfs, BaseMatMul::Faer)),
+        Self::register_bench(
+            group,
+            &format!("{}-{}/BFS", algo, suffix),
+            size,
+            || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice),
         );
-        group.bench_with_input(
-            BenchmarkId::new(format!("{}/Hybrid", algo), size),
-            &size,
-            |bench, &_| {
-                bench.iter(|| mm.cp_matmul(a, b, ParallelismMode::Hybrid, BaseMatMul::Faer))
-            },
+        Self::register_bench(
+            group,
+            &format!("{}-{}/Hybrid", algo, suffix),
+            size,
+            || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice),
         );
     }
 
@@ -379,7 +416,8 @@ impl Benchmark {
         Ok(())
     }
 
-    /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV.
+    /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV
+    /// using the specified base matrix multiplication choice.
     ///
     /// Stops running benchmarks if a matrix size exceeds the machine's memory capacity,
     /// printing a clean warning, and still exporting results for the sizes that completed.
@@ -388,6 +426,7 @@ impl Benchmark {
         sizes: &[usize],
         algorithms: &[&str],
         filename: &str,
+        base_choice: BaseMatMul,
     ) -> Result<(), std::io::Error> {
         println!("Running programmatic Criterion benchmarks...");
 
@@ -428,7 +467,7 @@ impl Benchmark {
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
-                Self::bench_cp(&mut group, &a, &b, size, algo, &mm);
+                Self::bench_cp(&mut group, &a, &b, size, algo, &mm, base_choice);
             }
             successful_sizes.push(size);
         }
@@ -436,7 +475,7 @@ impl Benchmark {
         group.finish();
 
         if !successful_sizes.is_empty() {
-            Self::export_results_to_csv(&successful_sizes, algorithms, filename)?;
+            Self::export_results_to_csv(&successful_sizes, algorithms, filename, base_choice)?;
         } else {
             println!("No matrix sizes were benchmarked.");
         }
@@ -471,23 +510,49 @@ fn main() {
     // which will dynamically check system memory and stop before exceeding limits.
     let n_limit = if full { 20 } else { 11 };
     let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
-    let csv_file = "generated/benchmark_results.csv";
+
+    let csv_file_faer = "generated/benchmark_results_faer.csv";
+    let csv_file_dgemm = "generated/benchmark_results_dgemm.csv";
     let algorithms = &["strassen", "grey-strassen"];
 
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
-        if let Err(e) = Benchmark::export_results_to_csv(&sizes, algorithms, csv_file) {
-            eprintln!("Failed to export CSV: {:?}", e);
+        if let Err(e) =
+            Benchmark::export_results_to_csv(&sizes, algorithms, csv_file_faer, BaseMatMul::Faer)
+        {
+            eprintln!("Failed to export Faer CSV: {:?}", e);
         } else {
-            println!("CSV results successfully updated from cache.");
+            println!("Faer CSV results successfully updated from cache.");
+        }
+        if let Err(e) =
+            Benchmark::export_results_to_csv(&sizes, algorithms, csv_file_dgemm, BaseMatMul::Dgemm)
+        {
+            eprintln!("Failed to export Dgemm CSV: {:?}", e);
+        } else {
+            println!("Dgemm CSV results successfully updated from cache.");
         }
     } else {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
         let bench = Benchmark::new();
-        if let Err(e) = bench.run(&sizes, algorithms, csv_file) {
-            eprintln!("Failed to write benchmarks to CSV: {:?}", e);
+
+        println!("\n--- Benchmark Set 1/2: Using Faer Base MatMul ---");
+        if let Err(e) = bench.run(&sizes, algorithms, csv_file_faer, BaseMatMul::Faer) {
+            eprintln!("Failed to run Faer benchmarks: {:?}", e);
         } else {
-            println!("Benchmark results successfully written to {}", csv_file);
+            println!(
+                "Faer benchmark results successfully written to {}",
+                csv_file_faer
+            );
+        }
+
+        println!("\n--- Benchmark Set 2/2: Using MKL/Dgemm Base MatMul ---");
+        if let Err(e) = bench.run(&sizes, algorithms, csv_file_dgemm, BaseMatMul::Dgemm) {
+            eprintln!("Failed to run Dgemm benchmarks: {:?}", e);
+        } else {
+            println!(
+                "Dgemm benchmark results successfully written to {}",
+                csv_file_dgemm
+            );
         }
     }
 }
