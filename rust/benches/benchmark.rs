@@ -1,4 +1,4 @@
-mod base_matmul;
+mod util;
 
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
@@ -252,20 +252,20 @@ impl Benchmark {
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
     fn bench_mkl(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
         Self::register_bench(group, "MKL-Sequential", size, || {
-            base_matmul::base_matmul(a, b, false, BaseMatMul::Dgemm)
+            util::base_matmul(a, b, false, BaseMatMul::Dgemm)
         });
         Self::register_bench(group, "MKL-Parallel", size, || {
-            base_matmul::base_matmul(a, b, true, BaseMatMul::Dgemm)
+            util::base_matmul(a, b, true, BaseMatMul::Dgemm)
         });
     }
 
     /// Registers the Faer sequential and parallel benchmarks for one matrix size.
     fn bench_faer(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
         Self::register_bench(group, "Faer-Sequential", size, || {
-            base_matmul::base_matmul(a, b, false, BaseMatMul::Faer)
+            util::base_matmul(a, b, false, BaseMatMul::Faer)
         });
         Self::register_bench(group, "Faer-Parallel", size, || {
-            base_matmul::base_matmul(a, b, true, BaseMatMul::Faer)
+            util::base_matmul(a, b, true, BaseMatMul::Faer)
         });
     }
 
