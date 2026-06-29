@@ -257,12 +257,36 @@ std::ostream& operator<<(std::ostream& os, Matrix<Scalar>& mat) {
 }
 
 
-// C <-- A * B + beta * C
+/**
+ * @brief Computes C = alpha * A * B + beta * C using BLAS/MKL Gemm.
+ * Handles cases where dimensions are 0 (which may result from recursive peeling/strassen subdivisions)
+ * by safely returning early or scaling C without calling BLAS, which would otherwise throw a dgemm error.
+ * 
+ * @tparam Scalar Floating-point type (float or double)
+ * @param A Left input matrix
+ * @param B Right input matrix
+ * @param C Output matrix
+ * @param beta Scalar multiplier for C
+ */
 template <typename Scalar>
 void MatMul(Matrix<Scalar>& A, Matrix<Scalar>& B, Matrix<Scalar>& C,
             Scalar beta=Scalar(0.0)) {
   assert(A.m() == C.m() && A.n() == B.m() && B.n() == C.n());
-  assert(A.m() > 0 && A.n() > 0);
+  if (A.m() == 0 || B.n() == 0) {
+    return;
+  }
+  if (A.n() == 0) {
+    if (beta == Scalar(0.0)) {
+      ZeroOut(C);
+    } else {
+      for (int j = 0; j < C.n(); ++j) {
+        for (int i = 0; i < C.m(); ++i) {
+          C(i, j) *= beta;
+        }
+      }
+    }
+    return;
+  }
   Scalar alpha = C.multiplier();
   blas::Gemm('N', 'N', A.m(), B.n(), A.n(), A.data(), A.stride(), B.data(),
              B.stride(), C.data(), C.stride(), alpha, beta);

@@ -2,15 +2,15 @@
    Copyright (c) 2014-2015, Sandia Corporation
    All rights reserved.
 
-   This file is part of fast-matmul and is under the BSD 2-Clause License, 
-   which can be found in the LICENSE file in the root directory, or at 
+   This file is part of fast-matmul and is under the BSD 2-Clause License,
+   which can be found in the LICENSE file in the root directory, or at
    http://opensource.org/licenses/BSD-2-Clause.
 */
 
 #include "all_algorithms.hpp"
 #include "common.hpp"
 #ifdef __INTEL_MKL__
-# include "mkl.h"
+#include "mkl.h"
 #endif
 
 #include <algorithm>
@@ -35,15 +35,14 @@ void SingleBenchmark(int m, int k, int n, int num_steps, int algorithm) {
   // Spit out the median time
   std::sort(times.begin(), times.end());
   size_t ind = num_trials / 2;
-  std::cout << " " << m << " " << k << " " << n << " "
-            << num_steps << " " << times[ind] << " "
+  std::cout << " " << m << " " << k << " " << n << " " << num_steps << " "
+            << times[ind] << " "
             << "; ";
 }
 
-
 // Runs a set of benchmarks.
-void BenchmarkSet(std::vector<int>& m_vals, std::vector<int>& k_vals,
-                  std::vector<int>& n_vals, std::vector<int>& num_steps,
+void BenchmarkSet(std::vector<int> &m_vals, std::vector<int> &k_vals,
+                  std::vector<int> &n_vals, std::vector<int> &num_steps,
                   int algorithm) {
 
   assert(m_vals.size() == k_vals.size() && k_vals.size() == n_vals.size());
@@ -51,17 +50,17 @@ void BenchmarkSet(std::vector<int>& m_vals, std::vector<int>& k_vals,
   for (int curr_num_steps : num_steps) {
     std::cout << Alg2Str(algorithm) << "_" << curr_num_steps << " = [";
     for (int i = 0; i < m_vals.size(); ++i) {
-      SingleBenchmark(m_vals[i], k_vals[i], n_vals[i], curr_num_steps, algorithm);
+      SingleBenchmark(m_vals[i], k_vals[i], n_vals[i], curr_num_steps,
+                      algorithm);
     }
     std::cout << "];" << std::endl;
   }
   std::cout << std::endl << std::endl;
 }
 
-
 void SquareTest() {
   std::vector<int> m_vals;
-  for (int i = 1000; i <= 7500; i += 500) {
+  for (int i = 2; i <= 8192; i *= 2) {
     m_vals.push_back(i);
   }
   std::vector<int> num_levels = {0};
@@ -70,7 +69,6 @@ void SquareTest() {
   BenchmarkSet(m_vals, m_vals, m_vals, num_levels, STRASSEN);
   return;
 }
-
 
 void SquareTestPar() {
   std::vector<int> m_vals;
@@ -87,7 +85,6 @@ void SquareTestPar() {
   BenchmarkSet(m_vals, m_vals, m_vals, num_levels, STRASSEN);
 }
 
-
 void OuterTestPar() {
   std::vector<int> m_vals;
   for (int i = 3000; i <= 18000; i += 500) {
@@ -102,7 +99,6 @@ void OuterTestPar() {
   num_levels = {1, 2};
   BenchmarkSet(m_vals, k_vals, m_vals, num_levels, FAST424_26_257);
 }
-
 
 void TSSquareTestPar() {
   std::vector<int> m_vals;
@@ -119,19 +115,11 @@ void TSSquareTestPar() {
   BenchmarkSet(m_vals, k_vals, k_vals, num_levels, FAST433_29_234);
 }
 
-
 void SquareBenchmark(int which) {
-#ifdef _PARALLEL_
   std::vector<int> m_vals;
-  for (int i = 9000; i <= 13000; i += 500) {
+  for (int i = 2; i <= 8192; i *= 2) {
     m_vals.push_back(i);
   }
-#else
-  std::vector<int> m_vals;
-  for (int i = 1000; i <= 7500; i += 500) {
-    m_vals.push_back(i);
-  }
-#endif
   std::vector<int> num_levels_MKL = {0};
   std::vector<int> num_levels = {1, 2};
 
@@ -200,7 +188,8 @@ void SquareBenchmark(int which) {
     BenchmarkSet(m_vals, m_vals, m_vals, num_levels, SMIRNOV633_40_960);
     break;
   case 21:
-    BenchmarkSet(m_vals, m_vals, m_vals, num_levels, SCHONHAGE333_21_117_APPROX);
+    BenchmarkSet(m_vals, m_vals, m_vals, num_levels,
+                 SCHONHAGE333_21_117_APPROX);
     break;
   case 22:
     BenchmarkSet(m_vals, m_vals, m_vals, num_levels, CLASSICAL423);
@@ -208,10 +197,9 @@ void SquareBenchmark(int which) {
   default:
     throw std::logic_error("Unknown algorithm");
   }
-  
+
   return;
 }
-
 
 // (N, k, N) for fixed k ~ 2000
 void OuterProductBenchmark(int which) {
@@ -257,7 +245,8 @@ void OuterProductBenchmark(int which) {
     BenchmarkSet(m_vals, k_vals, m_vals, num_levels, BINI322_10_52_APPROX);
     break;
   case 8:
-    BenchmarkSet(m_vals, k_vals, m_vals, num_levels, SCHONHAGE333_21_117_APPROX);
+    BenchmarkSet(m_vals, k_vals, m_vals, num_levels,
+                 SCHONHAGE333_21_117_APPROX);
     break;
   case 9:
     BenchmarkSet(m_vals, k_vals, m_vals, num_levels, SMIRNOV633_40_960);
@@ -269,7 +258,6 @@ void OuterProductBenchmark(int which) {
     throw std::logic_error("Unknown algorithm");
   }
 }
-
 
 // (N, k, k) for fixed k ~ 2000
 void TSSquareBenchmark(int which) {
@@ -314,7 +302,8 @@ void TSSquareBenchmark(int which) {
     BenchmarkSet(m_vals, k_vals, k_vals, num_levels, BINI322_10_52_APPROX);
     break;
   case 8:
-    BenchmarkSet(m_vals, k_vals, k_vals, num_levels, SCHONHAGE333_21_117_APPROX);
+    BenchmarkSet(m_vals, k_vals, k_vals, num_levels,
+                 SCHONHAGE333_21_117_APPROX);
     break;
   case 9:
     BenchmarkSet(m_vals, k_vals, k_vals, num_levels, SMIRNOV633_40_960);
@@ -324,7 +313,6 @@ void TSSquareBenchmark(int which) {
     break;
   }
 }
-
 
 int main(int argc, char **argv) {
   auto opts = GetOpts(argc, argv);
@@ -353,7 +341,6 @@ int main(int argc, char **argv) {
     int which = GetIntOpt(opts, "ts_square_like");
     TSSquareBenchmark(which);
   }
-
 
   // Functions for testing
   if (OptExists(opts, "square_test")) {

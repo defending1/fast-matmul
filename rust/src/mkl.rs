@@ -35,12 +35,18 @@ pub fn mkl_set_threads(num_threads: i32) {
 }
 
 /// Computes C = A * B using Intel MKL dgemm (FFI).
+/// Returns an empty or zero matrix early if any dimension is 0 to avoid invalid calls to MKL.
 pub fn mkl_matmul(a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
     let m = a.nrows();
     let k = a.ncols();
     let k_b = b.nrows();
     let n = b.ncols();
     assert_eq!(k, k_b, "Matrix dimensions must agree for multiplication");
+
+    // If any dimension is 0, the result is a zero/empty matrix. Return early to avoid MKL internal checks failing.
+    if m == 0 || n == 0 || k == 0 {
+        return Mat::zeros(m, n);
+    }
 
     // Assert that the layout is standard contiguous column-major (row stride is 1)
     assert_eq!(a.row_stride(), 1, "Matrix A must be column-major");
