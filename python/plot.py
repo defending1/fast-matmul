@@ -347,7 +347,9 @@ def generate_grid_plot(
     )
     plt.tight_layout()
     # Add spacing between subplots (less space between rows) and leave room at top/bottom/sides
-    fig.subplots_adjust(hspace=0.22, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92)
+    fig.subplots_adjust(
+        hspace=0.12, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92
+    )
 
     # Force a draw to resolve final positions of all labels and layout bounds
     fig.canvas.draw()
@@ -384,9 +386,9 @@ def generate_grid_plot(
         (x0_seq - pad_val, y0_seq - pad_val),
         (x1_seq - x0_seq) + 2 * pad_val,
         (y1_seq - y0_seq) + 2 * pad_val,
-        boxstyle="round,pad=0.0,rounding_size=0.015",
-        edgecolor="#64748b", # Light slate border
-        facecolor="none",    # No inner background fill
+        boxstyle="square,pad=0.0",
+        edgecolor="#64748b",  # Light slate border
+        facecolor="none",  # No inner background fill
         linewidth=1.5,
         transform=fig.transFigure,
         zorder=1,
@@ -397,9 +399,9 @@ def generate_grid_plot(
         (x0_par - pad_val, y0_par - pad_val),
         (x1_par - x0_par) + 2 * pad_val,
         (y1_par - y0_par) + 2 * pad_val,
-        boxstyle="round,pad=0.0,rounding_size=0.015",
-        edgecolor="#a78bfa", # Light purple border
-        facecolor="none",    # No inner background fill
+        boxstyle="square,pad=0.0",
+        edgecolor="#a78bfa",  # Light purple border
+        facecolor="none",  # No inner background fill
         linewidth=1.5,
         transform=fig.transFigure,
         zorder=1,
@@ -418,7 +420,6 @@ def generate_grid_plot(
         ha="center",
         va="bottom",
         fontsize=12,
-        fontweight="bold",
         color="#1e293b",
     )
     fig.text(
@@ -428,7 +429,6 @@ def generate_grid_plot(
         ha="center",
         va="bottom",
         fontsize=12,
-        fontweight="bold",
         color="#1e293b",
     )
 
@@ -447,9 +447,7 @@ def generate_grid_plot(
         ha="center",
         va="center",
         fontsize=12,
-        fontweight="bold",
         color="#1e293b",
-        bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=0.9),
         zorder=10,
     )
 
@@ -461,9 +459,7 @@ def generate_grid_plot(
         ha="center",
         va="center",
         fontsize=12,
-        fontweight="bold",
         color="#1e293b",
-        bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=0.9),
         zorder=10,
     )
 
