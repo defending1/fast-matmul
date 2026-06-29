@@ -239,6 +239,7 @@ double RunAlgorithm(int algorithm, Matrix<Scalar>& A, Matrix<Scalar>& B,
     break;
   default:
     std::cout << "Unknown algorithm type!" << std::endl;
+    return -1.0;
   }
 }
 

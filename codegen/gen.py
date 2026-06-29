@@ -818,8 +818,8 @@ def create_wrapper_func(header, num_multiplies, dims):
 
     write_line(header, 1, '// Set parameters needed for all types of parallelism.')
     write_line(header, 1, '// int num_threads = 0;')
-    write_line(header, 1, 'omp_set_num_threads(num_threads);')
     write_line(header, 0, '#ifdef _PARALLEL_')
+    write_line(header, 1, 'omp_set_num_threads(num_threads);')
     write_line(header, 0, '# pragma omp parallel')
     write_line(header, 1,  '{')
     write_line(header, 2, 'if (omp_get_thread_num() == 0) { num_threads = omp_get_num_threads(); }')
