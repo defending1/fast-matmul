@@ -7,6 +7,7 @@
 # ///
 
 import os
+import re
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -58,6 +59,67 @@ def format_label(col: str) -> str:
         return f"{name} {rank}/{mults} ({suffix_str})"
 
     return col.replace("_", " ").title()
+
+
+BALLARD_DATA_PATH = os.path.join(os.path.dirname(__file__), "ballard_data_sequential.txt")
+
+# Style for Ballard reference lines
+BALLARD_STYLES = {
+    "mkl_ballard": {"color": "#e41a1c", "marker": "X", "linestyle": "--", "linewidth": 1.5},
+    "strassen_ballard": {"color": "#4daf4a", "marker": "X", "linestyle": ":", "linewidth": 1.5},
+}
+
+
+def parse_matlab_vector(filepath: str, vec_name: str) -> pd.DataFrame:
+    """Parse a MATLAB-style vector definition from a text file.
+
+    Expected format:  NAME = [ P Q R steps time_ms ; ... ; ];
+
+    Args:
+        filepath: Path to the data file.
+        vec_name: Name of the vector (e.g. "MKL_0").
+
+    Returns:
+        DataFrame with integer size and time_ms columns, sorted by size.
+    """
+    with open(filepath) as f:
+        text = f.read()
+
+    pattern = re.compile(rf'{re.escape(vec_name)}\s*=\s*\[(.*?)\];', re.DOTALL)
+    match = pattern.search(text)
+    if not match:
+        raise ValueError(f"Vector '{vec_name}' not found in {filepath}")
+
+    rows = []
+    for entry in match.group(1).split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = entry.split()
+        if len(parts) >= 5:
+            p = float(parts[0])
+            time_ms = float(parts[4])
+            rows.append({"size": p, "time_ms": time_ms})
+
+    df = pd.DataFrame(rows)
+    return df.sort_values("size").reset_index(drop=True)
+
+
+def plot_ballard_lines(ax: plt.Axes, df_ballard_mkl: pd.DataFrame, df_ballard_strassen: pd.DataFrame) -> None:
+    """Plot Ballard reference lines on a given axis.
+
+    Args:
+        ax: Matplotlib axis to plot on.
+        df_ballard_mkl: MKL Ballard data with size and time_ms columns.
+        df_ballard_strassen: Strassen Ballard data with size and time_ms columns.
+    """
+    for name, df in [("mkl_ballard", df_ballard_mkl), ("strassen_ballard", df_ballard_strassen)]:
+        style = BALLARD_STYLES[name]
+        time_s = df["time_ms"] / 1000.0
+        n = df["size"]
+        gflops = (2 * n ** 3 - 2 * n ** 2) / (time_s * 1e9)
+        label = "MKL (Ballard)" if name == "mkl_ballard" else "Strassen (Ballard)"
+        ax.plot(n, gflops, label=label, markersize=5.0, **style)
 
 
 def plot_csv(csv_path: str, output_path: str) -> None:
@@ -131,10 +193,21 @@ def plot_csv(csv_path: str, output_path: str) -> None:
             "marker": ">",
             "linestyle": "-",
         },
+        "mkl_ballard": BALLARD_STYLES["mkl_ballard"],
+        "strassen_ballard": BALLARD_STYLES["strassen_ballard"],
     }
 
     # Filter out very small sizes to focus on regions with algorithm differences
     df = df[df["size"] >= 8]
+
+    # Parse Ballard reference data
+    try:
+        df_mkl_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "MKL_0")
+        df_strassen_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_1")
+        has_ballard = True
+    except Exception as e:
+        print(f"Warning: Could not parse Ballard data ({e})")
+        has_ballard = False
 
     # Plot each column except size (converting time to Effective GFLOPS)
     for col in df.columns:
@@ -152,6 +225,15 @@ def plot_csv(csv_path: str, output_path: str) -> None:
             markersize=4.5,
             **style,
         )
+
+    # Plot Ballard reference lines (only if sequential algorithms are present)
+    if has_ballard:
+        has_seq_col = any(
+            col != "size" and (col.endswith("_seq") or col.endswith("_single"))
+            for col in df.columns
+        )
+        if has_seq_col:
+            plot_ballard_lines(ax, df_mkl_ballard, df_strassen_ballard)
 
     # Configure axes
     ax.set_xscale("log", base=2)
@@ -280,7 +362,18 @@ def generate_grid_plot(
             "marker": ">",
             "linestyle": "-",
         },
+        "mkl_ballard": BALLARD_STYLES["mkl_ballard"],
+        "strassen_ballard": BALLARD_STYLES["strassen_ballard"],
     }
+
+    # Parse Ballard reference data
+    try:
+        df_mkl_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "MKL_0")
+        df_strassen_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_1")
+        has_ballard = True
+    except Exception as e:
+        print(f"Warning: Could not parse Ballard data ({e})")
+        has_ballard = False
 
     # Helpers to filter columns
     def is_seq(col: str) -> bool:
@@ -295,7 +388,7 @@ def generate_grid_plot(
         )
 
     # Helper to plot on a specific axis
-    def plot_on_ax(ax, df, filter_fn):
+    def plot_on_ax(ax, df, filter_fn, sequential=False):
         ax.set_facecolor("none")
         ax.set_xscale("log", base=2)
         ax.set_yscale("linear")
@@ -325,16 +418,19 @@ def generate_grid_plot(
         ax.set_xticks(df["size"])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
+        if has_ballard and sequential:
+            plot_ballard_lines(ax, df_mkl_ballard, df_strassen_ballard)
+
         if has_lines:
             ax.legend(loc="upper left", frameon=True, framealpha=0.9)
 
     # Plot Row 1: Faer Base
-    plot_on_ax(axs[0, 0], df_faer, is_seq)
-    plot_on_ax(axs[0, 1], df_faer, is_par)
+    plot_on_ax(axs[0, 0], df_faer, is_seq, sequential=True)
+    plot_on_ax(axs[0, 1], df_faer, is_par, sequential=False)
 
     # Plot Row 2: MKL Base
-    plot_on_ax(axs[1, 0], df_dgemm, is_seq)
-    plot_on_ax(axs[1, 1], df_dgemm, is_par)
+    plot_on_ax(axs[1, 0], df_dgemm, is_seq, sequential=True)
+    plot_on_ax(axs[1, 1], df_dgemm, is_par, sequential=False)
 
     # Shared labels
     for ax in axs[1, :]:
