@@ -417,7 +417,8 @@ impl<'a> MatMul<'a> {
         let p = b.ncols();
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
-        if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= 128 || m <= 128 || p <= 128 {
+        const N_T: usize = i64::pow(2, 10) as usize;
+        if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= N_T || m <= N_T || p <= N_T {
             let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
             return self.base_matmul(a, b, leaf_multithreaded, base_choice);
         }
