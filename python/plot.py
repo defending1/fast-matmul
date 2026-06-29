@@ -295,10 +295,10 @@ def generate_grid_plot(
         )
 
     # Helper to plot on a specific axis
-    def plot_on_ax(ax, df, filter_fn, title):
+    def plot_on_ax(ax, df, filter_fn):
+        ax.set_facecolor("none")
         ax.set_xscale("log", base=2)
         ax.set_yscale("linear")
-        ax.set_title(title, pad=10)
 
         has_lines = False
         for col in df.columns:
@@ -329,12 +329,12 @@ def generate_grid_plot(
             ax.legend(loc="upper left", frameon=True, framealpha=0.9)
 
     # Plot Row 1: Faer Base
-    plot_on_ax(axs[0, 0], df_faer, is_seq, "Faer Base - Sequential Algorithms")
-    plot_on_ax(axs[0, 1], df_faer, is_par, "Faer Base - Parallel Algorithms")
+    plot_on_ax(axs[0, 0], df_faer, is_seq)
+    plot_on_ax(axs[0, 1], df_faer, is_par)
 
     # Plot Row 2: MKL Base
-    plot_on_ax(axs[1, 0], df_dgemm, is_seq, "MKL Base - Sequential Algorithms")
-    plot_on_ax(axs[1, 1], df_dgemm, is_par, "MKL Base - Parallel Algorithms")
+    plot_on_ax(axs[1, 0], df_dgemm, is_seq)
+    plot_on_ax(axs[1, 1], df_dgemm, is_par)
 
     # Shared labels
     for ax in axs[1, :]:
@@ -346,6 +346,126 @@ def generate_grid_plot(
         "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
     )
     plt.tight_layout()
+    # Add spacing between subplots (less space between rows) and leave room at top/bottom/sides
+    fig.subplots_adjust(hspace=0.22, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92)
+
+    # Force a draw to resolve final positions of all labels and layout bounds
+    fig.canvas.draw()
+
+    # Helper to get tight bounding box in figure fraction coordinates
+    def get_tight_pos(ax):
+        bbox = ax.get_tightbbox(fig.canvas.get_renderer())
+        return bbox.transformed(fig.transFigure.inverted())
+
+    # Get tight positions (which include axis ticks, xlabel, and ylabel)
+    box00 = get_tight_pos(axs[0, 0])
+    box10 = get_tight_pos(axs[1, 0])
+    box01 = get_tight_pos(axs[0, 1])
+    box11 = get_tight_pos(axs[1, 1])
+
+    # Column 0: Sequential Algorithms bounding box
+    x0_seq = min(box00.x0, box10.x0)
+    x1_seq = max(box00.x1, box10.x1)
+    y0_seq = min(box00.y0, box10.y0)
+    y1_seq = max(box00.y1, box10.y1)
+
+    # Column 1: Parallel Algorithms bounding box
+    x0_par = min(box01.x0, box11.x0)
+    x1_par = max(box01.x1, box11.x1)
+    y0_par = min(box01.y0, box11.y0)
+    y1_par = max(box01.y1, box11.y1)
+
+    # Draw borders for the two columns in different light colors (border only, no fill)
+    from matplotlib.patches import FancyBboxPatch
+
+    pad_val = 0.015
+
+    rect_seq = FancyBboxPatch(
+        (x0_seq - pad_val, y0_seq - pad_val),
+        (x1_seq - x0_seq) + 2 * pad_val,
+        (y1_seq - y0_seq) + 2 * pad_val,
+        boxstyle="round,pad=0.0,rounding_size=0.015",
+        edgecolor="#64748b", # Light slate border
+        facecolor="none",    # No inner background fill
+        linewidth=1.5,
+        transform=fig.transFigure,
+        zorder=1,
+    )
+    fig.patches.append(rect_seq)
+
+    rect_par = FancyBboxPatch(
+        (x0_par - pad_val, y0_par - pad_val),
+        (x1_par - x0_par) + 2 * pad_val,
+        (y1_par - y0_par) + 2 * pad_val,
+        boxstyle="round,pad=0.0,rounding_size=0.015",
+        edgecolor="#a78bfa", # Light purple border
+        facecolor="none",    # No inner background fill
+        linewidth=1.5,
+        transform=fig.transFigure,
+        zorder=1,
+    )
+    fig.patches.append(rect_par)
+
+    # Sequential and parallel algorithms on the top, centered above the column bounding border
+    y_col_title = max(y1_seq, y1_par) + pad_val + 0.01
+    center_x_seq = (x0_seq + x1_seq) / 2.0
+    center_x_par = (x0_par + x1_par) / 2.0
+
+    fig.text(
+        center_x_seq,
+        y_col_title,
+        "Sequential Algorithms",
+        ha="center",
+        va="bottom",
+        fontsize=12,
+        fontweight="bold",
+        color="#1e293b",
+    )
+    fig.text(
+        center_x_par,
+        y_col_title,
+        "Parallel Algorithms",
+        ha="center",
+        va="bottom",
+        fontsize=12,
+        fontweight="bold",
+        color="#1e293b",
+    )
+
+    # Centered titles for each row, positioned in the horizontal gap between column borders,
+    # and vertically centered on each row's plotting axes.
+    pos00 = axs[0, 0].get_position()
+    pos10 = axs[1, 0].get_position()
+
+    center_x_row = ((x1_seq + pad_val) + (x0_par - pad_val)) / 2.0
+
+    y_faer_center = (pos00.y0 + pos00.y1) / 2.0
+    fig.text(
+        center_x_row,
+        y_faer_center,
+        "Faer Base",
+        ha="center",
+        va="center",
+        fontsize=12,
+        fontweight="bold",
+        color="#1e293b",
+        bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=0.9),
+        zorder=10,
+    )
+
+    y_mkl_center = (pos10.y0 + pos10.y1) / 2.0
+    fig.text(
+        center_x_row,
+        y_mkl_center,
+        "MKL Base",
+        ha="center",
+        va="center",
+        fontsize=12,
+        fontweight="bold",
+        color="#1e293b",
+        bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=0.9),
+        zorder=10,
+    )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches="tight")
