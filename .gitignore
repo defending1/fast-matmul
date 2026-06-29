@@ -8,7 +8,6 @@ build
 # Rust / Cargo
 **/target/
 **/*.rs.bk
-rust/generated/
 rust/.spack-env
 
 # --- LaTeX (Comprehensive) ---
