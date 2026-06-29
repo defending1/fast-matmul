@@ -61,11 +61,11 @@ def format_label(col: str) -> str:
 
 
 def plot_csv(csv_path: str, output_path: str) -> None:
-    """Generates a performance plot from a benchmark CSV file.
+    """Generates a performance plot from a benchmark CSV file in both PDF and PNG formats.
 
     Args:
         csv_path: Path to the input CSV file.
-        output_path: Path to save the output PDF plot.
+        output_path: Path to save the output plot.
     """
     if not os.path.exists(csv_path):
         print(f"Error: CSV file not found at {csv_path}")
@@ -176,13 +176,25 @@ def plot_csv(csv_path: str, output_path: str) -> None:
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches="tight")
     print(f"Plot successfully saved to: {output_path}")
+
+    # Save in both PDF and PNG formats
+    base, ext = os.path.splitext(output_path)
+    if ext.lower() == ".pdf":
+        alt_path = base + ".png"
+    elif ext.lower() == ".png":
+        alt_path = base + ".pdf"
+    else:
+        alt_path = output_path + ".png"
+
+    plt.savefig(alt_path, bbox_inches="tight")
+    print(f"Plot successfully saved to: {alt_path}")
     plt.close(fig)
 
 
 def generate_grid_plot(
     csv_path_faer: str, csv_path_dgemm: str, output_path: str
 ) -> None:
-    """Generates a 2x2 grid performance plot.
+    """Generates a 2x2 grid performance plot in both PDF and PNG formats.
 
     Row 1: Faer base results
     Row 2: MKL base results
@@ -192,7 +204,7 @@ def generate_grid_plot(
     Args:
         csv_path_faer: Path to the Faer benchmark CSV results.
         csv_path_dgemm: Path to the MKL/Dgemm benchmark CSV results.
-        output_path: Path to save the final PDF grid plot.
+        output_path: Path to save the final grid plot.
     """
     if not os.path.exists(csv_path_faer):
         print(f"Error: Faer CSV file not found at {csv_path_faer}")
@@ -338,6 +350,18 @@ def generate_grid_plot(
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches="tight")
     print(f"Grid plot successfully saved to: {output_path}")
+
+    # Save in both PDF and PNG formats
+    base, ext = os.path.splitext(output_path)
+    if ext.lower() == ".pdf":
+        alt_path = base + ".png"
+    elif ext.lower() == ".png":
+        alt_path = base + ".pdf"
+    else:
+        alt_path = output_path + ".png"
+
+    plt.savefig(alt_path, bbox_inches="tight")
+    print(f"Grid plot successfully saved to: {alt_path}")
     plt.close(fig)
 
 

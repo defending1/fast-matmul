@@ -75,6 +75,10 @@ plt.tight_layout()
 
 # Save image in the same directory as the input CSV file
 output_dir = os.path.dirname(os.path.abspath(csv_path))
-output_path = os.path.join(output_dir, "base_matmul_spline.png")
-plt.savefig(output_path, dpi=300)
-print(f"Successfully generated spline plot at: {output_path}")
+output_path_png = os.path.join(output_dir, "base_matmul_spline.png")
+plt.savefig(output_path_png, dpi=300)
+print(f"Successfully generated spline plot at: {output_path_png}")
+
+output_path_pdf = os.path.join(output_dir, "base_matmul_spline.pdf")
+plt.savefig(output_path_pdf, dpi=300)
+print(f"Successfully generated spline plot at: {output_path_pdf}")
