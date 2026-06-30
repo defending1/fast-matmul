@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::dynamic_peeling::DynamicPeeling;
-use faer::{Col, Mat, MatRef};
+use faer::{Col, ColRef, Mat, MatRef};
 use std::ops::{Index, IndexMut};
 
 pub use crate::parallelism_mode::{BaseMatMul, ParallelismMode};
@@ -73,19 +73,19 @@ impl<'a> MatMul<'a> {
         self.cp
     }
 
-    /// Flatten a matrix in row-major order into a 1D column vector.
-    fn flatten_row_major(matrix: &Mat<f64>) -> Col<f64> {
-        let ncols = matrix.ncols();
-        Col::from_fn(matrix.nrows() * ncols, |idx| {
-            let r = idx / ncols;
-            let c = idx % ncols;
-            matrix[(r, c)]
-        })
-    }
-
-    /// Computes the standard matrix multiplication C = A * B and returns vec(C^T).
-    pub fn standard_matmul_vec_wt(&self, a: &Mat<f64>, b: &Mat<f64>) -> Col<f64> {
-        Self::flatten_row_major(&(a * b))
+    /// Computes the dot product of a column vector and a matrix flattened in row-major order,
+    /// without performing any memory allocations.
+    fn dot_product_flattened(vec: ColRef<'_, f64>, mat: &Mat<f64>) -> f64 {
+        assert_eq!(vec.nrows(), mat.nrows() * mat.ncols());
+        let mut sum = 0.0;
+        let mut i = 0;
+        for r in 0..mat.nrows() {
+            for c in 0..mat.ncols() {
+                sum += vec[i] * mat[(r, c)];
+                i += 1;
+            }
+        }
+        sum
     }
 
     /// Computes C = A * B using the CP decomposition formula:
@@ -95,24 +95,12 @@ impl<'a> MatMul<'a> {
         assert_eq!((a.nrows(), a.ncols()), (self.cp.m, self.cp.n));
         assert_eq!((b.nrows(), b.ncols()), (self.cp.n, self.cp.p));
 
-        let vec_a = Self::flatten_row_major(a);
-        let vec_b = Self::flatten_row_major(b);
-
         // Resulting multiplication vector
         let mut c_vec = Col::<f64>::zeros(self.cp.m * self.cp.p);
 
         for l in 0..self.cp.rank {
-            let u_col = self.cp.u.col(l);
-            let mut s_l = 0.0;
-            for i in 0..u_col.nrows() {
-                s_l += u_col[i] * vec_a[i];
-            }
-
-            let v_col = self.cp.v.col(l);
-            let mut t_l = 0.0;
-            for i in 0..v_col.nrows() {
-                t_l += v_col[i] * vec_b[i];
-            }
+            let s_l = Self::dot_product_flattened(self.cp.u.col(l), a);
+            let t_l = Self::dot_product_flattened(self.cp.v.col(l), b);
 
             let m_l = s_l * t_l;
 
