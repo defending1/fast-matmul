@@ -158,6 +158,23 @@ def plot_ballard_lines(
         ax.plot(n, gflops, label=label, markersize=5.0, **style)
 
 
+def is_parallel(col: str) -> bool:
+    """Check if a benchmark column corresponds to a parallel algorithm.
+
+    Args:
+        col: The column name from the benchmark CSV.
+
+    Returns:
+        True if the column is a parallel execution case, False otherwise.
+    """
+    return (
+        col.endswith("_par")
+        or col.endswith("_dfs")
+        or col.endswith("_bfs")
+        or col.endswith("_hybrid")
+    )
+
+
 def plot_csv(csv_path: str, output_path: str) -> None:
     """Generates a performance plot from a benchmark CSV file in both PDF and PNG formats.
 
@@ -247,6 +264,7 @@ def plot_csv(csv_path: str, output_path: str) -> None:
         has_ballard = False
 
     # Plot each column except size (converting time to Effective GFLOPS)
+    num_cores = os.cpu_count() or 1
     for col in df.columns:
         if col == "size":
             continue
@@ -254,6 +272,8 @@ def plot_csv(csv_path: str, output_path: str) -> None:
         style = styles.get(col, {"marker": "x", "linestyle": ":"})
         flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
         gflops = flops / (df[col] * 1e9)
+        if is_parallel(col):
+            gflops = gflops / num_cores
         ax.plot(
             df["size"],
             gflops,
@@ -419,14 +439,11 @@ def generate_grid_plot(
         return col.endswith("_seq") or col.endswith("_single")
 
     def is_par(col: str) -> bool:
-        return (
-            col.endswith("_par")
-            or col.endswith("_dfs")
-            or col.endswith("_bfs")
-            or col.endswith("_hybrid")
-        )
+        return is_parallel(col)
 
     # Helper to plot on a specific axis
+    num_cores = os.cpu_count() or 1
+
     def plot_on_ax(ax, df, filter_fn, sequential=False):
         ax.set_facecolor("none")
         ax.set_xscale("log", base=2)
@@ -444,6 +461,8 @@ def generate_grid_plot(
             style = styles.get(col, {"marker": "x", "linestyle": ":"})
             flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
             gflops = flops / (df[col] * 1e9)
+            if is_par(col):
+                gflops = gflops / num_cores
             ax.plot(
                 df["size"],
                 gflops,
