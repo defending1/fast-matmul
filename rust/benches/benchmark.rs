@@ -1,4 +1,5 @@
 mod export_helper;
+mod check_memory_helper;
 mod util;
 
 use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
@@ -59,42 +60,27 @@ impl Benchmark {
         });
     }
 
-    /// Registers the MKL sequential and parallel benchmarks for one matrix size.
-    fn bench_mkl(
+    /// Registers the base sequential and parallel benchmarks for one matrix size.
+    fn bench_base(
         &self,
         group: &mut BenchmarkGroup<WallTime>,
         a: &Mat<f64>,
         b: &Mat<f64>,
         size: usize,
+        base_choice: BaseMatMul,
     ) {
+        let name = match base_choice {
+            BaseMatMul::Faer => "Faer",
+            BaseMatMul::Dgemm => "MKL",
+        };
         if self.run_sequential {
-            Self::register_bench(group, "MKL-Sequential", size, || {
-                util::base_matmul(a, b, false, BaseMatMul::Dgemm)
+            Self::register_bench(group, &format!("{}-Sequential", name), size, || {
+                util::base_matmul(a, b, false, base_choice)
             });
         }
         if self.run_parallel {
-            Self::register_bench(group, "MKL-Parallel", size, || {
-                util::base_matmul(a, b, true, BaseMatMul::Dgemm)
-            });
-        }
-    }
-
-    /// Registers the Faer sequential and parallel benchmarks for one matrix size.
-    fn bench_faer(
-        &self,
-        group: &mut BenchmarkGroup<WallTime>,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
-        size: usize,
-    ) {
-        if self.run_sequential {
-            Self::register_bench(group, "Faer-Sequential", size, || {
-                util::base_matmul(a, b, false, BaseMatMul::Faer)
-            });
-        }
-        if self.run_parallel {
-            Self::register_bench(group, "Faer-Parallel", size, || {
-                util::base_matmul(a, b, true, BaseMatMul::Faer)
+            Self::register_bench(group, &format!("{}-Parallel", name), size, || {
+                util::base_matmul(a, b, true, base_choice)
             });
         }
     }
@@ -136,72 +122,6 @@ impl Benchmark {
         }
     }
 
-    /// Checks if the matrix size is supported by the machine's memory and limits.
-    ///
-    /// Returns `Ok(())` if the size is supported, or an `Err(String)` containing
-    /// a descriptive message of why it is not supported.
-    pub fn check_size_supported(&self, size: usize) -> Result<(), String> {
-        if size == 0 {
-            return Err("Matrix size must be greater than 0.".to_string());
-        }
-
-        // 1. Check for arithmetic overflow in size calculations
-        let elements = size.checked_mul(size).ok_or_else(|| {
-            format!(
-                "Matrix size {}x{} would overflow usize elements count.",
-                size, size
-            )
-        })?;
-
-        let bytes_per_matrix = elements
-            .checked_mul(std::mem::size_of::<f64>())
-            .ok_or_else(|| {
-                format!(
-                    "Matrix size {}x{} would overflow memory byte count.",
-                    size, size
-                )
-            })?;
-
-        // Rust's allocator limit is isize::MAX
-        if bytes_per_matrix > isize::MAX as usize {
-            return Err(format!(
-                "Matrix size {}x{} requires {} bytes, which exceeds Rust's maximum allocation limit of {} bytes.",
-                size,
-                size,
-                bytes_per_matrix,
-                isize::MAX
-            ));
-        }
-
-        // Estimate total peak memory required for the benchmark at this size.
-        // We run multiple algorithms (MKL, Faer, Strassen single/multi-thread).
-        // Strassen in parallel mode with Rayon has the highest peak memory overhead.
-        // Let's estimate peak memory overhead as:
-        // Input matrices (A, B) + output matrix (C) + concurrent workspace.
-        // A safe factor for Strassen parallel is (3 + T * 1.5) where T is the thread count.
-        let num_threads = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
-
-        let multiplier = 3.0 + (num_threads as f64).min(7.0) * 1.5;
-        let estimated_required_bytes = (bytes_per_matrix as f64 * multiplier) as u64;
-
-        if let Some(avail_bytes) = get_available_memory() {
-            // Keep a safety buffer: 10% of available memory or at least 256MB free
-            let safety_buffer = (avail_bytes / 10).max(256 * 1024 * 1024);
-            if estimated_required_bytes + safety_buffer > avail_bytes {
-                return Err(format!(
-                    "Matrix size {}x{} requires estimated {} MB of memory (with safety buffer), but only {} MB is available.",
-                    size,
-                    size,
-                    (estimated_required_bytes + safety_buffer) / (1024 * 1024),
-                    avail_bytes / (1024 * 1024)
-                ));
-            }
-        }
-
-        Ok(())
-    }
 
     /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV
     /// using the specified base matrix multiplication choice.
@@ -232,7 +152,7 @@ impl Benchmark {
         let mut successful_sizes = Vec::new();
 
         for &size in sizes {
-            if let Err(e) = self.check_size_supported(size) {
+            if let Err(e) = check_memory_helper::CheckMemoryHelper::check_size_supported(size) {
                 println!("\n--- Gracefully Stopping Benchmarks ---");
                 println!("Reason: {}", e);
                 println!(
@@ -248,9 +168,9 @@ impl Benchmark {
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
-            self.bench_mkl(&mut group, &a, &b, size);
+            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Dgemm);
 
-            self.bench_faer(&mut group, &a, &b, size);
+            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Faer);
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
@@ -277,20 +197,6 @@ impl Benchmark {
     }
 }
 
-/// Helper function to parse `/proc/meminfo` and return the available memory in bytes.
-/// If not on Linux or if it fails, returns `None`.
-fn get_available_memory() -> Option<u64> {
-    let content = std::fs::read_to_string("/proc/meminfo").ok()?;
-    for line in content.lines() {
-        if line.to_ascii_lowercase().starts_with("memavailable:") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if let Some(kb) = parts.get(1).and_then(|s| s.parse::<u64>().ok()) {
-                return Some(kb * 1024); // Convert kB to bytes
-            }
-        }
-    }
-    None
-}
 
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
@@ -318,52 +224,40 @@ fn main() {
     let csv_file_dgemm = "generated/benchmark_results_dgemm.csv";
     let algorithms = &["strassen"];
 
+    let targets = [
+        (csv_file_faer, BaseMatMul::Faer, "Faer"),
+        (csv_file_dgemm, BaseMatMul::Dgemm, "Dgemm"),
+    ];
+
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
-        if let Err(e) = export_helper::export_results_to_csv(
-            &sizes,
-            algorithms,
-            csv_file_faer,
-            BaseMatMul::Faer,
-            true,
-        ) {
-            eprintln!("Failed to export Faer CSV: {:?}", e);
-        } else {
-            println!("Faer CSV results successfully updated from cache.");
-        }
-        if let Err(e) = export_helper::export_results_to_csv(
-            &sizes,
-            algorithms,
-            csv_file_dgemm,
-            BaseMatMul::Dgemm,
-            true,
-        ) {
-            eprintln!("Failed to export Dgemm CSV: {:?}", e);
-        } else {
-            println!("Dgemm CSV results successfully updated from cache.");
+        for &(file, base, name) in &targets {
+            if let Err(e) = export_helper::export_results_to_csv(
+                &sizes,
+                algorithms,
+                file,
+                base,
+                true,
+            ) {
+                eprintln!("Failed to export {} CSV: {:?}", name, e);
+            } else {
+                println!("{} CSV results successfully updated from cache.", name);
+            }
         }
     } else {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
         let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
 
-        println!("\n--- Benchmark Set 1/2: Using Faer Base MatMul ---");
-        if let Err(e) = bench.run(&sizes, algorithms, csv_file_faer, BaseMatMul::Faer) {
-            eprintln!("Failed to run Faer benchmarks: {:?}", e);
-        } else {
-            println!(
-                "Faer benchmark results successfully written to {}",
-                csv_file_faer
-            );
-        }
-
-        println!("\n--- Benchmark Set 2/2: Using MKL/Dgemm Base MatMul ---");
-        if let Err(e) = bench.run(&sizes, algorithms, csv_file_dgemm, BaseMatMul::Dgemm) {
-            eprintln!("Failed to run Dgemm benchmarks: {:?}", e);
-        } else {
-            println!(
-                "Dgemm benchmark results successfully written to {}",
-                csv_file_dgemm
-            );
+        for &(file, base, name) in &targets {
+            println!("\n--- Benchmark Set: Using {} Base MatMul ---", name);
+            if let Err(e) = bench.run(&sizes, algorithms, file, base) {
+                eprintln!("Failed to run {} benchmarks: {:?}", name, e);
+            } else {
+                println!(
+                    "{} benchmark results successfully written to {}",
+                    name, file
+                );
+            }
         }
     }
 }
