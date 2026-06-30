@@ -103,6 +103,7 @@
 \DeclareMathOperator{\Vec}{vec}
 \let\vec\relax
 \DeclareRobustCommand{\vec}{\Vec}
+\DeclareMathOperator{\nnz}{nnz}
 \makeatother
 
 \newtheorem{theorem}{Theorem}[section]
@@ -144,7 +145,8 @@
 \maketitle
 
 \begin{abstract}
-    \noindent Bla bla bla 
+    \noindent We develop a Rust
+crate (library) that given matrices $ A,B \in \R^n$ computes their product $ C=AB $ using fast matrix multiplication algorithms, for any given CP decomposition.
 \end{abstract}
 
 {\setlength{\parskip}{0em}
@@ -152,9 +154,42 @@
 
 \section{Notation and tensor preliminaries}
 
-A tensor is a multidimensional array, and in this work we deal only with 3-dimenisional (or 3-way)
-tensors $ \Tn{x} \in \R^{m\times n\times p}$.
-\todo{Short recap of tensor stuff}
+The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
+following the notation in \cite{BK25}.
+A \emph{tensor} is a multidimensional array, and in this work we deal only with 3-dimensional (or 3-way)
+tensors $ \Tn{x} \in \R^{m\times n\times p}$. The \emph{$ k $-th frontal slice} of $ \Tn{x} $ is the matrix
+$ \Mx{X}_k $. For $ \Vc{u} \in \R^m, \Vc{v} \in \R^n, \Vc{w} \in \R^p $, we define the rank-1 \emph{outer
+product} tensor $\Tn{x} = \Vc{u} \topp \Vc{v} \topp \Vc{w} \in \R^{m \times n \times p}$ with entries
+$ x_{ijk} = u_iv_jw_k $. Addition of tensors is defined entry-wise. The \emph{rank} of a tensor $ \Tn{x} $
+is defined as the minimum number of rank-one tensors that generate $ \Tn{x} $ as their sum.
+We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{x}$ as the sum $ \Tn{x} =
+\sum_{r=1}^R u_r \topp v_r \topp w_r $. We denote it by $ \Tn{x} = \dsqr{U,V,W} $, where $ U,V $
+and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation
+in the context of tensors is the \emph{mode$ -k $ product}, which is defined as. 
+In this work, we will often use the equation $ \Tn{x} \ttm[1]
+a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{x}{k}b = \sum_{i=1}^m\sum_{j=1}^n x_{ijk}$ to refer to matrix multiplication algorithms.
+
+\begin{table}[tb]
+\centering
+\caption{Summary of notation.}
+\label{tab:notation}
+\begin{tabular}{ll}
+\toprule
+$\angb{M,K,N}$ & bilinear form representing base case matrix multiplication \\
+& of an $M \times K$ matrix by a $K \times N$ matrix \\
+$\msiz{P,Q,R}$ & dimensions of actual matrices that are multiplied \\
+& ($P \times Q$ matrix multiplied by $Q \times R$ matrix) \\
+$\dsqr{\Mx{U}, \Mx{V}, \Mx{W}}$ & factor matrices corresponding to a tensor \\
+& CP decomposition that provides a fast algorithm \\
+$\Tn{X}$ & order-3 tensor \\
+$\Tn{X} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$ \\
+$\Mx{T}_i$ & $i$th frontal slice of $\Tn{T}$, the matrix of entries $T_{:,:,i}$ \\
+$\Vc{a}_k$, $A_{ij}$ & $k$th column and $i, j$ entry of matrix $\Mx{A}$ \\
+$\vec(\Mx{A})$ & row-order vectorization of the entries of $\Mx{A}$ \\
+$\nnz{\cdot}$ & number of non-zero entries of an object \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Low rank tensor decomposition}
 
@@ -305,9 +340,15 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 \end{equation*}
 
 
+
+\section{Algorithm schema}
+
+Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
+decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
+
 \section{Implementation and practical consideration}
 
-Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
+
 
 
 Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
@@ -315,9 +356,8 @@ implementation, which are recursion cutoff and input matrices sizes not matching
 former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
 
 
-\section{Algorithm schema}
 
-\section{Dynamic Peeling}
+\subsection{Dynamic Peeling}
 \label{sec:dynpeel}
 
 In Strassen algorithm we want to multiply $ \angb{m,n,p} $ matrices by splitting in four blocks as
