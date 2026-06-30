@@ -1,5 +1,11 @@
 # Benchmarks results
 
+# 30.06
+
+Added strassen lines from Ballard et Al.
+
+![img](./generated/benchmark_plot2906_ballard.png)
+
 ## 29.06
 
 Remarks:
