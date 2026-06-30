@@ -11,7 +11,10 @@ use std::io::Write;
 use std::path::Path;
 
 /// A struct for running benchmarks on various matrix multiplication algorithms.
-pub struct Benchmark;
+pub struct Benchmark {
+    run_sequential: bool,
+    run_parallel: bool,
+}
 
 /// Mapping from a benchmark name folder to its corresponding CSV header.
 struct ColumnMapping {
@@ -21,14 +24,17 @@ struct ColumnMapping {
 
 impl Default for Benchmark {
     fn default() -> Self {
-        Self::new()
+        Self::new(true, true)
     }
 }
 
 impl Benchmark {
     /// Creates a new `Benchmark` instance.
-    pub fn new() -> Self {
-        Self
+    pub fn new(run_sequential: bool, run_parallel: bool) -> Self {
+        Self {
+            run_sequential,
+            run_parallel,
+        }
     }
 
     /// Helper to read a single point estimate of the mean from Criterion's JSON files, converting it to seconds.
@@ -122,8 +128,8 @@ impl Benchmark {
         for &algo in algorithms {
             let clean = algo.replace(['-', '.'], "_");
             mappings.push(ColumnMapping {
-                header: format!("{}_single", clean),
-                folder: format!("{}-{}_Single-Thread", algo, suffix),
+                header: format!("{}_seq", clean),
+                folder: format!("{}-{}_Sequential", algo, suffix),
             });
             mappings.push(ColumnMapping {
                 header: format!("{}_dfs", clean),
@@ -250,27 +256,48 @@ impl Benchmark {
     }
 
     /// Registers the MKL sequential and parallel benchmarks for one matrix size.
-    fn bench_mkl(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
-        Self::register_bench(group, "MKL-Sequential", size, || {
-            util::base_matmul(a, b, false, BaseMatMul::Dgemm)
-        });
-        Self::register_bench(group, "MKL-Parallel", size, || {
-            util::base_matmul(a, b, true, BaseMatMul::Dgemm)
-        });
+    fn bench_mkl(
+        &self,
+        group: &mut BenchmarkGroup<WallTime>,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        size: usize,
+    ) {
+        if self.run_sequential {
+            Self::register_bench(group, "MKL-Sequential", size, || {
+                util::base_matmul(a, b, false, BaseMatMul::Dgemm)
+            });
+        }
+        if self.run_parallel {
+            Self::register_bench(group, "MKL-Parallel", size, || {
+                util::base_matmul(a, b, true, BaseMatMul::Dgemm)
+            });
+        }
     }
 
     /// Registers the Faer sequential and parallel benchmarks for one matrix size.
-    fn bench_faer(group: &mut BenchmarkGroup<WallTime>, a: &Mat<f64>, b: &Mat<f64>, size: usize) {
-        Self::register_bench(group, "Faer-Sequential", size, || {
-            util::base_matmul(a, b, false, BaseMatMul::Faer)
-        });
-        Self::register_bench(group, "Faer-Parallel", size, || {
-            util::base_matmul(a, b, true, BaseMatMul::Faer)
-        });
+    fn bench_faer(
+        &self,
+        group: &mut BenchmarkGroup<WallTime>,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        size: usize,
+    ) {
+        if self.run_sequential {
+            Self::register_bench(group, "Faer-Sequential", size, || {
+                util::base_matmul(a, b, false, BaseMatMul::Faer)
+            });
+        }
+        if self.run_parallel {
+            Self::register_bench(group, "Faer-Parallel", size, || {
+                util::base_matmul(a, b, true, BaseMatMul::Faer)
+            });
+        }
     }
 
-    /// Registers single-thread and all parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
+    /// Registers sequential and parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
     fn bench_cp(
+        &self,
         group: &mut BenchmarkGroup<WallTime>,
         a: &Mat<f64>,
         b: &Mat<f64>,
@@ -283,21 +310,25 @@ impl Benchmark {
             BaseMatMul::Faer => "Faer",
             BaseMatMul::Dgemm => "Dgemm",
         };
-        Self::register_bench(
-            group,
-            &format!("{}-{}/Single-Thread", algo, suffix),
-            size,
-            || mm.cp_matmul(a, b, ParallelismMode::Sequential, base_choice),
-        );
-        Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
-            mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice)
-        });
-        Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
-            mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice)
-        });
-        Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
-            mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice)
-        });
+        if self.run_sequential {
+            Self::register_bench(
+                group,
+                &format!("{}-{}/Sequential", algo, suffix),
+                size,
+                || mm.cp_matmul(a, b, ParallelismMode::Sequential, base_choice),
+            );
+        }
+        if self.run_parallel {
+            Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
+                mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice)
+            });
+            Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
+                mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice)
+            });
+            Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
+                mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice)
+            });
+        }
     }
 
     /// Checks if the matrix size is supported by the machine's memory and limits.
@@ -412,13 +443,13 @@ impl Benchmark {
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
-            Self::bench_mkl(&mut group, &a, &b, size);
+            self.bench_mkl(&mut group, &a, &b, size);
 
-            Self::bench_faer(&mut group, &a, &b, size);
+            self.bench_faer(&mut group, &a, &b, size);
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
-                Self::bench_cp(&mut group, &a, &b, size, algo, &mm, base_choice);
+                self.bench_cp(&mut group, &a, &b, size, algo, &mm, base_choice);
             }
             successful_sizes.push(size);
         }
@@ -457,6 +488,13 @@ fn main() {
 
     let full = args.iter().any(|arg| arg == "--full");
 
+    let has_seq_flag = args.iter().any(|arg| arg == "--sequential" || arg == "--seq");
+    let has_par_flag = args.iter().any(|arg| arg == "--parallel" || arg == "--par");
+
+    // Default: if neither flag is specified, we run both
+    let run_sequential = has_seq_flag || !has_par_flag;
+    let run_parallel = has_par_flag || !has_seq_flag;
+
     // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
     // which will dynamically check system memory and stop before exceeding limits.
     let n_limit = if full { 20 } else { 11 };
@@ -484,7 +522,7 @@ fn main() {
         }
     } else {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
-        let bench = Benchmark::new();
+        let bench = Benchmark::new(run_sequential, run_parallel);
 
         println!("\n--- Benchmark Set 1/2: Using Faer Base MatMul ---");
         if let Err(e) = bench.run(&sizes, algorithms, csv_file_faer, BaseMatMul::Faer) {
