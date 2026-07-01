@@ -19,6 +19,16 @@ module load gcc/12.3.0
 module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
 module load openmpi/4.1.6-gcc-12.3.0
 
+# Dynamically locate libsvml.so on the Toeplitz cluster and add it to LD_LIBRARY_PATH
+echo "Searching for libsvml.so on the cluster..."
+SVML_DIR=$(find /software /opt -name "libsvml.so" -print -quit 2>/dev/null | xargs dirname 2>/dev/null)
+if [ -n "$SVML_DIR" ]; then
+    export LD_LIBRARY_PATH="$SVML_DIR:$LD_LIBRARY_PATH"
+    echo "Found libsvml.so at $SVML_DIR, added to LD_LIBRARY_PATH"
+else
+    echo "Warning: libsvml.so not found via search paths."
+fi
+
 # Print environment information for debugging
 echo "=== Slurm Job Information ==="
 echo "Job ID: $SLURM_JOB_ID"
