@@ -86,6 +86,16 @@ impl Benchmark {
     }
 
     /// Registers sequential and parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
+    ///
+    /// # Arguments
+    /// * `group` - The Criterion benchmark group.
+    /// * `a` - The left operand matrix.
+    /// * `b` - The right operand matrix.
+    /// * `size` - The matrix dimension size.
+    /// * `algo` - The name of the algorithm.
+    /// * `mm` - The `MatMul` instance.
+    /// * `base_choice` - The base matrix multiplication choice.
+    /// * `recursion_limit` - The recursion limit choice.
     #[allow(clippy::too_many_arguments)]
     fn bench_cp(
         &self,
@@ -96,6 +106,7 @@ impl Benchmark {
         algo: &str,
         mm: &MatMul<'_>,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) {
         let suffix = match base_choice {
             BaseMatMul::Faer => "Faer",
@@ -112,53 +123,43 @@ impl Benchmark {
                         b,
                         ParallelismMode::Sequential,
                         base_choice,
-                        RecursionLimit::Cutoff(1024),
+                        recursion_limit,
                     )
                 },
             );
         }
         if self.run_parallel {
             Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
-                mm.cp_matmul(
-                    a,
-                    b,
-                    ParallelismMode::Dfs,
-                    base_choice,
-                    RecursionLimit::Cutoff(1024),
-                )
+                mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit)
             });
             Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
-                mm.cp_matmul(
-                    a,
-                    b,
-                    ParallelismMode::Bfs,
-                    base_choice,
-                    RecursionLimit::Cutoff(1024),
-                )
+                mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit)
             });
             Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
-                mm.cp_matmul(
-                    a,
-                    b,
-                    ParallelismMode::Hybrid,
-                    base_choice,
-                    RecursionLimit::Cutoff(1024),
-                )
+                mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit)
             });
         }
     }
 
     /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV
-    /// using the specified base matrix multiplication choice.
+    /// using the specified base matrix multiplication choice and recursion limit.
     ///
     /// Stops running benchmarks if a matrix size exceeds the machine's memory capacity,
     /// printing a clean warning, and still exporting results for the sizes that completed.
+    ///
+    /// # Arguments
+    /// * `sizes` - A slice of matrix dimension sizes to benchmark.
+    /// * `algorithms` - A slice of algorithm names.
+    /// * `filename` - The output CSV filename.
+    /// * `base_choice` - The base matrix multiplication choice.
+    /// * `recursion_limit` - The recursion limit choice.
     pub fn run(
         &self,
         sizes: &[usize],
         algorithms: &[&str],
         filename: &str,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Result<(), std::io::Error> {
         println!("Running programmatic Criterion benchmarks...");
 
@@ -199,7 +200,16 @@ impl Benchmark {
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
-                self.bench_cp(&mut group, &a, &b, size, algo, &mm, base_choice);
+                self.bench_cp(
+                    &mut group,
+                    &a,
+                    &b,
+                    size,
+                    algo,
+                    &mm,
+                    base_choice,
+                    recursion_limit,
+                );
             }
             successful_sizes.push(size);
         }
@@ -244,39 +254,70 @@ fn main() {
     let n_limit = if full { 20 } else { 11 };
     let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
 
-    let csv_file_faer = "generated/benchmark_results_faer.csv";
-    let csv_file_dgemm = "generated/benchmark_results_dgemm.csv";
+    let cutoffs = [256, 512, 1024, 2048];
+    let recursion_levels = [1, 2, 3];
     let algorithms = &["strassen"];
 
     let targets = [
-        (csv_file_faer, BaseMatMul::Faer, "Faer"),
-        (csv_file_dgemm, BaseMatMul::Dgemm, "Dgemm"),
+        (BaseMatMul::Faer, "Faer", "faer"),
+        (BaseMatMul::Dgemm, "Dgemm", "dgemm"),
     ];
+
+    let configs = {
+        let mut list = Vec::new();
+        for &cutoff in &cutoffs {
+            list.push((
+                RecursionLimit::Cutoff(cutoff),
+                format!("benchmark_cutoff_{}", cutoff),
+                format!("cutoff: {}", cutoff),
+            ));
+        }
+        for &level in &recursion_levels {
+            list.push((
+                RecursionLimit::Depth(level),
+                format!("benchmark_level_{}", level),
+                format!("level: {}", level),
+            ));
+        }
+        list
+    };
 
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
-        for &(file, base, name) in &targets {
-            if let Err(e) =
-                export_helper::export_results_to_csv(&sizes, algorithms, file, base, true)
-            {
-                eprintln!("Failed to export {} CSV: {:?}", name, e);
-            } else {
-                println!("{} CSV results successfully updated from cache.", name);
+        for (_limit, file_prefix, label) in configs {
+            for &(base, name, suffix) in &targets {
+                let file = format!("generated/{}_{}.csv", file_prefix, suffix);
+                if let Err(e) =
+                    export_helper::export_results_to_csv(&sizes, algorithms, &file, base, true)
+                {
+                    eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
+                } else {
+                    println!(
+                        "{} CSV results ({}) successfully updated from cache.",
+                        name, label
+                    );
+                }
             }
         }
     } else {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
         let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
 
-        for &(file, base, name) in &targets {
-            println!("\n--- Benchmark Set: Using {} Base MatMul ---", name);
-            if let Err(e) = bench.run(&sizes, algorithms, file, base) {
-                eprintln!("Failed to run {} benchmarks: {:?}", name, e);
-            } else {
+        for (limit, file_prefix, label) in configs {
+            for &(base, name, suffix) in &targets {
+                let file = format!("generated/{}_{}.csv", file_prefix, suffix);
                 println!(
-                    "{} benchmark results successfully written to {}",
-                    name, file
+                    "\n--- Benchmark Set: Using {} Base MatMul, {} ---",
+                    name, label
                 );
+                if let Err(e) = bench.run(&sizes, algorithms, &file, base, limit) {
+                    eprintln!("Failed to run {} benchmarks for {}: {:?}", name, label, e);
+                } else {
+                    println!(
+                        "{} ({}) benchmark results successfully written to {}",
+                        name, label, file
+                    );
+                }
             }
         }
     }

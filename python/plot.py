@@ -68,7 +68,7 @@ def format_label(col: str) -> str:
 
 
 BALLARD_DATA_PATH = os.path.join(
-    os.path.dirname(__file__), "ballard_data_sequential.txt"
+    os.path.dirname(__file__), "..", "benchmarks", "generated", "benchmarks.txt"
 )
 
 # Style for Ballard reference lines
@@ -703,12 +703,10 @@ def main() -> None:
         if len(sys.argv) > 1:
             csv_path = os.path.abspath(sys.argv[1])
             base_name = os.path.basename(csv_path)
-            if "results_faer" in base_name:
-                out_name = "benchmark_plot_faer.pdf"
-            elif "results_dgemm" in base_name:
-                out_name = "benchmark_plot_dgemm.pdf"
+            if "results" in base_name:
+                out_name = base_name.replace("results", "plot").replace(".csv", ".pdf")
             else:
-                out_name = "benchmark_plot.pdf"
+                out_name = os.path.splitext(base_name)[0] + ".pdf"
             output_path = os.path.join(os.path.dirname(csv_path), out_name)
             configs.append((csv_path, output_path))
         else:

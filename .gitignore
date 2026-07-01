@@ -52,4 +52,5 @@ Thumbs.db
 *.ind
 *.ist
 resources/
+benchmarks/generated/
 .agents/
