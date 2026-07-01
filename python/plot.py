@@ -29,13 +29,17 @@ def format_label(col: str) -> str:
         "faer_seq": "faer (Sequential)",
         "faer_par": "faer (Parallel)",
         "strassen_single": "Strassen (Single-threaded)",
+        "strassen_seq": "Strassen (Sequential)",
         "strassen_dfs": "Strassen (DFS)",
         "strassen_bfs": "Strassen (BFS)",
         "strassen_hybrid": "Strassen (Hybrid)",
+        "strassen_par": "Strassen (Parallel)",
         "grey_strassen_single": "Grey-Strassen (Single-threaded)",
+        "grey_strassen_seq": "Grey-Strassen (Sequential)",
         "grey_strassen_dfs": "Grey-Strassen (DFS)",
         "grey_strassen_bfs": "Grey-Strassen (BFS)",
         "grey_strassen_hybrid": "Grey-Strassen (Hybrid)",
+        "grey_strassen_par": "Grey-Strassen (Parallel)",
     }
     if col in label_mappings:
         return label_mappings[col]
@@ -50,9 +54,11 @@ def format_label(col: str) -> str:
         mults = parts[2]
         suffix = parts[3:]
         suffix_str = " ".join(suffix).lower()
-        if suffix_str == "single":
-            suffix_str = "Single-threaded"
-        elif suffix_str in ("dfs", "bfs", "hybrid"):
+        if suffix_str in ("single", "seq"):
+            suffix_str = "Sequential"
+        elif suffix_str in ("par", "parallel", "hybrid"):
+            suffix_str = "Parallel"
+        elif suffix_str in ("dfs", "bfs"):
             suffix_str = suffix_str.upper()
         else:
             suffix_str = suffix_str.title()
@@ -220,21 +226,32 @@ def plot_csv(csv_path: str, output_path: str) -> None:
         "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
         # Strassen
         "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
+        "strassen_seq": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
         "strassen_dfs": {"color": "#d95f02", "marker": "^", "linestyle": "-."},
         "strassen_bfs": {"color": "#fdbb84", "marker": "v", "linestyle": ":"},
         "strassen_hybrid": {"color": "#e34a33", "marker": "D", "linestyle": "-"},
+        "strassen_par": {"color": "#e34a33", "marker": "D", "linestyle": "-"},
         # Grey-Strassen
         "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
+        "grey_strassen_seq": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
         "grey_strassen_dfs": {"color": "#a6761d", "marker": "^", "linestyle": "-."},
         "grey_strassen_bfs": {"color": "#dfc27d", "marker": "v", "linestyle": ":"},
         "grey_strassen_hybrid": {"color": "#543005", "marker": "H", "linestyle": "-"},
+        "grey_strassen_par": {"color": "#543005", "marker": "H", "linestyle": "-"},
         # HK323_15_94
         "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
+        "hk323_15_94_seq": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
         "hk323_15_94_dfs": {"color": "#1b9e77", "marker": "<", "linestyle": "-."},
         "hk323_15_94_bfs": {"color": "#a1d99b", "marker": ">", "linestyle": ":"},
         "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
+        "hk323_15_94_par": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
         # Smirnov333_23_139
         "smirnov333_23_139_single": {
+            "color": "#d62728",
+            "marker": "<",
+            "linestyle": "--",
+        },
+        "smirnov333_23_139_seq": {
             "color": "#d62728",
             "marker": "<",
             "linestyle": "--",
@@ -242,6 +259,11 @@ def plot_csv(csv_path: str, output_path: str) -> None:
         "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "d", "linestyle": "-."},
         "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "p", "linestyle": ":"},
         "smirnov333_23_139_hybrid": {
+            "color": "#980043",
+            "marker": ">",
+            "linestyle": "-",
+        },
+        "smirnov333_23_139_par": {
             "color": "#980043",
             "marker": ">",
             "linestyle": "-",
@@ -391,21 +413,32 @@ def generate_grid_plot(
         "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
         # Strassen
         "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
+        "strassen_seq": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
         "strassen_dfs": {"color": "#d95f02", "marker": "^", "linestyle": "-."},
         "strassen_bfs": {"color": "#fdbb84", "marker": "v", "linestyle": ":"},
         "strassen_hybrid": {"color": "#e34a33", "marker": "D", "linestyle": "-"},
+        "strassen_par": {"color": "#e34a33", "marker": "D", "linestyle": "-"},
         # Grey-Strassen
         "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
+        "grey_strassen_seq": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
         "grey_strassen_dfs": {"color": "#a6761d", "marker": "^", "linestyle": "-."},
         "grey_strassen_bfs": {"color": "#dfc27d", "marker": "v", "linestyle": ":"},
         "grey_strassen_hybrid": {"color": "#543005", "marker": "H", "linestyle": "-"},
+        "grey_strassen_par": {"color": "#543005", "marker": "H", "linestyle": "-"},
         # HK323_15_94
         "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
+        "hk323_15_94_seq": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
         "hk323_15_94_dfs": {"color": "#1b9e77", "marker": "<", "linestyle": "-."},
         "hk323_15_94_bfs": {"color": "#a1d99b", "marker": ">", "linestyle": ":"},
         "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
+        "hk323_15_94_par": {"color": "#006d2c", "marker": "v", "linestyle": "-"},
         # Smirnov333_23_139
         "smirnov333_23_139_single": {
+            "color": "#d62728",
+            "marker": "<",
+            "linestyle": "--",
+        },
+        "smirnov333_23_139_seq": {
             "color": "#d62728",
             "marker": "<",
             "linestyle": "--",
@@ -413,6 +446,11 @@ def generate_grid_plot(
         "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "d", "linestyle": "-."},
         "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "p", "linestyle": ":"},
         "smirnov333_23_139_hybrid": {
+            "color": "#980043",
+            "marker": ">",
+            "linestyle": "-",
+        },
+        "smirnov333_23_139_par": {
             "color": "#980043",
             "marker": ">",
             "linestyle": "-",
