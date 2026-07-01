@@ -5,7 +5,10 @@ fn main() {
     // ----------------------------------------------------
     // C Intel MKL compilation & linking
     // ----------------------------------------------------
-    let (mkl_include, mkl_lib) = if let Ok(mklroot) = std::env::var("MKLROOT") {
+    let mkl_env_vars = ["MKLROOT", "MKL_ROOT", "INTEL_ONEAPI_MPI_ROOT", "I_MPI_ROOT"];
+    let mkl_env_val = mkl_env_vars.iter().find_map(|&var| std::env::var(var).ok());
+
+    let (mkl_include, mkl_lib) = if let Some(mklroot) = mkl_env_val {
         let mkl_prefix = PathBuf::from(mklroot);
         let include = if mkl_prefix.join("include").exists() {
             mkl_prefix.join("include")
