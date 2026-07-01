@@ -11,9 +11,15 @@
 # Ensure we exit on any error
 set -e
 
-# Source Spack and activate the project's concretized Spack environment
+# Source Spack, activate, concretize, and install the project's Spack environment
 source /software/spack/share/spack/setup-env.sh
 spack env activate -d rust
+
+echo "Concretizing Spack environment..."
+spack concretize -f
+
+echo "Installing Spack environment dependencies (MKL, GCC, OpenBLAS, LLVM, etc.)..."
+spack install -v
 
 # Print environment information for debugging
 echo "=== Slurm Job Information ==="
