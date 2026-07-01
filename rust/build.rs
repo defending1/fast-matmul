@@ -5,19 +5,38 @@ fn main() {
     // ----------------------------------------------------
     // C Intel MKL compilation & linking
     // ----------------------------------------------------
-    let mkl_output = Command::new("spack")
-        .args(["location", "-i", "intel-oneapi-mkl"])
-        .output()
-        .expect("Failed to execute spack command for MKL. Is spack sourced & in your PATH?");
+    let (mkl_include, mkl_lib) = if let Ok(mklroot) = std::env::var("MKLROOT") {
+        let mkl_prefix = PathBuf::from(mklroot);
+        let include = if mkl_prefix.join("include").exists() {
+            mkl_prefix.join("include")
+        } else {
+            mkl_prefix.join("mkl/latest/include")
+        };
+        let lib = if mkl_prefix.join("lib/intel64").exists() {
+            mkl_prefix.join("lib/intel64")
+        } else if mkl_prefix.join("lib").exists() {
+            mkl_prefix.join("lib")
+        } else {
+            mkl_prefix.join("mkl/latest/lib")
+        };
+        (include, lib)
+    } else {
+        let mkl_output = Command::new("spack")
+            .args(["location", "-i", "intel-oneapi-mkl"])
+            .output()
+            .expect("Failed to execute spack command for MKL. Is spack sourced & in your PATH?");
 
-    assert!(
-        mkl_output.status.success(),
-        "spack location -i intel-oneapi-mkl failed. Make sure MKL is installed via Spack.\nError: {}",
-        String::from_utf8_lossy(&mkl_output.stderr)
-    );
-    let mkl_prefix = PathBuf::from(String::from_utf8_lossy(&mkl_output.stdout).trim());
-    let mkl_include = mkl_prefix.join("mkl/latest/include");
-    let mkl_lib = mkl_prefix.join("mkl/latest/lib");
+        assert!(
+            mkl_output.status.success(),
+            "spack location -i intel-oneapi-mkl failed. Make sure MKL is installed via Spack.\nError: {}",
+            String::from_utf8_lossy(&mkl_output.stderr)
+        );
+        let mkl_prefix = PathBuf::from(String::from_utf8_lossy(&mkl_output.stdout).trim());
+        (
+            mkl_prefix.join("mkl/latest/include"),
+            mkl_prefix.join("mkl/latest/lib"),
+        )
+    };
 
     println!("cargo::rustc-link-search=native={}", mkl_lib.display());
     // Force the linker to keep all MKL libraries even if not directly referenced by our object files
