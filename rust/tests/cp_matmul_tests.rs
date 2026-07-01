@@ -1,6 +1,6 @@
 use faer::Mat;
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode};
+use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
 
 #[test]
@@ -48,7 +48,7 @@ fn test_cp_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_fast = mm.cp_matmul(&a, &b, mode, base);
+                let c_fast = mm.cp_matmul(&a, &b, mode, base, RecursionLimit::Cutoff(1));
                 let c_classical = &a * &b;
 
                 assert_eq!((c_fast.nrows(), c_fast.ncols()), (m, p));
@@ -90,7 +90,8 @@ fn test_cp_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_fast_pad = mm.cp_matmul(&a_pad, &b_pad, mode, base);
+                let c_fast_pad =
+                    mm.cp_matmul(&a_pad, &b_pad, mode, base, RecursionLimit::Cutoff(1));
                 let c_classical_pad = &a_pad * &b_pad;
 
                 assert_eq!((c_fast_pad.nrows(), c_fast_pad.ncols()), (m_pad, p_pad));
@@ -109,6 +110,57 @@ fn test_cp_matmul_correctness() {
                         );
                     }
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_recursion_limits() {
+    let mut rng = rand::thread_rng();
+    let cp = CP::load("classical222-8-24"); // Strassen 2x2x2
+    let mm = MatMul::with_cp(&cp);
+
+    // Let's use a size of 8x8.
+    let size = 8;
+    let mut a = Mat::<f64>::zeros(size, size);
+    let mut b = Mat::<f64>::zeros(size, size);
+    for r in 0..size {
+        for c in 0..size {
+            a[(r, c)] = rng.gen_range(-1.0..1.0);
+            b[(r, c)] = rng.gen_range(-1.0..1.0);
+        }
+    }
+
+    let c_classical = &a * &b;
+
+    let limits = [
+        RecursionLimit::Depth(0),
+        RecursionLimit::Depth(1),
+        RecursionLimit::Depth(2),
+        RecursionLimit::Depth(3),
+        RecursionLimit::Cutoff(8),
+        RecursionLimit::Cutoff(4),
+        RecursionLimit::Cutoff(2),
+        RecursionLimit::Cutoff(1),
+    ];
+
+    for &limit in &limits {
+        let c_fast = mm.cp_matmul(&a, &b, ParallelismMode::Sequential, BaseMatMul::Faer, limit);
+
+        assert_eq!((c_fast.nrows(), c_fast.ncols()), (size, size));
+        for i in 0..size {
+            for j in 0..size {
+                let diff = (c_fast[(i, j)] - c_classical[(i, j)]).abs();
+                assert!(
+                    diff < 1e-10,
+                    "Mismatch for recursion limit {:?} at ({}, {}): fast = {}, classical = {}",
+                    limit,
+                    i,
+                    j,
+                    c_fast[(i, j)],
+                    c_classical[(i, j)]
+                );
             }
         }
     }

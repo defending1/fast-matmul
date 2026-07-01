@@ -47,6 +47,20 @@ impl IndexMut<[usize; 3]> for Tensor3 {
     }
 }
 
+/// Controls the recursion behavior of the CP decomposition matrix multiplication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecursionLimit {
+    /// Recurse up to a fixed number of levels, without limiting the size of the matrix.
+    ///
+    /// When the depth reaches `0`, the algorithm stops recursing and invokes the base matrix multiplication.
+    Depth(usize),
+    /// Recurse until any matrix dimension (m, n, or p) is less than or equal to the specified cutoff size.
+    ///
+    /// The algorithm recurses potentially to the last recursion child (no level limit), as long as
+    /// the matrix dimensions are strictly greater than the cutoff size.
+    Cutoff(usize),
+}
+
 /// Matrix Multiplication operations and algorithms.
 pub struct MatMul<'a> {
     cp: &'a CP,
@@ -159,14 +173,7 @@ impl<'a> MatMul<'a> {
                     } else {
                         faer::Par::Seq
                     };
-                faer::linalg::matmul::matmul(
-                    c.as_mut(),
-                    faer::Accum::Replace,
-                    a,
-                    b,
-                    1.0,
-                    par,
-                );
+                faer::linalg::matmul::matmul(c.as_mut(), faer::Accum::Replace, a, b, 1.0, par);
                 c
             }
             BaseMatMul::Dgemm => {
@@ -211,8 +218,9 @@ impl<'a> MatMul<'a> {
         b: MatRef<'_, f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Mat<f64> {
-        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice);
+        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice, recursion_limit);
         let mut c = Mat::<f64>::zeros(peeling.m, peeling.p);
         peeling.peel_core(&mut c);
         peeling.correct_inner_dimension(&mut c);
@@ -229,6 +237,7 @@ impl<'a> MatMul<'a> {
     /// * `b_blocks` - The blocks of matrix B.
     /// * `mode` - The parallelism mode.
     /// * `base_choice` - The backend choice.
+    /// * `recursion_limit` - The recursion limit choice.
     fn compute_m_l(
         &self,
         l: usize,
@@ -236,11 +245,18 @@ impl<'a> MatMul<'a> {
         b_blocks: &[MatRef<'_, f64>],
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Mat<f64> {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.col(l));
         let b_comb = Self::combine_blocks(b_blocks, self.cp.v.col(l));
 
-        self.cp_matmul_impl(a_comb.as_ref(), b_comb.as_ref(), mode, base_choice)
+        self.cp_matmul_impl(
+            a_comb.as_ref(),
+            b_comb.as_ref(),
+            mode,
+            base_choice,
+            recursion_limit,
+        )
     }
 
     /// Computes the linear combination of matrix blocks for a single CP decomposition component.
@@ -345,23 +361,36 @@ impl<'a> MatMul<'a> {
         p_block: usize,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Vec<Mat<f64>> {
         const PARALLEL_CUTOFF: usize = 256;
 
         match mode {
-            ParallelismMode::Dfs => {
-                (0..self.cp.rank)
-                    .map(|l| {
-                        self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs, base_choice)
-                    })
-                    .collect()
-            }
+            ParallelismMode::Dfs => (0..self.cp.rank)
+                .map(|l| {
+                    self.compute_m_l(
+                        l,
+                        a_blocks,
+                        b_blocks,
+                        ParallelismMode::Dfs,
+                        base_choice,
+                        recursion_limit,
+                    )
+                })
+                .collect(),
             ParallelismMode::Bfs => {
                 use rayon::prelude::*;
                 (0..self.cp.rank)
                     .into_par_iter()
                     .map(|l| {
-                        self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Bfs, base_choice)
+                        self.compute_m_l(
+                            l,
+                            a_blocks,
+                            b_blocks,
+                            ParallelismMode::Bfs,
+                            base_choice,
+                            recursion_limit,
+                        )
                     })
                     .collect()
             }
@@ -380,6 +409,7 @@ impl<'a> MatMul<'a> {
                                 b_blocks,
                                 ParallelismMode::Hybrid,
                                 base_choice,
+                                recursion_limit,
                             )
                         })
                         .collect()
@@ -392,24 +422,24 @@ impl<'a> MatMul<'a> {
                                 b_blocks,
                                 ParallelismMode::Dfs,
                                 base_choice,
+                                recursion_limit,
                             )
                         })
                         .collect()
                 }
             }
-            ParallelismMode::Sequential => {
-                (0..self.cp.rank)
-                    .map(|l| {
-                        self.compute_m_l(
-                            l,
-                            a_blocks,
-                            b_blocks,
-                            ParallelismMode::Sequential,
-                            base_choice,
-                        )
-                    })
-                    .collect()
-            }
+            ParallelismMode::Sequential => (0..self.cp.rank)
+                .map(|l| {
+                    self.compute_m_l(
+                        l,
+                        a_blocks,
+                        b_blocks,
+                        ParallelismMode::Sequential,
+                        base_choice,
+                        recursion_limit,
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -482,12 +512,14 @@ impl<'a> MatMul<'a> {
     /// * `b` - The right matrix operand as a `MatRef`.
     /// * `mode` - The parallelism mode to use.
     /// * `base_choice` - The backend choice (Faer or Dgemm).
+    /// * `recursion_limit` - The recursion limit choice (Depth or Cutoff).
     pub(crate) fn cp_matmul_impl(
         &self,
         a: MatRef<'_, f64>,
         b: MatRef<'_, f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Mat<f64> {
         let m = a.nrows();
         let n = a.ncols();
@@ -495,8 +527,21 @@ impl<'a> MatMul<'a> {
         let p = b.ncols();
         assert_eq!(n, n_b, "Matrix dimensions must agree for multiplication");
 
-        const N_T: usize = i64::pow(2, 10) as usize;
-        if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= N_T || m <= N_T || p <= N_T {
+        let stop_recursing = match recursion_limit {
+            RecursionLimit::Depth(depth) => {
+                depth == 0 || m < self.cp.m || n < self.cp.n || p < self.cp.p
+            }
+            RecursionLimit::Cutoff(cutoff) => {
+                m < self.cp.m
+                    || n < self.cp.n
+                    || p < self.cp.p
+                    || m <= cutoff
+                    || n <= cutoff
+                    || p <= cutoff
+            }
+        };
+
+        if stop_recursing {
             let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
             return self.base_matmul_impl(a, b, leaf_multithreaded, base_choice);
         }
@@ -510,7 +555,7 @@ impl<'a> MatMul<'a> {
         let extra_p = p % self.cp.p;
 
         if extra_m > 0 || extra_n > 0 || extra_p > 0 {
-            return self.dynamic_peeling(a, b, mode, base_choice);
+            return self.dynamic_peeling(a, b, mode, base_choice, recursion_limit);
         }
 
         let m_block = m / self.cp.m;
@@ -520,6 +565,11 @@ impl<'a> MatMul<'a> {
         let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
         let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
+        let next_limit = match recursion_limit {
+            RecursionLimit::Depth(depth) => RecursionLimit::Depth(depth.saturating_sub(1)),
+            RecursionLimit::Cutoff(cutoff) => RecursionLimit::Cutoff(cutoff),
+        };
+
         let m_products = self.compute_block_products(
             &a_blocks,
             &b_blocks,
@@ -528,6 +578,7 @@ impl<'a> MatMul<'a> {
             p_block,
             mode,
             base_choice,
+            next_limit,
         );
 
         let m_refs: Vec<MatRef<'_, f64>> = m_products.iter().map(|m| m.as_ref()).collect();
@@ -541,14 +592,15 @@ impl<'a> MatMul<'a> {
     /// * `b` - The right matrix operand as a reference to `Mat`.
     /// * `mode` - The parallelism mode to use.
     /// * `base_choice` - The backend choice (Faer or Dgemm).
+    /// * `recursion_limit` - The recursion limit choice (Depth or Cutoff).
     pub fn cp_matmul(
         &self,
         a: &Mat<f64>,
         b: &Mat<f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Mat<f64> {
-        self.cp_matmul_impl(a.as_ref(), b.as_ref(), mode, base_choice)
+        self.cp_matmul_impl(a.as_ref(), b.as_ref(), mode, base_choice, recursion_limit)
     }
 }
-

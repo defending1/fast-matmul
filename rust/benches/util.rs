@@ -90,11 +90,7 @@ pub fn evaluate_spline_derivative<const K: usize>(
         );
     }
 
-    if ier == 0 {
-        Ok(y)
-    } else {
-        Err(ier)
-    }
+    if ier == 0 { Ok(y) } else { Err(ier) }
 }
 
 fn random_matrix(rows: usize, cols: usize) -> Mat<f64> {

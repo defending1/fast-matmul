@@ -91,4 +91,3 @@ pub(crate) fn mkl_matmul_impl(a: faer::MatRef<'_, f64>, b: faer::MatRef<'_, f64>
 pub fn mkl_matmul(a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
     mkl_matmul_impl(a.as_ref(), b.as_ref())
 }
-

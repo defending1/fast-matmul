@@ -1,5 +1,5 @@
 use faer::Mat;
-use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode};
+use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
 
 #[test]
@@ -44,7 +44,7 @@ fn test_strassen_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_strassen = mm.cp_matmul(&a, &b, mode, base);
+                let c_strassen = mm.cp_matmul(&a, &b, mode, base, RecursionLimit::Cutoff(1));
                 let c_classical = &a * &b;
 
                 assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));
@@ -96,7 +96,7 @@ fn test_strassen_power_of_two_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_strassen = mm.cp_matmul(&a, &b, mode, base);
+                let c_strassen = mm.cp_matmul(&a, &b, mode, base, RecursionLimit::Depth(3));
                 let c_classical = &a * &b;
 
                 assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (size, size));

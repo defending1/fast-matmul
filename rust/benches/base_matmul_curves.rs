@@ -1,6 +1,6 @@
 mod util;
 
-use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
+use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::matmul::BaseMatMul;
 use rand::Rng;
@@ -126,8 +126,15 @@ fn main() {
                 );
             }
 
-            if let Some(k) = derivatives.iter().enumerate().position(|(i, &d)| n_vals[i] > 32.0 && d < 0.15) {
-                println!("\nMinimum index k such that derivative[k] < 0.15 (for N > 32): {} (N = {}, derivative = {:.6})", k, n_vals[k], derivatives[k]);
+            if let Some(k) = derivatives
+                .iter()
+                .enumerate()
+                .position(|(i, &d)| n_vals[i] > 32.0 && d < 0.15)
+            {
+                println!(
+                    "\nMinimum index k such that derivative[k] < 0.15 (for N > 32): {} (N = {}, derivative = {:.6})",
+                    k, n_vals[k], derivatives[k]
+                );
             } else {
                 println!("\nNo index k found such that derivative[k] < 0.15 (for N > 32)");
             }

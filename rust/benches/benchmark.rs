@@ -1,11 +1,11 @@
-mod export_helper;
 mod check_memory_helper;
+mod export_helper;
 mod util;
 
-use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
+use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
-use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode};
+use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
 
 /// A struct for running benchmarks on various matrix multiplication algorithms.
@@ -106,22 +106,47 @@ impl Benchmark {
                 group,
                 &format!("{}-{}/Sequential", algo, suffix),
                 size,
-                || mm.cp_matmul(a, b, ParallelismMode::Sequential, base_choice),
+                || {
+                    mm.cp_matmul(
+                        a,
+                        b,
+                        ParallelismMode::Sequential,
+                        base_choice,
+                        RecursionLimit::Cutoff(1024),
+                    )
+                },
             );
         }
         if self.run_parallel {
             Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
-                mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice)
+                mm.cp_matmul(
+                    a,
+                    b,
+                    ParallelismMode::Dfs,
+                    base_choice,
+                    RecursionLimit::Cutoff(1024),
+                )
             });
             Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
-                mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice)
+                mm.cp_matmul(
+                    a,
+                    b,
+                    ParallelismMode::Bfs,
+                    base_choice,
+                    RecursionLimit::Cutoff(1024),
+                )
             });
             Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
-                mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice)
+                mm.cp_matmul(
+                    a,
+                    b,
+                    ParallelismMode::Hybrid,
+                    base_choice,
+                    RecursionLimit::Cutoff(1024),
+                )
             });
         }
     }
-
 
     /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV
     /// using the specified base matrix multiplication choice.
@@ -197,7 +222,6 @@ impl Benchmark {
     }
 }
 
-
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -232,13 +256,9 @@ fn main() {
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
         for &(file, base, name) in &targets {
-            if let Err(e) = export_helper::export_results_to_csv(
-                &sizes,
-                algorithms,
-                file,
-                base,
-                true,
-            ) {
+            if let Err(e) =
+                export_helper::export_results_to_csv(&sizes, algorithms, file, base, true)
+            {
                 eprintln!("Failed to export {} CSV: {:?}", name, e);
             } else {
                 println!("{} CSV results successfully updated from cache.", name);

@@ -1,4 +1,4 @@
-use crate::matmul::{BaseMatMul, MatMul, ParallelismMode};
+use crate::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use faer::{Mat, MatRef};
 
 /// Private helper to handle a single dynamic-peeling step of the multiplication C = A × B.
@@ -52,6 +52,7 @@ pub(crate) struct DynamicPeeling<'a, 'b> {
     b: MatRef<'b, f64>,
     mode: ParallelismMode,
     base_choice: BaseMatMul,
+    recursion_limit: RecursionLimit,
     pub(crate) core_m: usize,
     pub(crate) core_n: usize,
     pub(crate) core_p: usize,
@@ -79,6 +80,7 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
         b: MatRef<'b, f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
     ) -> Self {
         let cp = matmul.cp();
         let m = a.nrows();
@@ -101,6 +103,7 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
             b,
             mode,
             base_choice,
+            recursion_limit,
             core_m,
             core_n,
             core_p,
@@ -122,10 +125,16 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
         if self.core_m > 0 && self.core_n > 0 && self.core_p > 0 {
             let a_core = self.a.get(0..self.core_m, 0..self.core_n);
             let b_core = self.b.get(0..self.core_n, 0..self.core_p);
-            let c_core = self
-                .matmul
-                .cp_matmul_impl(a_core, b_core, self.mode, self.base_choice);
-            c.as_mut().get_mut(0..self.core_m, 0..self.core_p).copy_from(&c_core);
+            let c_core = self.matmul.cp_matmul_impl(
+                a_core,
+                b_core,
+                self.mode,
+                self.base_choice,
+                self.recursion_limit,
+            );
+            c.as_mut()
+                .get_mut(0..self.core_m, 0..self.core_p)
+                .copy_from(&c_core);
         }
     }
 
@@ -137,9 +146,12 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
         if self.extra_n > 0 && self.core_m > 0 && self.core_p > 0 {
             let a_extra = self.a.get(0..self.core_m, self.core_n..self.n);
             let b_extra = self.b.get(self.core_n..self.n, 0..self.core_p);
-            let correction =
-                self.matmul
-                    .base_matmul_impl(a_extra, b_extra, self.multithreaded, self.base_choice);
+            let correction = self.matmul.base_matmul_impl(
+                a_extra,
+                b_extra,
+                self.multithreaded,
+                self.base_choice,
+            );
             let mut c_block = c.as_mut().get_mut(0..self.core_m, 0..self.core_p);
             c_block += &correction;
         }
@@ -155,7 +167,9 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
             let correction =
                 self.matmul
                     .base_matmul_impl(self.a, b_extra, self.multithreaded, self.base_choice);
-            c.as_mut().get_mut(0..self.m, self.core_p..self.p).copy_from(&correction);
+            c.as_mut()
+                .get_mut(0..self.m, self.core_p..self.p)
+                .copy_from(&correction);
         }
     }
 
@@ -167,9 +181,12 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
         if self.extra_m > 0 && self.core_p > 0 {
             let a_extra = self.a.get(self.core_m..self.m, 0..self.n);
             let b_extra = self.b.get(0..self.n, 0..self.core_p);
-            let correction =
-                self.matmul
-                    .base_matmul_impl(a_extra, b_extra, self.multithreaded, self.base_choice);
+            let correction = self.matmul.base_matmul_impl(
+                a_extra,
+                b_extra,
+                self.multithreaded,
+                self.base_choice,
+            );
             c.as_mut()
                 .get_mut(self.core_m..self.m, 0..self.core_p)
                 .copy_from(&correction);
