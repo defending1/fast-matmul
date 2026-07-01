@@ -11,6 +11,9 @@
 # Ensure we exit on any error
 set -e
 
+source /software/spack/share/spack/setup-env.sh
+# Load llvm
+spack load /22ywmmx
 # Load pre-installed GCC, Intel MKL and openmpi modules already on the Toeplitz cluster
 module load gcc/12.3.0
 module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
