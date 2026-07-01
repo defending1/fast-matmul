@@ -16,7 +16,8 @@ source /software/spack/share/spack/setup-env.sh
 spack load /22ywmmx
 # Load pre-installed GCC, Intel MKL and openmpi modules already on the Toeplitz cluster
 module load gcc/12.3.0
-module load intel-oneapi-compilers/2022.1.0
+module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0
+module load intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4
 module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
 module load openmpi/4.1.6-gcc-12.3.0
 
