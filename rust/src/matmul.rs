@@ -1,6 +1,6 @@
 use crate::cp::CP;
 use crate::dynamic_peeling::DynamicPeeling;
-use faer::{Col, ColRef, Mat, MatRef};
+use faer::{Col, ColRef, Mat, MatRef, Scale};
 use std::ops::{Index, IndexMut};
 
 pub use crate::parallelism_mode::{BaseMatMul, ParallelismMode};
@@ -16,6 +16,9 @@ pub struct Tensor3 {
 
 impl Tensor3 {
     /// Creates a new `Tensor3` of the specified shape with all elements initialized to zero.
+    ///
+    /// # Arguments
+    /// * `shape` - The shape (depth, rows, cols) of the new tensor.
     pub fn zeros(shape: (usize, usize, usize)) -> Self {
         Self {
             data: vec![0.0; shape.0 * shape.1 * shape.2],
@@ -64,6 +67,9 @@ impl<'a> MatMul<'a> {
     }
 
     /// Creates a new `MatMul` operator instance with a custom CP decomposition.
+    ///
+    /// # Arguments
+    /// * `cp` - Reference to the custom CP decomposition.
     pub fn with_cp(cp: &'a CP) -> Self {
         Self { cp }
     }
@@ -75,7 +81,11 @@ impl<'a> MatMul<'a> {
 
     /// Computes the dot product of a column vector and a matrix flattened in row-major order,
     /// without performing any memory allocations.
-    fn dot_product_flattened(vec: ColRef<'_, f64>, mat: &Mat<f64>) -> f64 {
+    ///
+    /// # Arguments
+    /// * `vec` - A column vector.
+    /// * `mat` - A matrix slice as `MatRef`.
+    fn dot_product_flattened(vec: ColRef<'_, f64>, mat: MatRef<'_, f64>) -> f64 {
         assert_eq!(vec.nrows(), mat.nrows() * mat.ncols());
         let mut sum = 0.0;
         let mut i = 0;
@@ -88,14 +98,16 @@ impl<'a> MatMul<'a> {
         sum
     }
 
-    /// Computes C = A * B using the CP decomposition formula:
-    /// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
-    /// assuming row-major layout vectorization for A, B, C.
-    pub fn matmul_cp(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
+    /// Computes C = A * B using the CP decomposition formula.
+    /// Internal implementation using `MatRef` to avoid allocations.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a `MatRef`.
+    /// * `b` - The right matrix operand as a `MatRef`.
+    fn matmul_cp_impl(&self, a: MatRef<'_, f64>, b: MatRef<'_, f64>) -> Mat<f64> {
         assert_eq!((a.nrows(), a.ncols()), (self.cp.m, self.cp.n));
         assert_eq!((b.nrows(), b.ncols()), (self.cp.n, self.cp.p));
 
-        // Resulting multiplication vector
         let mut c_vec = Col::<f64>::zeros(self.cp.m * self.cp.p);
 
         for l in 0..self.cp.rank {
@@ -113,12 +125,28 @@ impl<'a> MatMul<'a> {
         Mat::from_fn(self.cp.m, self.cp.p, |r, c| c_vec[r * self.cp.p + c])
     }
 
-    /// Computes classical matrix multiplication C = A * B using the underlying library (faer or MKL/dgemm),
-    /// with optional multithreading.
-    pub fn base_matmul(
+    /// Computes C = A * B using the CP decomposition formula:
+    /// vec(C^T) = sum_{l=1}^r (u_l^T vec(A)) * (v_l^T vec(B)) * w_l
+    /// assuming row-major layout vectorization for A, B, C.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand.
+    /// * `b` - The right matrix operand.
+    pub fn matmul_cp(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
+        self.matmul_cp_impl(a.as_ref(), b.as_ref())
+    }
+
+    /// Computes classical matrix multiplication C = A * B using `MatRef` inputs.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a `MatRef`.
+    /// * `b` - The right matrix operand as a `MatRef`.
+    /// * `multithreaded` - Whether to use multithreading.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
+    pub(crate) fn base_matmul_impl(
         &self,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
+        a: MatRef<'_, f64>,
+        b: MatRef<'_, f64>,
         multithreaded: bool,
         base_choice: BaseMatMul,
     ) -> Mat<f64> {
@@ -134,20 +162,36 @@ impl<'a> MatMul<'a> {
                 faer::linalg::matmul::matmul(
                     c.as_mut(),
                     faer::Accum::Replace,
-                    a.as_ref(),
-                    b.as_ref(),
+                    a,
+                    b,
                     1.0,
                     par,
                 );
                 c
             }
             BaseMatMul::Dgemm => {
-                // Adjust thread count for MKL dynamically based on concurrency requirements.
-                // Single-threaded GEMM runs sequentially; multithreaded GEMM uses all available cores.
                 crate::mkl::mkl_set_threads(if multithreaded { 0 } else { 1 });
-                crate::mkl::mkl_matmul(a, b)
+                crate::mkl::mkl_matmul_impl(a, b)
             }
         }
+    }
+
+    /// Computes classical matrix multiplication C = A * B using the underlying library (faer or MKL/dgemm),
+    /// with optional multithreading.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a reference to `Mat`.
+    /// * `b` - The right matrix operand as a reference to `Mat`.
+    /// * `multithreaded` - Whether to use multithreading.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
+    pub fn base_matmul(
+        &self,
+        a: &Mat<f64>,
+        b: &Mat<f64>,
+        multithreaded: bool,
+        base_choice: BaseMatMul,
+    ) -> Mat<f64> {
+        self.base_matmul_impl(a.as_ref(), b.as_ref(), multithreaded, base_choice)
     }
 
     /// Calculate the total number of recursion levels for the given input matrix shape.
@@ -155,17 +199,36 @@ impl<'a> MatMul<'a> {
     ///
     /// Delegates to [`DynamicPeeling`], which handles the core CP product and
     /// the GEMM-based boundary corrections for odd or non-power-of-two dimensions.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a `MatRef`.
+    /// * `b` - The right matrix operand as a `MatRef`.
+    /// * `mode` - The parallelism mode to use.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
     fn dynamic_peeling(
         &self,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
+        a: MatRef<'_, f64>,
+        b: MatRef<'_, f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
     ) -> Mat<f64> {
-        DynamicPeeling::new(self, a, b, mode, base_choice).run()
+        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice);
+        let mut c = Mat::<f64>::zeros(peeling.m, peeling.p);
+        peeling.peel_core(&mut c);
+        peeling.correct_inner_dimension(&mut c);
+        peeling.correct_right_columns(&mut c);
+        peeling.correct_bottom_rows(&mut c);
+        c
     }
 
-    /// Helper to compute a single Strassen product M_l
+    /// Helper to compute a single Strassen product M_l.
+    ///
+    /// # Arguments
+    /// * `l` - The rank index.
+    /// * `a_blocks` - The blocks of matrix A.
+    /// * `b_blocks` - The blocks of matrix B.
+    /// * `mode` - The parallelism mode.
+    /// * `base_choice` - The backend choice.
     fn compute_m_l(
         &self,
         l: usize,
@@ -177,7 +240,7 @@ impl<'a> MatMul<'a> {
         let a_comb = Self::combine_blocks(a_blocks, self.cp.u.col(l));
         let b_comb = Self::combine_blocks(b_blocks, self.cp.v.col(l));
 
-        self.cp_matmul_impl(&a_comb, &b_comb, mode, base_choice)
+        self.cp_matmul_impl(a_comb.as_ref(), b_comb.as_ref(), mode, base_choice)
     }
 
     /// Computes the linear combination of matrix blocks for a single CP decomposition component.
@@ -194,13 +257,15 @@ impl<'a> MatMul<'a> {
     /// This method computes these weighted sums. It takes a slice of matrix blocks (either $A_i$ or $B_j$)
     /// and accumulates their sum, scaling each block by the corresponding coefficient from
     /// the column `coeffs` (which represents the $l$-th column of matrix $U$ or $V$).
+    ///
+    /// # Arguments
+    /// * `blocks` - Slice of matrix block views.
+    /// * `coeffs` - Coefficients vector.
     fn combine_blocks(blocks: &[MatRef<'_, f64>], coeffs: faer::ColRef<'_, f64>) -> Mat<f64> {
         let mut comb = Mat::<f64>::zeros(blocks[0].nrows(), blocks[0].ncols());
         for (block, &coeff) in blocks.iter().zip(coeffs.iter()) {
-            // To optimize performance, it skips blocks with a coefficient of exactly `0.0` and
-            // accumulates directly into the output matrix `comb` without allocating temporary arrays.
             if coeff != 0.0 {
-                comb += faer::Scale(coeff) * block;
+                comb += Scale(coeff) * block;
             }
         }
         comb
@@ -230,19 +295,26 @@ impl<'a> MatMul<'a> {
     ///
     /// The returned blocks are flattened in row-major order:
     /// `[A_{0,0}, A_{0,1}, A_{1,0}, A_{1,1}]`.
-    fn split_into_blocks<'b>(
-        matrix: &'b Mat<f64>,
+    ///
+    /// # Arguments
+    /// * `matrix` - The matrix to split as a `MatRef`.
+    /// * `grid_rows` - Number of rows in the block grid.
+    /// * `grid_cols` - Number of columns in the block grid.
+    /// * `block_rows` - Number of rows in each block.
+    /// * `block_cols` - Number of columns in each block.
+    fn split_into_blocks(
+        matrix: MatRef<'_, f64>,
         grid_rows: usize,
         grid_cols: usize,
         block_rows: usize,
         block_cols: usize,
-    ) -> Vec<MatRef<'b, f64>> {
+    ) -> Vec<MatRef<'_, f64>> {
         let mut blocks = Vec::with_capacity(grid_rows * grid_cols);
         for i in 0..grid_rows {
             for j in 0..grid_cols {
                 let r_range = i * block_rows..(i + 1) * block_rows;
                 let c_range = j * block_cols..(j + 1) * block_cols;
-                let block = matrix.as_ref().get(r_range, c_range);
+                let block = matrix.get(r_range, c_range);
                 blocks.push(block);
             }
         }
@@ -254,6 +326,15 @@ impl<'a> MatMul<'a> {
     ///
     /// Depending on `multithreaded` and block dimensions, this may compute the products
     /// in parallel using Rayon or sequentially.
+    ///
+    /// # Arguments
+    /// * `a_blocks` - Slice of matrix block views for A.
+    /// * `b_blocks` - Slice of matrix block views for B.
+    /// * `m_block` - Number of rows in each block of A.
+    /// * `n_block` - Number of columns in each block of A.
+    /// * `p_block` - Number of columns in each block of B.
+    /// * `mode` - The parallelism mode to use.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
     #[allow(clippy::too_many_arguments)]
     fn compute_block_products(
         &self,
@@ -269,7 +350,6 @@ impl<'a> MatMul<'a> {
 
         match mode {
             ParallelismMode::Dfs => {
-                // DFS: recursive steps are sequential
                 (0..self.cp.rank)
                     .map(|l| {
                         self.compute_m_l(l, a_blocks, b_blocks, ParallelismMode::Dfs, base_choice)
@@ -277,7 +357,6 @@ impl<'a> MatMul<'a> {
                     .collect()
             }
             ParallelismMode::Bfs => {
-                // BFS: recursive steps are parallel
                 use rayon::prelude::*;
                 (0..self.cp.rank)
                     .into_par_iter()
@@ -287,7 +366,6 @@ impl<'a> MatMul<'a> {
                     .collect()
             }
             ParallelismMode::Hybrid => {
-                // Hybrid: BFS style at top levels, switch to DFS once blocks are small
                 if m_block >= PARALLEL_CUTOFF
                     && n_block >= PARALLEL_CUTOFF
                     && p_block >= PARALLEL_CUTOFF
@@ -320,7 +398,6 @@ impl<'a> MatMul<'a> {
                 }
             }
             ParallelismMode::Sequential => {
-                // Sequential: all steps sequential
                 (0..self.cp.rank)
                     .map(|l| {
                         self.compute_m_l(
@@ -362,13 +439,20 @@ impl<'a> MatMul<'a> {
     /// - The loops iterate over each product index `l` (from 0 to 6), retrieve the coefficient,
     ///   and add the weighted product `coeff * M_l` to the slice of the target matrix `C`
     ///   corresponding to the `C_{i,j}` block.
+    ///
+    /// # Arguments
+    /// * `m` - The number of rows in C.
+    /// * `p` - The number of columns in C.
+    /// * `m_block` - The row block size.
+    /// * `p_block` - The column block size.
+    /// * `m_products` - Slice of computed product blocks as `MatRef`.
     fn reconstruct_from_products(
         &self,
         m: usize,
         p: usize,
         m_block: usize,
         p_block: usize,
-        m_products: &[Mat<f64>],
+        m_products: &[MatRef<'_, f64>],
     ) -> Mat<f64> {
         let mut c = Mat::<f64>::zeros(m, p);
         for (l, m_prod) in m_products.iter().enumerate() {
@@ -380,7 +464,7 @@ impl<'a> MatMul<'a> {
                             i * m_block..(i + 1) * m_block,
                             j * p_block..(j + 1) * p_block,
                         );
-                        block += faer::Scale(coeff) * m_prod;
+                        block += Scale(coeff) * m_prod;
                     }
                 }
             }
@@ -392,10 +476,16 @@ impl<'a> MatMul<'a> {
     ///
     /// Depending on dimensions and the parallelism mode, this may perform base matrix multiplication,
     /// standard CP-decomposition multiplication, dynamic peeling, or recursive splitting of blocks.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a `MatRef`.
+    /// * `b` - The right matrix operand as a `MatRef`.
+    /// * `mode` - The parallelism mode to use.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
     pub(crate) fn cp_matmul_impl(
         &self,
-        a: &Mat<f64>,
-        b: &Mat<f64>,
+        a: MatRef<'_, f64>,
+        b: MatRef<'_, f64>,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
     ) -> Mat<f64> {
@@ -408,11 +498,11 @@ impl<'a> MatMul<'a> {
         const N_T: usize = i64::pow(2, 10) as usize;
         if m < self.cp.m || n < self.cp.n || p < self.cp.p || n <= N_T || m <= N_T || p <= N_T {
             let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
-            return self.base_matmul(a, b, leaf_multithreaded, base_choice);
+            return self.base_matmul_impl(a, b, leaf_multithreaded, base_choice);
         }
 
         if m == self.cp.m && n == self.cp.n && p == self.cp.p {
-            return self.matmul_cp(a, b);
+            return self.matmul_cp_impl(a, b);
         }
 
         let extra_m = m % self.cp.m;
@@ -440,10 +530,17 @@ impl<'a> MatMul<'a> {
             base_choice,
         );
 
-        self.reconstruct_from_products(m, p, m_block, p_block, &m_products)
+        let m_refs: Vec<MatRef<'_, f64>> = m_products.iter().map(|m| m.as_ref()).collect();
+        self.reconstruct_from_products(m, p, m_block, p_block, &m_refs)
     }
 
     /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode and base matrix multiplication choice.
+    ///
+    /// # Arguments
+    /// * `a` - The left matrix operand as a reference to `Mat`.
+    /// * `b` - The right matrix operand as a reference to `Mat`.
+    /// * `mode` - The parallelism mode to use.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
     pub fn cp_matmul(
         &self,
         a: &Mat<f64>,
@@ -451,6 +548,7 @@ impl<'a> MatMul<'a> {
         mode: ParallelismMode,
         base_choice: BaseMatMul,
     ) -> Mat<f64> {
-        self.cp_matmul_impl(a, b, mode, base_choice)
+        self.cp_matmul_impl(a.as_ref(), b.as_ref(), mode, base_choice)
     }
 }
+
