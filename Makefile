@@ -5,7 +5,15 @@
 #   which can be found in the LICENSE file in the root directory, or at 
 #   http://opensource.org/licenses/BSD-2-Clause.
 
-include make.incs/make.inc.linux
+# Auto-detect host environment
+HOSTNAME := $(shell uname -n)
+IS_TOEPLITZ := $(shell echo "$(HOSTNAME)" | grep -E -q "toeplitz|lnx[0-9]|gpu[0-9]" && echo yes || echo no)
+
+ifeq ($(IS_TOEPLITZ), yes)
+  include make.incs/make.inc.toeplitz
+else
+  include make.incs/make.inc.linux
+endif
 
 INCLUDES := -I$(MKL_ROOT)/include -I./algorithms -I./linalg -I./util -I./scaling
 MKL_SEQ_LIBS =  -L$(MKL_ROOT)/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread

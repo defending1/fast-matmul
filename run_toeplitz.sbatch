@@ -11,9 +11,10 @@
 # Ensure we exit on any error
 set -e
 
-# Load pre-installed GCC and Intel MKL modules already on the Toeplitz cluster
-module load gcc/12.2.0
-module load intel-oneapi-mkl/2022.1.0-oneapi-2022.1.0
+# Load pre-installed GCC, Intel MKL and openmpi modules already on the Toeplitz cluster
+module load gcc/12.3.0
+module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
+module load openmpi/4.1.6-gcc-12.3.0
 
 # Print environment information for debugging
 echo "=== Slurm Job Information ==="
@@ -44,5 +45,13 @@ cargo build --release --bench bench
 # Run the sequential benchmarks up to size 2^15
 echo "Running sequential benchmarks..."
 cargo bench --bench bench -- --sequential --full
+
+# Run c project
+cd ../codegen
+bash gen_all_algorithms.sh 0
+cd ..
+make strassen
+make matmul_benchmarks
+./build/matmul_benchmarks -square_test 1
 
 echo "Done!"

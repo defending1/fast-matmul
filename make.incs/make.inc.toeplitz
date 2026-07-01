@@ -1,0 +1,25 @@
+#   Copyright (c) 2014-2015, Sandia Corporation
+#   All rights reserved.
+#
+#   This file is part of fast-matmul and is under the BSD 2-Clause License,
+#   which can be found in the LICENSE file in the root directory, or at
+#   http://opensource.org/licenses/BSD-2-Clause.
+
+# Makefile configurations for building on the Linux box at Sandia.
+
+CXX = g++
+
+MODE = sequential
+#MODE = openmp
+
+MKL_ROOT := /software/spack/share/spack/modules/linux-ubuntu22.04-broadwell/intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
+
+DEFINES := -DNDEBUG -D__INTEL_MKL__
+
+# Defining BLAS_POST means that the BLAS routines are like "dgemm_" instead of
+# just "dgemm".
+DEFINES += -DBLAS_POST
+
+#DEFINES += -D_PARALLEL_=1  # DFS
+#DEFINES += -D_PARALLEL_=2  # BFS
+#DEFINES += -D_PARALLEL_=3  # HYBRID
