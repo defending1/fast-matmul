@@ -15,11 +15,10 @@ set -e
 source /software/spack/share/spack/setup-env.sh
 spack env activate -d rust
 
-echo "Concretizing Spack environment..."
-spack concretize -f
-
-echo "Installing Spack environment dependencies (MKL, GCC, OpenBLAS, LLVM, etc.)..."
-spack install -v
+module load gcc/13.2.0
+module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0
+module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
+module load intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4
 
 # Print environment information for debugging
 echo "=== Slurm Job Information ==="
@@ -51,12 +50,16 @@ cargo build --release --bench bench
 echo "Running sequential benchmarks..."
 cargo bench --bench bench -- --sequential --full
 
+module load anaconda3/2024.02
+conda create -y -n py27 python=2.7
+conda activate py27
+
 # Run c project
 cd ../codegen
 bash gen_all_algorithms.sh 0
-cd ..
-make strassen
-make matmul_benchmarks
-./build/matmul_benchmarks -square_test 1
+# cd ..
+# make strassen
+# make matmul_benchmarks
+# ./build/matmul_benchmarks -square_test 1
 
 echo "Done!"
