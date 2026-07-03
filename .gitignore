@@ -53,4 +53,5 @@ Thumbs.db
 *.ist
 resources/
 benchmarks/generated/
+rust/generated/
 .agents/

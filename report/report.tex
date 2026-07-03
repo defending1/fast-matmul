@@ -175,18 +175,18 @@ a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{x}{k}b = \sum_{i=1}^m\
 \label{tab:notation}
 \begin{tabular}{ll}
 \toprule
-$\angb{M,K,N}$ & bilinear form representing base case matrix multiplication \\
-& of an $M \times K$ matrix by a $K \times N$ matrix \\
-$\msiz{P,Q,R}$ & dimensions of actual matrices that are multiplied \\
-& ($P \times Q$ matrix multiplied by $Q \times R$ matrix) \\
-$\dsqr{\Mx{U}, \Mx{V}, \Mx{W}}$ & factor matrices corresponding to a tensor \\
-& CP decomposition that provides a fast algorithm \\
-$\Tn{X}$ & order-3 tensor \\
-$\Tn{X} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$ \\
-$\Mx{T}_i$ & $i$th frontal slice of $\Tn{T}$, the matrix of entries $T_{:,:,i}$ \\
-$\Vc{a}_k$, $A_{ij}$ & $k$th column and $i, j$ entry of matrix $\Mx{A}$ \\
-$\vec(\Mx{A})$ & row-order vectorization of the entries of $\Mx{A}$ \\
-$\nnz{\cdot}$ & number of non-zero entries of an object \\
+$\angb{M,K,N}$ & Bilinear form representing base case matrix multiplication \\
+& of an $M \times K$ matrix by a $K \times N$ matrix. \\
+$\msiz{P,Q,R}$ & Dimensions of actual matrices that are multiplied \\
+& ($P \times Q$ matrix multiplied by $Q \times R$ matrix). \\
+$\dsqr{\Mx{U}, \Mx{V}, \Mx{W}}$ & Factor matrices corresponding to a tensor CP \\
+& decomposition that provides a fast algorithm. \\
+$\Tn{X}$ & Order-3 tensor. \\
+$\Tn{X} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & Rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$. \\
+$\Tm{X}{i}$ & $i$th frontal slice of $\Tn{X}$, the matrix of entries $X_{:,:,i}$. \\
+$\Vc{a}_k$, $A_{ij}$ & $k$th column and $i, j$ entry of matrix $\Mx{A}$. \\
+$\vec(\Mx{A})$ & Row-order vectorization of the entries of $\Mx{A}$. \\
+$\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 \bottomrule
 \end{tabular}
 \end{table}
