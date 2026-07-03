@@ -58,7 +58,7 @@ fn main() {
     cc::Build::new()
         .file("ffi/matmul/mkl.c")
         .include(mkl_include)
-        .compiler("clang")
+        .compiler("gcc")
         .flag("-O3")
         .flag(&format!("-march={}", target_cpu))
         .flag(&format!("-mtune={}", target_cpu))
