@@ -6,6 +6,7 @@
 # ]
 # ///
 
+import argparse
 import os
 import re
 import sys
@@ -181,7 +182,7 @@ def is_parallel(col: str) -> bool:
     )
 
 
-def plot_csv(csv_path: str, output_path: str) -> None:
+def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
     """Generates performance plots from a benchmark CSV file.
 
     If the CSV contains the new config columns, it splits and generates plots for all configs.
@@ -190,6 +191,7 @@ def plot_csv(csv_path: str, output_path: str) -> None:
     Args:
         csv_path: Path to the input CSV file.
         output_path: Default fallback path to save the output plot.
+        mode: The plotting mode ("sequential", "parallel", "both").
     """
     if not os.path.exists(csv_path):
         print(f"Error: CSV file not found at {csv_path}")
@@ -223,20 +225,7 @@ def plot_csv(csv_path: str, output_path: str) -> None:
 
             df_config = df[cond_r & cond_c]
             prefix = r_str if r_str else c_str
-
-            for base in ["faer", "dgemm"]:
-                df_base = df_config[df_config["base_choice"] == base]
-                if df_base.empty:
-                    continue
-
-                plot_columns = [col for col in df_base.columns if col not in new_format_cols]
-                df_to_plot = df_base[plot_columns]
-
-                suffix = "faer" if base == "faer" else "dgemm"
-                out_name = f"benchmark_{prefix}_{suffix}.pdf"
-                out_path = os.path.join(out_dir, out_name)
-
-                plot_df_core(df_to_plot, out_path)
+            mode_suffix = f"_{mode}" if mode != "both" else ""
 
             # Plot grid comparison for this config if both base variants exist
             df_faer = df_config[df_config["base_choice"] == "faer"]
@@ -247,17 +236,16 @@ def plot_csv(csv_path: str, output_path: str) -> None:
                 df_faer_to_plot = df_faer[plot_columns]
                 df_dgemm_to_plot = df_dgemm[plot_columns]
 
-                out_grid_name = f"benchmark_{prefix}_grid.pdf"
+                out_grid_name = f"benchmark_{prefix}_grid{mode_suffix}.pdf"
                 out_grid_path = os.path.join(out_dir, out_grid_name)
 
-                generate_grid_plot_core(df_faer_to_plot, df_dgemm_to_plot, out_grid_path)
+                generate_grid_plot_core(df_faer_to_plot, df_dgemm_to_plot, out_grid_path, mode=mode)
     else:
-        plot_df_core(df, output_path)
+        plot_df_core(df, output_path, mode=mode)
 
 
-def plot_df_core(df: pd.DataFrame, output_path: str) -> None:
+def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None:
     """Core logic to generate a performance plot from a dataframe in both PDF and PNG formats."""
-    # Set up styling using scienceplots based on LaTeX availability
     import shutil
 
     latex_installed = (
@@ -356,10 +344,17 @@ def plot_df_core(df: pd.DataFrame, output_path: str) -> None:
         if df[col].isna().all():
             continue
 
+        is_col_parallel = is_parallel(col)
+        # Skip depending on the chosen mode
+        if mode == "sequential" and is_col_parallel:
+            continue
+        if mode == "parallel" and not is_col_parallel:
+            continue
+
         style = styles.get(col, {"marker": "x", "linestyle": ":"})
         flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
         gflops = flops / (df[col] * 1e9)
-        if is_parallel(col):
+        if is_col_parallel:
             gflops = gflops / num_cores
         ax.plot(
             df["size"],
@@ -370,10 +365,10 @@ def plot_df_core(df: pd.DataFrame, output_path: str) -> None:
             **style,
         )
 
-    # Plot Ballard reference lines (only if sequential algorithms are present)
-    if has_ballard:
+    # Plot Ballard reference lines (only if sequential algorithms are present and mode is sequential or both)
+    if has_ballard and mode in ["sequential", "both"]:
         has_seq_col = any(
-            col != "size" and (col.endswith("_seq") or col.endswith("_single"))
+            col != "size" and not is_parallel(col)
             for col in df.columns
         )
         if has_seq_col:
@@ -420,10 +415,9 @@ def plot_df_core(df: pd.DataFrame, output_path: str) -> None:
 
 
 def generate_grid_plot_core(
-    df_faer: pd.DataFrame, df_dgemm: pd.DataFrame, output_path: str
+    df_faer: pd.DataFrame, df_dgemm: pd.DataFrame, output_path: str, mode: str = "both"
 ) -> None:
-    """Generates a 2x2 grid performance plot from dataframes directly."""
-    # Set up styling using scienceplots based on LaTeX availability
+    """Generates a grid performance plot from dataframes directly."""
     import shutil
 
     latex_installed = (
@@ -445,7 +439,10 @@ def generate_grid_plot_core(
         }
     )
 
-    fig, axs = plt.subplots(2, 2, figsize=(14, 11), sharex=True, dpi=300)
+    if mode == "both":
+        fig, axs = plt.subplots(2, 2, figsize=(14, 11), sharex=True, dpi=300)
+    else:
+        fig, axs = plt.subplots(2, 1, figsize=(8, 11), sharex=True, dpi=300)
 
     # Styles mapping (line styles, markers, and colors)
     styles = {
@@ -565,28 +562,51 @@ def generate_grid_plot_core(
         if has_lines:
             ax.legend(loc="upper left", frameon=True, framealpha=0.9)
 
-    # Plot Row 1: Faer Base
-    plot_on_ax(axs[0, 0], df_faer, is_seq, sequential=True)
-    plot_on_ax(axs[0, 1], df_faer, is_par, sequential=False)
+    # Plot Row 1 & Row 2 based on layout mode
+    if mode == "both":
+        # Plot Row 1: Faer Base
+        plot_on_ax(axs[0, 0], df_faer, is_seq, sequential=True)
+        plot_on_ax(axs[0, 1], df_faer, is_par, sequential=False)
 
-    # Plot Row 2: MKL Base
-    plot_on_ax(axs[1, 0], df_dgemm, is_seq, sequential=True)
-    plot_on_ax(axs[1, 1], df_dgemm, is_par, sequential=False)
+        # Plot Row 2: MKL Base
+        plot_on_ax(axs[1, 0], df_dgemm, is_seq, sequential=True)
+        plot_on_ax(axs[1, 1], df_dgemm, is_par, sequential=False)
 
-    # Shared labels
-    for ax in axs[1, :]:
-        ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
-    for ax in axs[:, 0]:
-        ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
+        # Shared labels
+        for ax in axs[1, :]:
+            ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
+        for ax in axs[:, 0]:
+            ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
 
-    plt.suptitle(
-        "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
-    )
-    plt.tight_layout()
-    # Add spacing between subplots (less space between rows) and leave room at top/bottom/sides
-    fig.subplots_adjust(
-        hspace=0.12, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92
-    )
+        plt.suptitle(
+            "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
+        )
+        plt.tight_layout()
+        fig.subplots_adjust(
+            hspace=0.12, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92
+        )
+    else:
+        filter_fn = is_seq if mode == "sequential" else is_par
+        is_sequential_flag = (mode == "sequential")
+
+        # Plot Row 1: Faer Base
+        plot_on_ax(axs[0], df_faer, filter_fn, sequential=is_sequential_flag)
+
+        # Plot Row 2: MKL Base
+        plot_on_ax(axs[1], df_dgemm, filter_fn, sequential=is_sequential_flag)
+
+        # Shared labels
+        axs[1].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
+        for ax in axs:
+            ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
+
+        plt.suptitle(
+            "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
+        )
+        plt.tight_layout()
+        fig.subplots_adjust(
+            hspace=0.15, top=0.88, bottom=0.08, left=0.12, right=0.84
+        )
 
     # Force a draw to resolve final positions of all labels and layout bounds
     fig.canvas.draw()
@@ -596,109 +616,172 @@ def generate_grid_plot_core(
         bbox = ax.get_tightbbox(fig.canvas.get_renderer())
         return bbox.transformed(fig.transFigure.inverted())
 
-    # Get tight positions (which include axis ticks, xlabel, and ylabel)
-    box00 = get_tight_pos(axs[0, 0])
-    box10 = get_tight_pos(axs[1, 0])
-    box01 = get_tight_pos(axs[0, 1])
-    box11 = get_tight_pos(axs[1, 1])
-
-    # Column 0: Sequential Algorithms bounding box
-    x0_seq = min(box00.x0, box10.x0)
-    x1_seq = max(box00.x1, box10.x1)
-    y0_seq = min(box00.y0, box10.y0)
-    y1_seq = max(box00.y1, box10.y1)
-
-    # Column 1: Parallel Algorithms bounding box
-    x0_par = min(box01.x0, box11.x0)
-    x1_par = max(box01.x1, box11.x1)
-    y0_par = min(box01.y0, box11.y0)
-    y1_par = max(box01.y1, box11.y1)
-
-    # Draw borders for the two columns in different light colors (border only, no fill)
     from matplotlib.patches import FancyBboxPatch
-
     pad_val = 0.015
 
-    rect_seq = FancyBboxPatch(
-        (x0_seq - pad_val, y0_seq - pad_val),
-        (x1_seq - x0_seq) + 2 * pad_val,
-        (y1_seq - y0_seq) + 2 * pad_val,
-        boxstyle="square,pad=0.0",
-        edgecolor="#64748b",  # Light slate border
-        facecolor="none",  # No inner background fill
-        linewidth=1.5,
-        transform=fig.transFigure,
-        zorder=1,
-    )
-    fig.patches.append(rect_seq)
+    if mode == "both":
+        # Get tight positions (which include axis ticks, xlabel, and ylabel)
+        box00 = get_tight_pos(axs[0, 0])
+        box10 = get_tight_pos(axs[1, 0])
+        box01 = get_tight_pos(axs[0, 1])
+        box11 = get_tight_pos(axs[1, 1])
 
-    rect_par = FancyBboxPatch(
-        (x0_par - pad_val, y0_par - pad_val),
-        (x1_par - x0_par) + 2 * pad_val,
-        (y1_par - y0_par) + 2 * pad_val,
-        boxstyle="square,pad=0.0",
-        edgecolor="#a78bfa",  # Light purple border
-        facecolor="none",  # No inner background fill
-        linewidth=1.5,
-        transform=fig.transFigure,
-        zorder=1,
-    )
-    fig.patches.append(rect_par)
+        # Column 0: Sequential Algorithms bounding box
+        x0_seq = min(box00.x0, box10.x0)
+        x1_seq = max(box00.x1, box10.x1)
+        y0_seq = min(box00.y0, box10.y0)
+        y1_seq = max(box00.y1, box10.y1)
 
-    # Sequential and parallel algorithms on the top, centered above the column bounding border
-    y_col_title = max(y1_seq, y1_par) + pad_val + 0.01
-    center_x_seq = (x0_seq + x1_seq) / 2.0
-    center_x_par = (x0_par + x1_par) / 2.0
+        # Column 1: Parallel Algorithms bounding box
+        x0_par = min(box01.x0, box11.x0)
+        x1_par = max(box01.x1, box11.x1)
+        y0_par = min(box01.y0, box11.y0)
+        y1_par = max(box01.y1, box11.y1)
 
-    fig.text(
-        center_x_seq,
-        y_col_title,
-        "Sequential Algorithms",
-        ha="center",
-        va="bottom",
-        fontsize=12,
-        color="#1e293b",
-    )
-    fig.text(
-        center_x_par,
-        y_col_title,
-        "Parallel Algorithms",
-        ha="center",
-        va="bottom",
-        fontsize=12,
-        color="#1e293b",
-    )
+        # Draw borders for the two columns in different light colors (border only, no fill)
+        rect_seq = FancyBboxPatch(
+            (x0_seq - pad_val, y0_seq - pad_val),
+            (x1_seq - x0_seq) + 2 * pad_val,
+            (y1_seq - y0_seq) + 2 * pad_val,
+            boxstyle="square,pad=0.0",
+            edgecolor="#64748b",  # Light slate border
+            facecolor="none",  # No inner background fill
+            linewidth=1.5,
+            transform=fig.transFigure,
+            zorder=1,
+        )
+        fig.patches.append(rect_seq)
 
-    # Centered titles for each row, positioned in the horizontal gap between column borders,
-    # and vertically centered on each row's plotting axes.
-    pos00 = axs[0, 0].get_position()
-    pos10 = axs[1, 0].get_position()
+        rect_par = FancyBboxPatch(
+            (x0_par - pad_val, y0_par - pad_val),
+            (x1_par - x0_par) + 2 * pad_val,
+            (y1_par - y0_par) + 2 * pad_val,
+            boxstyle="square,pad=0.0",
+            edgecolor="#a78bfa",  # Light purple border
+            facecolor="none",  # No inner background fill
+            linewidth=1.5,
+            transform=fig.transFigure,
+            zorder=1,
+        )
+        fig.patches.append(rect_par)
 
-    center_x_row = ((x1_seq + pad_val) + (x0_par - pad_val)) / 2.0
+        # Sequential and parallel algorithms on the top, centered above the column bounding border
+        y_col_title = max(y1_seq, y1_par) + pad_val + 0.01
+        center_x_seq = (x0_seq + x1_seq) / 2.0
+        center_x_par = (x0_par + x1_par) / 2.0
 
-    y_faer_center = (pos00.y0 + pos00.y1) / 2.0
-    fig.text(
-        center_x_row,
-        y_faer_center,
-        "Faer Base",
-        ha="center",
-        va="center",
-        fontsize=12,
-        color="#1e293b",
-        zorder=10,
-    )
+        fig.text(
+            center_x_seq,
+            y_col_title,
+            "Sequential Algorithms",
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            color="#1e293b",
+        )
+        fig.text(
+            center_x_par,
+            y_col_title,
+            "Parallel Algorithms",
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            color="#1e293b",
+        )
 
-    y_mkl_center = (pos10.y0 + pos10.y1) / 2.0
-    fig.text(
-        center_x_row,
-        y_mkl_center,
-        "MKL Base",
-        ha="center",
-        va="center",
-        fontsize=12,
-        color="#1e293b",
-        zorder=10,
-    )
+        # Centered titles for each row, positioned in the horizontal gap between column borders
+        pos00 = axs[0, 0].get_position()
+        pos10 = axs[1, 0].get_position()
+
+        center_x_row = ((x1_seq + pad_val) + (x0_par - pad_val)) / 2.0
+
+        y_faer_center = (pos00.y0 + pos00.y1) / 2.0
+        fig.text(
+            center_x_row,
+            y_faer_center,
+            "Faer Base",
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="#1e293b",
+            zorder=10,
+        )
+
+        y_mkl_center = (pos10.y0 + pos10.y1) / 2.0
+        fig.text(
+            center_x_row,
+            y_mkl_center,
+            "MKL Base",
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="#1e293b",
+            zorder=10,
+        )
+    else:
+        # Get tight positions for 2x1 grid
+        box0 = get_tight_pos(axs[0])
+        box1 = get_tight_pos(axs[1])
+
+        # Single column bounding box
+        x0_col = min(box0.x0, box1.x0)
+        x1_col = max(box0.x1, box1.x1)
+        y0_col = min(box0.y0, box1.y0)
+        y1_col = max(box0.y1, box1.y1)
+
+        # Draw border around the single column
+        edge_color = "#64748b" if mode == "sequential" else "#a78bfa"
+        rect_col = FancyBboxPatch(
+            (x0_col - pad_val, y0_col - pad_val),
+            (x1_col - x0_col) + 2 * pad_val,
+            (y1_col - y0_col) + 2 * pad_val,
+            boxstyle="square,pad=0.0",
+            edgecolor=edge_color,
+            facecolor="none",
+            linewidth=1.5,
+            transform=fig.transFigure,
+            zorder=1,
+        )
+        fig.patches.append(rect_col)
+
+        # Title centered above the single column
+        y_col_title = y1_col + pad_val + 0.01
+        col_title = "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
+        fig.text(
+            (x0_col + x1_col) / 2.0,
+            y_col_title,
+            col_title,
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            color="#1e293b",
+        )
+
+        # Row labels centered on the right side of the border
+        pos0 = axs[0].get_position()
+        pos1 = axs[1].get_position()
+
+        fig.text(
+            x1_col + pad_val + 0.02,
+            (pos0.y0 + pos0.y1) / 2.0,
+            "Faer Base",
+            ha="left",
+            va="center",
+            fontsize=12,
+            color="#1e293b",
+            zorder=10,
+        )
+
+        fig.text(
+            x1_col + pad_val + 0.02,
+            (pos1.y0 + pos1.y1) / 2.0,
+            "MKL Base",
+            ha="left",
+            va="center",
+            fontsize=12,
+            color="#1e293b",
+            zorder=10,
+        )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches="tight")
@@ -723,13 +806,29 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, ".."))
 
-    # Determine input path
-    if len(sys.argv) > 1:
-        csv_path = os.path.abspath(sys.argv[1])
-    else:
+    parser = argparse.ArgumentParser(description="Plot matrix multiplication benchmarks.")
+    parser.add_argument(
+        "csv_path",
+        nargs="?",
+        default=None,
+        help="Path to the input CSV file."
+    )
+    parser.add_argument(
+        "--mode",
+        "-m",
+        choices=["sequential", "parallel", "both"],
+        default="both",
+        help="Plotting mode: sequential, parallel, or both (default: both)."
+    )
+    args = parser.parse_args()
+
+    csv_path = args.csv_path
+    if csv_path is None:
         csv_path = os.path.join(
             project_root, "rust", "generated", "csv", "benchmark_results.csv"
         )
+    else:
+        csv_path = os.path.abspath(csv_path)
 
     if os.path.exists(csv_path):
         # Determine fallback output path name based on the CSV path
@@ -742,12 +841,18 @@ def main() -> None:
         # Reorganize: if csv_path is in generated/csv/, output to generated/plots/
         csv_dir = os.path.abspath(os.path.dirname(csv_path))
         if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
-            output_path = os.path.join(os.path.dirname(csv_dir), "plots", out_name)
+            out_dir = os.path.join(os.path.dirname(csv_dir), "plots")
         else:
-            output_path = os.path.join(csv_dir, out_name)
+            out_dir = csv_dir
 
-        print(f"Plotting {csv_path} -> {output_path}...")
-        plot_csv(csv_path, output_path)
+        if args.mode == "both":
+            output_path = os.path.join(out_dir, out_name)
+        else:
+            base, ext = os.path.splitext(out_name)
+            output_path = os.path.join(out_dir, f"{base}_{args.mode}{ext}")
+
+        print(f"Plotting {csv_path} (mode={args.mode}) -> {output_path}...")
+        plot_csv(csv_path, output_path, mode=args.mode)
     else:
         print(f"Error: CSV file not found at {csv_path}")
 
