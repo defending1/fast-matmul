@@ -4,7 +4,7 @@
 
 Added strassen lines from Ballard et Al.
 
-![img](./generated/benchmark_plot2906_ballard.png)
+![img](./generated/plots/benchmark_plot2906_ballard.png)
 
 ## 29.06
 
@@ -16,12 +16,12 @@ Remarks:
 
 ### Switch to base when n<=256.
 
-![img](./generated/benchmark_plot2906_base_256.png)
+![img](./generated/plots/benchmark_plot2906_base_256.png)
 
 ### Switch to base when n <= 512.
 
-![img](./generated/benchmark_plot2906_base_512.png)
+![img](./generated/plots/benchmark_plot2906_base_512.png)
 
 ### Switch to base when n <= 1024.
 
-![img](./generated/benchmark_plot2906_base_1024.png)
+![img](./generated/plots/benchmark_plot2906_base_1024.png)
