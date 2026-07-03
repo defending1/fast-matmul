@@ -12,7 +12,10 @@ CXX = g++
 MODE = sequential
 #MODE = openmp
 
-MKL_ROOT := /software/spack/share/spack/modules/linux-ubuntu22.04-broadwell/intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
+MKL_ROOT ?= $(MKLROOT)
+ifeq ($(MKL_ROOT),)
+  MKL_ROOT := /software/spack/share/spack/modules/linux-ubuntu22.04-broadwell/intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
+endif
 
 DEFINES := -DNDEBUG -D__INTEL_MKL__
 
