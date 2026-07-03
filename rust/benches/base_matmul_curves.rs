@@ -78,7 +78,7 @@ fn main() {
     println!("\n==================================================");
     println!("RUNNING SPLINE INTERPOLATION & DERIVATIVE ANALYSIS");
     println!("==================================================");
-    let csv_path = "generated/base_matmul_spline.csv";
+    let csv_path = "generated/csv/base_matmul_spline.csv";
 
     const N: i32 = 11;
     // Generate sizes dynamically: 2, 4, 8, ..., 2^N

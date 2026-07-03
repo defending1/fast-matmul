@@ -1,4 +1,4 @@
-use fast_matmul::matmul::BaseMatMul;
+use fast_matmul::matmul::{BaseMatMul, RecursionLimit};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -8,6 +8,29 @@ use std::path::Path;
 struct ColumnMapping {
     header: String,
     folder: String,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+struct ConfigKey {
+    size: usize,
+    base_choice: String,
+    recursion_level: Option<usize>,
+    size_cutoff: Option<usize>,
+}
+
+impl Ord for ConfigKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.size.cmp(&other.size)
+            .then_with(|| self.base_choice.cmp(&other.base_choice))
+            .then_with(|| self.recursion_level.cmp(&other.recursion_level))
+            .then_with(|| self.size_cutoff.cmp(&other.size_cutoff))
+    }
+}
+
+impl PartialOrd for ConfigKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Helper to read a single point estimate of the mean from Criterion's JSON files, converting it to seconds.
@@ -27,7 +50,7 @@ fn get_criterion_time(folder_name: &str, size: usize) -> Option<f64> {
 }
 
 /// Reads existing benchmark CSV results to avoid overwriting unrelated cached data.
-fn read_existing_csv(filename: &str) -> HashMap<(usize, String), f64> {
+fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>> {
     let mut map = HashMap::new();
     let content = match std::fs::read_to_string(filename) {
         Ok(c) => c,
@@ -43,22 +66,55 @@ fn read_existing_csv(filename: &str) -> HashMap<(usize, String), f64> {
         .map(|s| s.trim().to_string())
         .collect();
 
+    let size_idx = headers.iter().position(|h| h == "size");
+    let base_choice_idx = headers.iter().position(|h| h == "base_choice");
+    let recursion_level_idx = headers.iter().position(|h| h == "recursion_level");
+    let size_cutoff_idx = headers.iter().position(|h| h == "size_cutoff");
+
+    let (size_idx, base_choice_idx, recursion_level_idx, size_cutoff_idx) = match (
+        size_idx,
+        base_choice_idx,
+        recursion_level_idx,
+        size_cutoff_idx,
+    ) {
+        (Some(s), Some(b), Some(r), Some(c)) => (s, b, r, c),
+        _ => return map,
+    };
+
     for line in lines {
         let parts: Vec<&str> = line.split(',').collect();
-        if parts.is_empty() || parts[0].trim().is_empty() {
+        if parts.len() <= size_cutoff_idx {
             continue;
         }
-        let size: usize = match parts[0].trim().parse() {
+        let size: usize = match parts[size_idx].trim().parse() {
             Ok(s) => s,
             Err(_) => continue,
         };
-        for (i, part) in parts.iter().enumerate().skip(1) {
-            if let Some(val) = (i < headers.len())
-                .then(|| part.trim().parse::<f64>().ok())
-                .flatten()
-            {
-                map.insert((size, headers[i].clone()), val);
+        let base_choice = parts[base_choice_idx].trim().to_string();
+        let recursion_level = parts[recursion_level_idx].trim().parse::<usize>().ok();
+        let size_cutoff = parts[size_cutoff_idx].trim().parse::<usize>().ok();
+
+        let key = ConfigKey {
+            size,
+            base_choice,
+            recursion_level,
+            size_cutoff,
+        };
+
+        let mut row_metrics = HashMap::new();
+        for (i, part) in parts.iter().enumerate() {
+            if i == size_idx || i == base_choice_idx || i == recursion_level_idx || i == size_cutoff_idx {
+                continue;
             }
+            if i < headers.len() {
+                let cleaned = part.trim();
+                if let Ok(val) = cleaned.parse::<f64>() {
+                    row_metrics.insert(headers[i].clone(), val);
+                }
+            }
+        }
+        if !row_metrics.is_empty() {
+            map.insert(key, row_metrics);
         }
     }
     map
@@ -75,9 +131,10 @@ pub fn export_results_to_csv(
     algorithms: &[&str],
     filename: &str,
     base_choice: BaseMatMul,
+    recursion_limit: RecursionLimit,
     plot: bool,
 ) -> Result<(), std::io::Error> {
-    let existing = read_existing_csv(filename);
+    let mut existing = read_existing_csv(filename);
 
     let suffix = match base_choice {
         BaseMatMul::Faer => "Faer",
@@ -123,42 +180,78 @@ pub fn export_results_to_csv(
         });
     }
 
-    // Only export sizes that have at least one valid measurement (either in Criterion files or existing CSV)
-    let mut active_sizes = Vec::new();
+    let base_choice_str = match base_choice {
+        BaseMatMul::Faer => "faer",
+        BaseMatMul::Dgemm => "dgemm",
+    };
+
+    let (recursion_level, size_cutoff) = match recursion_limit {
+        RecursionLimit::Depth(level) => (Some(level), None),
+        RecursionLimit::Cutoff(cutoff) => (None, Some(cutoff)),
+    };
+
+    // 1. Gather new measurements from Criterion, merging with existing data
     for &size in sizes {
-        let mut has_data = false;
+        let mut has_new_data = false;
+        let mut new_metrics = HashMap::new();
+
         for col in &mappings {
-            if get_criterion_time(&col.folder, size).is_some()
-                || existing.contains_key(&(size, col.header.clone()))
-            {
-                has_data = true;
-                break;
+            if let Some(t) = get_criterion_time(&col.folder, size) {
+                new_metrics.insert(col.header.clone(), t);
+                has_new_data = true;
             }
         }
-        if has_data {
-            active_sizes.push(size);
+
+        if has_new_data {
+            let key = ConfigKey {
+                size,
+                base_choice: base_choice_str.to_string(),
+                recursion_level,
+                size_cutoff,
+            };
+            let row = existing.entry(key).or_default();
+            for (header, val) in new_metrics {
+                row.insert(header, val);
+            }
         }
     }
 
+    // 2. Write everything back to CSV
     if let Some(parent) = Path::new(filename).parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let mut file = File::create(filename)?;
 
-    write!(file, "size")?;
+    write!(file, "size,base_choice,recursion_level,size_cutoff")?;
     for col in &mappings {
         write!(file, ",{}", col.header)?;
     }
     writeln!(file)?;
 
-    for &size in &active_sizes {
-        write!(file, "{}", size)?;
-        for col in &mappings {
-            let time_val = get_criterion_time(&col.folder, size)
-                .or_else(|| existing.get(&(size, col.header.clone())).copied());
+    let mut sorted_keys: Vec<&ConfigKey> = existing.keys().collect();
+    sorted_keys.sort();
 
-            if let Some(t) = time_val {
+    for key in sorted_keys {
+        let row_metrics = &existing[key];
+        if row_metrics.is_empty() {
+            continue;
+        }
+
+        write!(file, "{},{}", key.size, key.base_choice)?;
+        if let Some(level) = key.recursion_level {
+            write!(file, ",{}", level)?;
+        } else {
+            write!(file, ",")?;
+        }
+        if let Some(cutoff) = key.size_cutoff {
+            write!(file, ",{}", cutoff)?;
+        } else {
+            write!(file, ",")?;
+        }
+
+        for col in &mappings {
+            if let Some(t) = row_metrics.get(&col.header) {
                 write!(file, ",{:.9}", t)?;
             } else {
                 write!(file, ",")?;
@@ -205,3 +298,4 @@ pub fn export_results_to_csv(
 
     Ok(())
 }
+

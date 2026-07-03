@@ -73,8 +73,13 @@ ax1.legend(lines, labels, loc='upper left', frameon=True, facecolor='white', edg
 
 plt.tight_layout()
 
-# Save image in the same directory as the input CSV file
-output_dir = os.path.dirname(os.path.abspath(csv_path))
+# Save image in the plots directory if input is in csv directory under generated
+csv_dir = os.path.abspath(os.path.dirname(csv_path))
+if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
+    output_dir = os.path.join(os.path.dirname(csv_dir), "plots")
+else:
+    output_dir = csv_dir
+
 output_path_png = os.path.join(output_dir, "base_matmul_spline.png")
 plt.savefig(output_path_png, dpi=300)
 print(f"Successfully generated spline plot at: {output_path_png}")

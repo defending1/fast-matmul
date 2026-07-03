@@ -222,6 +222,7 @@ impl Benchmark {
                 algorithms,
                 filename,
                 base_choice,
+                recursion_limit,
                 self.run_plot,
             )?;
         } else {
@@ -282,13 +283,14 @@ fn main() {
         list
     };
 
+    let out_file = "generated/csv/benchmark_results.csv";
+
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
-        for (_limit, file_prefix, label) in configs {
-            for &(base, name, suffix) in &targets {
-                let file = format!("generated/{}_{}.csv", file_prefix, suffix);
+        for (limit, _file_prefix, label) in configs {
+            for &(base, name, _suffix) in &targets {
                 if let Err(e) =
-                    export_helper::export_results_to_csv(&sizes, algorithms, &file, base, true)
+                    export_helper::export_results_to_csv(&sizes, algorithms, out_file, base, limit, true)
                 {
                     eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
                 } else {
@@ -303,19 +305,18 @@ fn main() {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
         let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
 
-        for (limit, file_prefix, label) in configs {
-            for &(base, name, suffix) in &targets {
-                let file = format!("generated/{}_{}.csv", file_prefix, suffix);
+        for (limit, _file_prefix, label) in configs {
+            for &(base, name, _suffix) in &targets {
                 println!(
                     "\n--- Benchmark Set: Using {} Base MatMul, {} ---",
                     name, label
                 );
-                if let Err(e) = bench.run(&sizes, algorithms, &file, base, limit) {
+                if let Err(e) = bench.run(&sizes, algorithms, out_file, base, limit) {
                     eprintln!("Failed to run {} benchmarks for {}: {:?}", name, label, e);
                 } else {
                     println!(
                         "{} ({}) benchmark results successfully written to {}",
-                        name, label, file
+                        name, label, out_file
                     );
                 }
             }

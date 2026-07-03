@@ -182,19 +182,81 @@ def is_parallel(col: str) -> bool:
 
 
 def plot_csv(csv_path: str, output_path: str) -> None:
-    """Generates a performance plot from a benchmark CSV file in both PDF and PNG formats.
+    """Generates performance plots from a benchmark CSV file.
+
+    If the CSV contains the new config columns, it splits and generates plots for all configs.
+    Otherwise, it falls back to generating a single plot.
 
     Args:
         csv_path: Path to the input CSV file.
-        output_path: Path to save the output plot.
+        output_path: Default fallback path to save the output plot.
     """
     if not os.path.exists(csv_path):
         print(f"Error: CSV file not found at {csv_path}")
         return
 
-    # Load data
     df = pd.read_csv(csv_path)
 
+    new_format_cols = {"base_choice", "recursion_level", "size_cutoff"}
+    if new_format_cols.issubset(df.columns):
+        out_dir = os.path.dirname(output_path)
+        # Drop duplicates to find unique recursion configs (keeping NaNs intact)
+        df_configs = df[["recursion_level", "size_cutoff"]].drop_duplicates()
+        for _, row in df_configs.iterrows():
+            r_level = row["recursion_level"]
+            s_cutoff = row["size_cutoff"]
+
+            # Safe comparison representing NaN or the numeric level/cutoff
+            if pd.isna(r_level):
+                cond_r = df["recursion_level"].isna()
+                r_str = ""
+            else:
+                cond_r = df["recursion_level"] == r_level
+                r_str = f"level_{int(r_level)}"
+
+            if pd.isna(s_cutoff):
+                cond_c = df["size_cutoff"].isna()
+                c_str = ""
+            else:
+                cond_c = df["size_cutoff"] == s_cutoff
+                c_str = f"cutoff_{int(s_cutoff)}"
+
+            df_config = df[cond_r & cond_c]
+            prefix = r_str if r_str else c_str
+
+            for base in ["faer", "dgemm"]:
+                df_base = df_config[df_config["base_choice"] == base]
+                if df_base.empty:
+                    continue
+
+                plot_columns = [col for col in df_base.columns if col not in new_format_cols]
+                df_to_plot = df_base[plot_columns]
+
+                suffix = "faer" if base == "faer" else "dgemm"
+                out_name = f"benchmark_{prefix}_{suffix}.pdf"
+                out_path = os.path.join(out_dir, out_name)
+
+                plot_df_core(df_to_plot, out_path)
+
+            # Plot grid comparison for this config if both base variants exist
+            df_faer = df_config[df_config["base_choice"] == "faer"]
+            df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
+
+            if not df_faer.empty and not df_dgemm.empty:
+                plot_columns = [col for col in df.columns if col not in new_format_cols]
+                df_faer_to_plot = df_faer[plot_columns]
+                df_dgemm_to_plot = df_dgemm[plot_columns]
+
+                out_grid_name = f"benchmark_{prefix}_grid.pdf"
+                out_grid_path = os.path.join(out_dir, out_grid_name)
+
+                generate_grid_plot_core(df_faer_to_plot, df_dgemm_to_plot, out_grid_path)
+    else:
+        plot_df_core(df, output_path)
+
+
+def plot_df_core(df: pd.DataFrame, output_path: str) -> None:
+    """Core logic to generate a performance plot from a dataframe in both PDF and PNG formats."""
     # Set up styling using scienceplots based on LaTeX availability
     import shutil
 
@@ -291,6 +353,9 @@ def plot_csv(csv_path: str, output_path: str) -> None:
         if col == "size":
             continue
 
+        if df[col].isna().all():
+            continue
+
         style = styles.get(col, {"marker": "x", "linestyle": ":"})
         flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
         gflops = flops / (df[col] * 1e9)
@@ -354,32 +419,10 @@ def plot_csv(csv_path: str, output_path: str) -> None:
     plt.close(fig)
 
 
-def generate_grid_plot(
-    csv_path_faer: str, csv_path_dgemm: str, output_path: str
+def generate_grid_plot_core(
+    df_faer: pd.DataFrame, df_dgemm: pd.DataFrame, output_path: str
 ) -> None:
-    """Generates a 2x2 grid performance plot in both PDF and PNG formats.
-
-    Row 1: Faer base results
-    Row 2: MKL base results
-    Col 1: Sequential algorithms
-    Col 2: Parallel algorithms
-
-    Args:
-        csv_path_faer: Path to the Faer benchmark CSV results.
-        csv_path_dgemm: Path to the MKL/Dgemm benchmark CSV results.
-        output_path: Path to save the final grid plot.
-    """
-    if not os.path.exists(csv_path_faer):
-        print(f"Error: Faer CSV file not found at {csv_path_faer}")
-        return
-    if not os.path.exists(csv_path_dgemm):
-        print(f"Error: Dgemm CSV file not found at {csv_path_dgemm}")
-        return
-
-    # Load datasets
-    df_faer = pd.read_csv(csv_path_faer)
-    df_dgemm = pd.read_csv(csv_path_dgemm)
-
+    """Generates a 2x2 grid performance plot from dataframes directly."""
     # Set up styling using scienceplots based on LaTeX availability
     import shutil
 
@@ -680,62 +723,33 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, ".."))
 
-    path_faer = os.path.join(
-        project_root, "rust", "generated", "benchmark_results_faer.csv"
-    )
-    path_dgemm = os.path.join(
-        project_root, "rust", "generated", "benchmark_results_dgemm.csv"
-    )
-    output_grid = os.path.join(project_root, "rust", "generated", "benchmark_plot.pdf")
-
-    # Check if we should plot the 2x2 grid
-    if os.path.exists(path_faer) and os.path.exists(path_dgemm):
-        print(
-            f"Both Faer and MKL results exist. Plotting 2x2 grid comparison -> {output_grid}..."
-        )
-        generate_grid_plot(path_faer, path_dgemm, output_grid)
+    # Determine input path
+    if len(sys.argv) > 1:
+        csv_path = os.path.abspath(sys.argv[1])
     else:
-        # Fallback to plotting individual files if they exist
-        print(
-            "One of the benchmark CSV files is missing. Falling back to individual plots..."
+        csv_path = os.path.join(
+            project_root, "rust", "generated", "csv", "benchmark_results.csv"
         )
-        configs = []
-        if len(sys.argv) > 1:
-            csv_path = os.path.abspath(sys.argv[1])
-            base_name = os.path.basename(csv_path)
-            if "results" in base_name:
-                out_name = base_name.replace("results", "plot").replace(".csv", ".pdf")
-            else:
-                out_name = os.path.splitext(base_name)[0] + ".pdf"
-            output_path = os.path.join(os.path.dirname(csv_path), out_name)
-            configs.append((csv_path, output_path))
+
+    if os.path.exists(csv_path):
+        # Determine fallback output path name based on the CSV path
+        base_name = os.path.basename(csv_path)
+        if "results" in base_name:
+            out_name = base_name.replace("results", "plot").replace(".csv", ".pdf")
         else:
-            path_legacy = os.path.join(
-                project_root, "rust", "generated", "benchmark_results.csv"
-            )
-            if os.path.exists(path_faer):
-                out_faer = os.path.join(
-                    project_root, "rust", "generated", "benchmark_plot_faer.pdf"
-                )
-                configs.append((path_faer, out_faer))
-            if os.path.exists(path_dgemm):
-                out_dgemm = os.path.join(
-                    project_root, "rust", "generated", "benchmark_plot_dgemm.pdf"
-                )
-                configs.append((path_dgemm, out_dgemm))
-            if not configs and os.path.exists(path_legacy):
-                out_legacy = os.path.join(
-                    project_root, "rust", "generated", "benchmark_plot.pdf"
-                )
-                configs.append((path_legacy, out_legacy))
+            out_name = os.path.splitext(base_name)[0] + ".pdf"
 
-        if not configs:
-            print("Error: No CSV files found to plot.")
-            return
+        # Reorganize: if csv_path is in generated/csv/, output to generated/plots/
+        csv_dir = os.path.abspath(os.path.dirname(csv_path))
+        if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
+            output_path = os.path.join(os.path.dirname(csv_dir), "plots", out_name)
+        else:
+            output_path = os.path.join(csv_dir, out_name)
 
-        for csv_path, output_path in configs:
-            print(f"Plotting {csv_path} -> {output_path}...")
-            plot_csv(csv_path, output_path)
+        print(f"Plotting {csv_path} -> {output_path}...")
+        plot_csv(csv_path, output_path)
+    else:
+        print(f"Error: CSV file not found at {csv_path}")
 
 
 if __name__ == "__main__":
