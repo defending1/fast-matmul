@@ -3,8 +3,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --partition=cl2
-#SBATCH --time=00:30:00
+#SBATCH --partition=cl1
+#SBATCH --time=08:30:00
 #SBATCH --mem=128G
 #SBATCH --output=benchmark_seq_%j.log
 
