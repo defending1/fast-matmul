@@ -37,7 +37,7 @@ export OMP_NUM_THREADS=1
 TARGET_PROJECT=${1:-both}
 echo "Target project to execute: ${TARGET_PROJECT}"
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 
 # Run Rust project if selected
 if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
