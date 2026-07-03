@@ -3,10 +3,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --partition=cl1
+#SBATCH --partition=cl2
 #SBATCH --time=08:30:00
 #SBATCH --mem=128G
 #SBATCH --output=benchmark_seq_%j.log
+#SBATCH --exclusive
 
 # Ensure we exit on any error
 set -e
@@ -32,34 +33,28 @@ echo ""
 export MKL_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
-# Ensure cargo/rustup are in the PATH and configure nightly toolchain
-export PATH="$HOME/.cargo/bin:$PATH"
-echo "Setting up Rust nightly toolchain..."
-rustup toolchain install nightly
-rustup override set nightly
-rustc --version
+# Parse command-line argument: rust, c, or both (default: both)
+TARGET_PROJECT=${1:-both}
+echo "Target project to execute: ${TARGET_PROJECT}"
 
-# Navigate to the rust directory where Cargo.toml is located
-cd rust
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Compile the benchmarks in release mode first
-echo "Building benchmarks..."
-cargo build --release --bench bench
+# Run Rust project if selected
+if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
+echo "============================================="
+echo "=== Running Rust Benchmarks ==="
+echo "============================================="
+cd "${PROJECT_ROOT}/rust"
+./generated/bin/bench_broadwell --sequential --full
+fi
 
-# Run the sequential benchmarks up to size 2^15
-echo "Running sequential benchmarks..."
-cargo bench --bench bench -- --sequential --full
-
-module load anaconda3/2024.02
-conda create -y -n py27 python=2.7
-conda activate py27
-
-# Run c project
-cd ../codegen
-bash gen_all_algorithms.sh 0
-# cd ..
-# make strassen
-# make matmul_benchmarks
-# ./build/matmul_benchmarks -square_test 1
+# Run C/C++ project if selected
+if [ "${TARGET_PROJECT}" = "c" ] || [ "${TARGET_PROJECT}" = "both" ]; then
+echo "============================================="
+echo "=== Running C/C++ Benchmarks ==="
+echo "============================================="
+cd "${PROJECT_ROOT}"
+./build/matmul_benchmarks -square_test 1
+fi
 
 echo "Done!"
