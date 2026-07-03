@@ -33,19 +33,46 @@ echo ""
 export MKL_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
-# Parse command-line argument: rust, c, or both (default: both)
+# Parse command-line arguments:
+# $1 - project to execute: rust, c, or both (default: both)
+# $2 - CPU architecture: broadwell, znver3, native (default: detect)
 TARGET_PROJECT=${1:-both}
+TARGET_ARCH=${2:-detect}
+
 echo "Target project to execute: ${TARGET_PROJECT}"
+echo "Target architecture parameter: ${TARGET_ARCH}"
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 
 # Run Rust project if selected
 if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
-echo "============================================="
-echo "=== Running Rust Benchmarks ==="
-echo "============================================="
-cd "${PROJECT_ROOT}/rust"
-./generated/bin/bench_broadwell --sequential --full
+    echo "============================================="
+    echo "=== Running Rust Benchmarks ==="
+    echo "============================================="
+    cd "${PROJECT_ROOT}/rust"
+
+    # Resolve architecture: use parameter if provided, otherwise detect automatically
+    if [ "${TARGET_ARCH}" != "detect" ]; then
+        ARCH="${TARGET_ARCH}"
+    else
+        # Detect target architecture automatically based on system CPU
+        if grep -q "EPYC" /proc/cpuinfo; then
+            ARCH="znver3"
+        elif grep -q "Xeon" /proc/cpuinfo; then
+            ARCH="broadwell"
+        else
+            ARCH="native"
+        fi
+    fi
+
+    # Fallback to native if the specific architecture binary is not found
+    if [ ! -f "./generated/bin/bench_${ARCH}" ]; then
+        echo "Warning: ./generated/bin/bench_${ARCH} not found. Falling back to native."
+        ARCH="native"
+    fi
+
+    echo "Executing: ./generated/bin/bench_${ARCH} --sequential --full"
+    ./generated/bin/bench_${ARCH} --sequential --full
 fi
 
 # Run C/C++ project if selected
