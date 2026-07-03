@@ -18,6 +18,57 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <vector>
+#include <sstream>
+
+// Returns available system memory in bytes via /proc/meminfo on Linux.
+// Returns 0 if reading fails.
+unsigned long long GetAvailableMemory() {
+  std::ifstream infile("/proc/meminfo");
+  if (!infile.is_open()) {
+    return 0;
+  }
+  std::string line;
+  while (std::getline(infile, line)) {
+    if (line.compare(0, 13, "MemAvailable:") == 0) {
+      std::stringstream ss(line);
+      std::string label;
+      unsigned long long val;
+      std::string unit;
+      ss >> label >> val >> unit;
+      if (unit == "kB") {
+        return val * 1024;
+      }
+      return val;
+    }
+  }
+  return 0;
+}
+
+// Checks if the matrix multiplication fits in memory.
+bool CheckSizeSupported(int m, int k, int n) {
+  // Avoid overflow using double
+  double elements = (double)m * k + (double)k * n + (double)m * n;
+  double bytes_per_matrix = elements * sizeof(double);
+  
+  // Safe multiplier of 10.0 to account for recursive Strassen submatrix allocations
+  double multiplier = 10.0;
+  double estimated_bytes = bytes_per_matrix * multiplier;
+  
+  unsigned long long avail_bytes = GetAvailableMemory();
+  if (avail_bytes > 0) {
+    // Maintain a safety buffer (10% of available memory or at least 256MB)
+    unsigned long long safety_buffer = (avail_bytes / 10 > 256 * 1024 * 1024) ? avail_bytes / 10 : 256 * 1024 * 1024;
+    if (estimated_bytes + safety_buffer > avail_bytes) {
+      return false;
+    }
+  } else {
+    // Fallback: restrict to 2GB if memory capacity cannot be checked via /proc/meminfo
+    if (bytes_per_matrix > 2.0 * 1024.0 * 1024.0 * 1024.0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Run a single benchmark for multiplying m x k x n with num_steps of recursion.
 // To just call GEMM, set num_steps to zero.
@@ -52,6 +103,11 @@ void BenchmarkSet(std::ostream& os, std::vector<int> &m_vals, std::vector<int> &
   for (int curr_num_steps : num_steps) {
     os << Alg2Str(algorithm) << "_" << curr_num_steps << " = [";
     for (int i = 0; i < m_vals.size(); ++i) {
+      if (!CheckSizeSupported(m_vals[i], k_vals[i], n_vals[i])) {
+        std::cout << "Skipping benchmark size " << m_vals[i] << "x" << k_vals[i] << "x" << n_vals[i]
+                  << " as it exceeds available system memory." << std::endl;
+        continue;
+      }
       SingleBenchmark(os, m_vals[i], k_vals[i], n_vals[i], curr_num_steps,
                       algorithm);
     }
@@ -60,9 +116,10 @@ void BenchmarkSet(std::ostream& os, std::vector<int> &m_vals, std::vector<int> &
   os << std::endl << std::endl;
 }
 
-void SquareTest(std::ostream& os) {
+void SquareTest(std::ostream& os, bool full) {
   std::vector<int> m_vals;
-  for (int i = 2; i <= 8192; i *= 2) {
+  int limit = full ? 1048576 : 2048;
+  for (int i = 2; i <= limit; i *= 2) {
     m_vals.push_back(i);
   }
   std::vector<int> num_levels = {0};
@@ -317,7 +374,19 @@ void TSSquareBenchmark(std::ostream& os, int which) {
 }
 
 int main(int argc, char **argv) {
-  auto opts = GetOpts(argc, argv);
+  // Parse command-line -full flag first, stripping it to avoid options crash
+  bool full = false;
+  std::vector<char*> new_argv;
+  new_argv.push_back(argv[0]);
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "-full") {
+      full = true;
+    } else {
+      new_argv.push_back(argv[i]);
+    }
+  }
+  int new_argc = new_argv.size();
+  auto opts = GetOpts(new_argc, new_argv.data());
 
   // Create the generated output directory if it doesn't exist
   mkdir("benchmarks/generated", 0755);
@@ -357,7 +426,7 @@ int main(int argc, char **argv) {
 
   // Functions for testing
   if (OptExists(opts, "square_test")) {
-    SquareTest(fout);
+    SquareTest(fout, full);
   }
   if (OptExists(opts, "square_test_par")) {
     SquareTestPar(fout);

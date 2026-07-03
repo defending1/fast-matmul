@@ -54,7 +54,7 @@ echo "============================================="
 echo "=== Running C/C++ Benchmarks ==="
 echo "============================================="
 cd "${PROJECT_ROOT}"
-./build/matmul_benchmarks -square_test 1
+./build/matmul_benchmarks -square_test 1 -full
 fi
 
 echo "Done!"
