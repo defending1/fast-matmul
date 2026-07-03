@@ -53,13 +53,15 @@ fn main() {
     // Inject runtime library path (RPATH) so cargo bench executes without LD_LIBRARY_PATH
     println!("cargo::rustc-link-arg=-Wl,-rpath,{}", mkl_lib.display());
 
+    let target_cpu = std::env::var("TARGET_CPU").unwrap_or_else(|_| "native".to_string());
+
     cc::Build::new()
         .file("ffi/matmul/mkl.c")
         .include(mkl_include)
         .compiler("clang")
         .flag("-O3")
-        .flag("-march=native")
-        .flag("-mtune=native")
+        .flag(&format!("-march={}", target_cpu))
+        .flag(&format!("-mtune={}", target_cpu))
         .compile("mkl_wrapper");
 
     // Recompilation triggers
