@@ -47,6 +47,65 @@ Options:
     Benchmarks only a specific size
 ```
 
+## Instructions for running on Toeplitz cluster
+
+To run benchmarks on the Mathematics Department's Toeplitz cluster with maximum
+performance and reproducibility:
+
+### 1. Pre-compilation
+
+To avoid slow compilation times and network request latency during batch jobs
+(on compute nodes), you should compile the project **once** on the login node or
+an interactive node for your target microarchitecture.
+
+We provide a pre-setup wrapper script that sources Spack, loads the appropriate
+Environment Modules (compilers/MKL), activates the Python 2.7 Conda environment
+(for C++ codegen), and compiles both C/C++ and Rust targets.
+
+Run the pre-setup script from the project root:
+
+```bash
+./scripts/pre-setup.sh [architecture]
+```
+
+Where `[architecture]` is the target CPU microarchitecture of the compute nodes:
+
+- `broadwell`: For the Xeon nodes (`cl1` / `cl2` partitions)
+- `znver3`: For the AMD EPYC nodes (`gpu` partition)
+- `native`: Compiles for the current host CPU (default)
+
+This script will output:
+
+- Highly optimized Rust benchmark binaries to
+  `rust/generated/bin/bench_${architecture}` and
+  `rust/generated/bin/base_matmul_curves_${architecture}`.
+- C++ binaries to `build/strassen` and `build/matmul_benchmarks`.
+
+### 2. Running Batch Jobs via SLURM
+
+After pre-compiling the binaries, you can submit the batch job using
+`run_toeplitz.sbatch`. The script executes the pre-compiled binaries directly
+and avoids recompilation overhead on the compute nodes.
+
+You can customize which project benchmarks to execute by passing an argument to
+`sbatch` (defaulting to `both` if omitted):
+
+- **Run both C/C++ and Rust benchmarks sequentially** (Option A, recommended for
+  fair head-to-head comparison on the same node):
+  ```bash
+  sbatch run_toeplitz.sbatch both
+  # or simply:
+  sbatch run_toeplitz.sbatch
+  ```
+- **Run only Rust benchmarks**:
+  ```bash
+  sbatch run_toeplitz.sbatch rust
+  ```
+- **Run only C/C++ benchmarks**:
+  ```bash
+  sbatch run_toeplitz.sbatch c
+  ```
+
 ## Fast matrix multiplication
 
 Austin R. Benson and Grey Ballard
