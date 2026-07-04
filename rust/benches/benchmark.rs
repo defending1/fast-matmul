@@ -2,7 +2,7 @@ mod check_memory_helper;
 mod export_helper;
 mod util;
 
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
+use criterion::{BenchmarkGroup, BenchmarkId, Criterion, black_box, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
@@ -31,18 +31,25 @@ impl Benchmark {
         }
     }
 
-    /// Adjusts Criterion group sampling parameters based on matrix size.
+    /// Configures Criterion group for single-shot sampling.
+    ///
+    /// Every benchmark calls the function exactly once per sample.  Ten samples
+    /// are collected (Criterion's minimum).  Warmup time is scaled with matrix
+    /// size so that CPU caches and thermal state are stabilised before
+    /// measurement begins, without wasting minutes on huge matrices.
     fn configure_group_for_size(group: &mut BenchmarkGroup<WallTime>, size: usize) {
-        let (samples, warmup_ms, measure_ms) = match size {
-            ..=16 => (30, 50, 100),
-            17..=64 => (20, 100, 200),
-            65..=256 => (10, 200, 500),
-            257..=1024 => (10, 500, 1000),
-            _ => (10, 100, 200),
+        // 10 is Criterion's hard minimum for sample_size.
+        group.sample_size(10);
+        // Scale warmup with matrix size: enough to warm caches and reach
+        // thermal steady-state, but not so long it dominates the run time.
+        let warmup_secs = match size {
+            ..=64 => 1,
+            65..=512 => 2,
+            _ => 5,
         };
-        group.sample_size(samples);
-        group.warm_up_time(std::time::Duration::from_millis(warmup_ms));
-        group.measurement_time(std::time::Duration::from_millis(measure_ms));
+        group.warm_up_time(std::time::Duration::from_secs(warmup_secs));
+        // Allow enough wall-time for one sample to complete at any matrix size.
+        group.measurement_time(std::time::Duration::from_secs(120));
     }
 
     /// Allocates a random `size × size` matrix.
@@ -50,13 +57,23 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
-    /// Helper to register a benchmark with Criterion.
+    /// Registers a single-shot benchmark with Criterion.
+    ///
+    /// Each Criterion sample times exactly one invocation of `f`.  Using
+    /// `iter_custom` with a single call prevents Criterion from looping the
+    /// function thousands of times, which would be prohibitive for large
+    /// matrix sizes.  The mean of the 10 single-shot samples is written to
+    /// Criterion's JSON output and picked up by `export_helper`.
     fn register_bench<F, O>(group: &mut BenchmarkGroup<WallTime>, name: &str, size: usize, mut f: F)
     where
         F: FnMut() -> O,
     {
         group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
-            bench.iter(&mut f);
+            bench.iter_custom(|_iters| {
+                let start = std::time::Instant::now();
+                black_box(f());
+                start.elapsed()
+            });
         });
     }
 
