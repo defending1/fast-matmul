@@ -81,7 +81,7 @@ bool CheckSizeSupported(int m, int k, int n) {
 void SingleBenchmark(std::ostream &os, int m, int k, int n, int num_steps,
                      int algorithm) {
   // Run a set number of trials and pick the median time.
-  int num_trials = 5;
+  int num_trials = 2;
   std::vector<double> times(num_trials);
   for (int trial = 0; trial < num_trials; ++trial) {
     Matrix<double> A = RandomMatrix<double>(m, k);
@@ -135,7 +135,7 @@ void SquareTest(std::ostream &os, bool full) {
   return;
 }
 
-void SquareTestPar(std::ostream &os) {
+void SquareTestPar(std::ostream &os, bool full) {
   std::vector<int> m_vals;
   int limit = full ? 1048576 : 2048;
   for (int i = 2; i <= limit; i *= 2) {
@@ -436,7 +436,7 @@ int main(int argc, char **argv) {
     SquareTest(fout, full);
   }
   if (OptExists(opts, "square_test_par")) {
-    SquareTestPar(fout);
+    SquareTestPar(fout, full);
   }
   if (OptExists(opts, "outer_test_par")) {
     OuterTestPar(fout);
