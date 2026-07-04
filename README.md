@@ -90,21 +90,23 @@ and avoids recompilation overhead on the compute nodes.
 You can customize which project benchmarks to execute by passing an argument to
 `sbatch` (defaulting to `both` if omitted):
 
-- **Run both C/C++ and Rust benchmarks sequentially** (Option A, recommended for
-  fair head-to-head comparison on the same node):
+* **Run both C/C++ and Rust benchmarks sequentially** (Option A, recommended for fair head-to-head comparison on the same node):
   ```bash
-  sbatch run_toeplitz.sbatch both
+  sbatch run_toeplitz.sbatch both [architecture]
   # or simply:
   sbatch run_toeplitz.sbatch
   ```
-- **Run only Rust benchmarks**:
+* **Run only Rust benchmarks**:
   ```bash
-  sbatch run_toeplitz.sbatch rust
+  sbatch run_toeplitz.sbatch rust [architecture]
   ```
-- **Run only C/C++ benchmarks**:
+* **Run only C/C++ benchmarks**:
   ```bash
   sbatch run_toeplitz.sbatch c
   ```
+  *(Note: C++ benchmarks do not depend on the Rust architecture binaries)*
+
+If the `[architecture]` argument is omitted, the script automatically detects the host CPU at runtime, selecting the target binary or falling back to `native`.
 
 ## Fast matrix multiplication
 

@@ -15,10 +15,10 @@
 
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <vector>
-#include <sstream>
 
 // Returns available system memory in bytes via /proc/meminfo on Linux.
 // Returns 0 if reading fails.
@@ -49,20 +49,24 @@ bool CheckSizeSupported(int m, int k, int n) {
   // Avoid overflow using double
   double elements = (double)m * k + (double)k * n + (double)m * n;
   double bytes_per_matrix = elements * sizeof(double);
-  
-  // Safe multiplier of 10.0 to account for recursive Strassen submatrix allocations
+
+  // Safe multiplier of 10.0 to account for recursive Strassen submatrix
+  // allocations
   double multiplier = 10.0;
   double estimated_bytes = bytes_per_matrix * multiplier;
-  
+
   unsigned long long avail_bytes = GetAvailableMemory();
   if (avail_bytes > 0) {
     // Maintain a safety buffer (10% of available memory or at least 256MB)
-    unsigned long long safety_buffer = (avail_bytes / 10 > 256 * 1024 * 1024) ? avail_bytes / 10 : 256 * 1024 * 1024;
+    unsigned long long safety_buffer = (avail_bytes / 10 > 256 * 1024 * 1024)
+                                           ? avail_bytes / 10
+                                           : 256 * 1024 * 1024;
     if (estimated_bytes + safety_buffer > avail_bytes) {
       return false;
     }
   } else {
-    // Fallback: restrict to 2GB if memory capacity cannot be checked via /proc/meminfo
+    // Fallback: restrict to 2GB if memory capacity cannot be checked via
+    // /proc/meminfo
     if (bytes_per_matrix > 2.0 * 1024.0 * 1024.0 * 1024.0) {
       return false;
     }
@@ -74,7 +78,8 @@ bool CheckSizeSupported(int m, int k, int n) {
 // To just call GEMM, set num_steps to zero.
 // The median of five trials is printed to the given stream.
 // If run_check is true, then it also
-void SingleBenchmark(std::ostream& os, int m, int k, int n, int num_steps, int algorithm) {
+void SingleBenchmark(std::ostream &os, int m, int k, int n, int num_steps,
+                     int algorithm) {
   // Run a set number of trials and pick the median time.
   int num_trials = 5;
   std::vector<double> times(num_trials);
@@ -89,14 +94,14 @@ void SingleBenchmark(std::ostream& os, int m, int k, int n, int num_steps, int a
   std::sort(times.begin(), times.end());
   size_t ind = num_trials / 2;
   os << " " << m << " " << k << " " << n << " " << num_steps << " "
-            << times[ind] << " "
-            << "; " << std::flush;
+     << times[ind] << " "
+     << "; " << std::flush;
 }
 
 // Runs a set of benchmarks.
-void BenchmarkSet(std::ostream& os, std::vector<int> &m_vals, std::vector<int> &k_vals,
-                  std::vector<int> &n_vals, std::vector<int> &num_steps,
-                  int algorithm) {
+void BenchmarkSet(std::ostream &os, std::vector<int> &m_vals,
+                  std::vector<int> &k_vals, std::vector<int> &n_vals,
+                  std::vector<int> &num_steps, int algorithm) {
 
   assert(m_vals.size() == k_vals.size() && k_vals.size() == n_vals.size());
 
@@ -104,7 +109,8 @@ void BenchmarkSet(std::ostream& os, std::vector<int> &m_vals, std::vector<int> &
     os << Alg2Str(algorithm) << "_" << curr_num_steps << " = [";
     for (int i = 0; i < m_vals.size(); ++i) {
       if (!CheckSizeSupported(m_vals[i], k_vals[i], n_vals[i])) {
-        std::cout << "Skipping benchmark size " << m_vals[i] << "x" << k_vals[i] << "x" << n_vals[i]
+        std::cout << "Skipping benchmark size " << m_vals[i] << "x" << k_vals[i]
+                  << "x" << n_vals[i]
                   << " as it exceeds available system memory." << std::endl;
         continue;
       }
@@ -116,7 +122,7 @@ void BenchmarkSet(std::ostream& os, std::vector<int> &m_vals, std::vector<int> &
   os << std::endl << std::endl;
 }
 
-void SquareTest(std::ostream& os, bool full) {
+void SquareTest(std::ostream &os, bool full) {
   std::vector<int> m_vals;
   int limit = full ? 1048576 : 2048;
   for (int i = 2; i <= limit; i *= 2) {
@@ -129,9 +135,10 @@ void SquareTest(std::ostream& os, bool full) {
   return;
 }
 
-void SquareTestPar(std::ostream& os) {
+void SquareTestPar(std::ostream &os) {
   std::vector<int> m_vals;
-  for (int i = 1000; i <= 15000; i += 500) {
+  int limit = full ? 1048576 : 2048;
+  for (int i = 2; i <= limit; i *= 2) {
     m_vals.push_back(i);
   }
 
@@ -144,7 +151,7 @@ void SquareTestPar(std::ostream& os) {
   BenchmarkSet(os, m_vals, m_vals, m_vals, num_levels, STRASSEN);
 }
 
-void OuterTestPar(std::ostream& os) {
+void OuterTestPar(std::ostream &os) {
   std::vector<int> m_vals;
   for (int i = 3000; i <= 18000; i += 500) {
     m_vals.push_back(i);
@@ -159,7 +166,7 @@ void OuterTestPar(std::ostream& os) {
   BenchmarkSet(os, m_vals, k_vals, m_vals, num_levels, FAST424_26_257);
 }
 
-void TSSquareTestPar(std::ostream& os) {
+void TSSquareTestPar(std::ostream &os) {
   std::vector<int> m_vals;
   for (int i = 3000; i <= 20000; i += 500) {
     m_vals.push_back(i);
@@ -174,7 +181,7 @@ void TSSquareTestPar(std::ostream& os) {
   BenchmarkSet(os, m_vals, k_vals, k_vals, num_levels, FAST433_29_234);
 }
 
-void SquareBenchmark(std::ostream& os, int which) {
+void SquareBenchmark(std::ostream &os, int which) {
   std::vector<int> m_vals;
   for (int i = 2; i <= 8192; i *= 2) {
     m_vals.push_back(i);
@@ -261,7 +268,7 @@ void SquareBenchmark(std::ostream& os, int which) {
 }
 
 // (N, k, N) for fixed k ~ 2000
-void OuterProductBenchmark(std::ostream& os, int which) {
+void OuterProductBenchmark(std::ostream &os, int which) {
   std::vector<int> m_vals;
 #ifdef _PARALLEL_
   for (int i = 3000; i <= 18000; i += 500) {
@@ -319,7 +326,7 @@ void OuterProductBenchmark(std::ostream& os, int which) {
 }
 
 // (N, k, k) for fixed k ~ 2000
-void TSSquareBenchmark(std::ostream& os, int which) {
+void TSSquareBenchmark(std::ostream &os, int which) {
   std::vector<int> m_vals;
 #ifdef _PARALLEL_
   for (int i = 3000; i <= 20000; i += 500) {
@@ -376,7 +383,7 @@ void TSSquareBenchmark(std::ostream& os, int which) {
 int main(int argc, char **argv) {
   // Parse command-line -full flag first, stripping it to avoid options crash
   bool full = false;
-  std::vector<char*> new_argv;
+  std::vector<char *> new_argv;
   new_argv.push_back(argv[0]);
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "-full") {
