@@ -8,10 +8,12 @@ unsafe extern "C" {
         m: i32,
         n: i32,
         k: i32,
+        alpha: f64,
         a: *const f64,
         lda: i32,
         b: *const f64,
         ldb: i32,
+        beta: f64,
         c: *mut f64,
         ldc: i32,
     );
@@ -42,44 +44,58 @@ pub fn mkl_set_threads(num_threads: i32) {
 }
 
 /// Computes C = A * B using Intel MKL dgemm (FFI) with `MatRef` inputs.
-/// Returns an empty or zero matrix early if any dimension is 0 to avoid invalid calls to MKL.
+/// Writes the result directly into `dst` according to the accumulation strategy `accum`.
 ///
 /// # Arguments
+/// * `dst` - The destination matrix slice as `MatMut`.
+/// * `accum` - The accumulation strategy (Add or Replace).
 /// * `a` - The left matrix operand as a `MatRef`.
 /// * `b` - The right matrix operand as a `MatRef`.
-pub(crate) fn mkl_matmul_impl(a: faer::MatRef<'_, f64>, b: faer::MatRef<'_, f64>) -> Mat<f64> {
+pub(crate) fn mkl_matmul_impl(
+    mut dst: faer::MatMut<'_, f64>,
+    accum: faer::Accum,
+    a: faer::MatRef<'_, f64>,
+    b: faer::MatRef<'_, f64>,
+) {
     let m = a.nrows();
     let k = a.ncols();
     let k_b = b.nrows();
     let n = b.ncols();
     assert_eq!(k, k_b, "Matrix dimensions must agree for multiplication");
 
-    // If any dimension is 0, the result is a zero/empty matrix. Return early to avoid MKL internal checks failing.
+    // If any dimension is 0, nothing to do (if Replace, fill with zeros).
     if m == 0 || n == 0 || k == 0 {
-        return Mat::zeros(m, n);
+        if matches!(accum, faer::Accum::Replace) {
+            dst.fill(0.0);
+        }
+        return;
     }
 
     // Assert that the layout is standard contiguous column-major (row stride is 1)
     assert_eq!(a.row_stride(), 1, "Matrix A must be column-major");
     assert_eq!(b.row_stride(), 1, "Matrix B must be column-major");
+    assert_eq!(dst.row_stride(), 1, "Matrix C must be column-major");
 
-    let mut c = Mat::zeros(m, n);
+    let beta = match accum {
+        faer::Accum::Replace => 0.0,
+        faer::Accum::Add => 1.0,
+    };
 
     unsafe {
         mkl_dgemm_wrapper(
             m.try_into().expect("m fits in i32"),
             n.try_into().expect("n fits in i32"),
             k.try_into().expect("k fits in i32"),
+            1.0, // alpha
             a.as_ptr(),
             a.col_stride().try_into().expect("lda fits in i32"),
             b.as_ptr(),
             b.col_stride().try_into().expect("ldb fits in i32"),
-            c.as_ptr_mut(),
-            c.col_stride().try_into().expect("ldc fits in i32"),
+            beta,
+            dst.as_ptr_mut(),
+            dst.col_stride().try_into().expect("ldc fits in i32"),
         );
     }
-
-    c
 }
 
 /// Computes C = A * B using Intel MKL dgemm (FFI).
@@ -89,5 +105,7 @@ pub(crate) fn mkl_matmul_impl(a: faer::MatRef<'_, f64>, b: faer::MatRef<'_, f64>
 /// * `a` - The left matrix operand as a reference to `Mat`.
 /// * `b` - The right matrix operand as a reference to `Mat`.
 pub fn mkl_matmul(a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
-    mkl_matmul_impl(a.as_ref(), b.as_ref())
+    let mut c = Mat::zeros(a.nrows(), b.ncols());
+    mkl_matmul_impl(c.as_mut(), faer::Accum::Replace, a.as_ref(), b.as_ref());
+    c
 }

@@ -9,20 +9,22 @@ void mkl_dgemm_wrapper(
     int32_t m,
     int32_t n,
     int32_t k,
+    double alpha,
     const double *a,
     int32_t lda,
     const double *b,
     int32_t ldb,
+    double beta,
     double *c,
     int32_t ldc
 ) {
-    // Computes C = 1.0 * A * B + 0.0 * C using column-major layout.
+    // Computes C = alpha * A * B + beta * C using column-major layout.
     // This allows direct FFI calls on faer::Mat layout without copies.
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans,
                 m, n, k,
-                1.0, a, lda,
+                alpha, a, lda,
                 b, ldb,
-                0.0, c, ldc);
+                beta, c, ldc);
 }
 
 void mkl_set_num_threads_wrapper(int32_t nt) {
