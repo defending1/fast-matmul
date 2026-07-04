@@ -191,11 +191,11 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 \end{tabular}
 \end{table}
 
-\section{Low rank tensor decomposition}
 
 \section{Fast matrix multiplication}
 
-Matrix multiplication is a bilinear operation.
+
+Matrix multiplication is a bilinear operation. \todo{explain}
 We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between a
 matrix $ \Tm{A} \in \R^{m\times n} $ with $ \Tm{B} \in \R^{n\times p} $. Fixing the natural
 ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
@@ -221,6 +221,10 @@ rewrite Equation \ref{eq:mulvec} into
 where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $. This
 reduces the number of active multiplications to the rank $ r $ of $ \Tn{x} $.
 
+
+\subsection{The classic matrix multiplication algorithm tensor formulation}
+
+We present the $ \angb{2,2,2} $ classical matrix multiplication algorithm in the context of tensors.
 When $ m,n,p >2 $ we can always partition them in blocks as:
 
 \begin{equation}
@@ -237,12 +241,9 @@ When $ m,n,p >2 $ we can always partition them in blocks as:
   \end{bNiceArray},
 \end{equation}
 
-where $ A_{11} \in \R^{\left\lfloor \frac{m}{2} \right\rfloor\times \left\lfloor \frac{n}{2} \right\rfloor} 
-$, $ B_{11} \in \R^{\left\lfloor \frac{n}{2} \right\rfloor \times \left\lfloor \frac{p}{2}
-\right\rfloor} $, $ A_{22} \in \R^{\left\lceil \frac{m}{2} \right\rceil \times \left\lceil
-\frac{n}{2} \right\rceil } $, and $ B_{22} \in \R^{\left\lceil \frac{n}{2} \right\rceil \times
-\left\lceil \frac{p}{2} \right\rceil } $.
-
+where the sizes of the subblocks are depicted in the above equation. This algorithmic formulation is
+often called \emph{divide et impera}, as it consists in breaking the problem into larger
+subproblems, and later recombining the results.
 In particular, we can view the product $ AB $ as the product between $ 2\times 2 $ block matrices 
 \begin{equation}
   \label{eq:matprod}
@@ -340,13 +341,74 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 \end{equation*}
 
 
+\subsection{Strassen algorithm}
 
-\section{Algorithm schema}
+
+The most well known fast algorithm is due to Strassen, and follows the same block structure:
+\begin{align*}
+S_1 &= A_{11} + A_{22} & S_2 &= A_{21} + A_{22} & S_3 &= A_{11} \\
+S_4 &= A_{22} & S_5 &= A_{11} + A_{12} & S_6 &= A_{21} - A_{11} \\
+S_7 &= A_{12} - A_{22} \\
+T_1 &= B_{11} + B_{22} & T_2 &= B_{11} & T_3 &= B_{12} - B_{22} \\
+T_4 &= B_{21} - B_{11} & T_5 &= B_{22} &T_6 &= B_{11} + B_{12} \\
+T_7 &= B_{21} + B_{22}
+\end{align*}
+\begin{align*}
+M_r &= S_rT_r, \quad 1 \le r \le 7 \\
+C_{11} &= M_1 + M_4 - M_5 + M_7 & C_{12} &= M_3 + M_5 \\
+C_{21} &= M_2 + M_4 & C_{22} &= M_1 - M_2 + M_3 + M_6
+\end{align*}
+
+
+\section{Implementation and practical consideration}
+
+\subsection{Algorithm schema}
+
+We now discuss the algorithm schema for Strassen algorithm for clarity, though results generalize
+easily for any $ \angb{m,n,p} $ base case.
+
+The function \texttt{cp\_matmul} comprises into the following submodules:
+
+\begin{enumerate}
+  \item \texttt{dynamic\_peeling} is described in Section \ref{sec:dynpeel}.
+  \item \texttt{split\_into\_blocks} partitions the matrices $ A $ and $ B $ into subblocks and
+    return them into a flattened array of nodes. For example, at the first iteration of Strassen we
+    might have:
+\begin{equation*}
+  A = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, last-row, margin, xdots/horizontal-labels]
+    & \Hbrace{2}{2^n} &  \\
+    & & &\Vbrace{6}{2^n}  \\
+    & A_{11} & A_{12} & \\
+    & & & \\ \hline
+    & & & \\
+    & A_{21} & A_{22} &  \\
+    & & & \\
+    & \Hbrace{1}{2^{n-1}} &
+  \end{bNiceArray} \qquad,
+\end{equation*}
+the returned blocks are flattened in row-major order, in this case as $ \left[A_{11}, A_{12}, A_{21},
+A_{22}\right] $.
+\item \texttt{compute\_block\_products} Computes the intermediate matrix products $ M_r = S_r \cdot
+  T_r$.
+\end{enumerate}
+
+
+\subsection{Technical overview}
+
+The project burns as a Rust porting of the c++ project made by Benson and Ballard summarized in
+\cite{bensonballard2015}, pubblicaly available in the relative repository under BSD 2-Clause. They
+provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
+multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
+computation, and OpenMP for parallelization.
+Our project differs
+
 
 Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
 decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
 
-\section{Implementation and practical consideration}
+We aim to understand how the choice of the base matrix multiplication impacts performance of fast
+algorithms. To so so, we compare Faer
+
 
 
 
@@ -355,7 +417,16 @@ Fast matrix multiplication algorithm such as Strassen face two significant probl
 implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
 former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
 
+\todo{Here comparison with Ballard et Al (used for comparison)}
 
+
+\subsection{Recursive cutoff strategies}
+
+We implement two strategies for stopping recursion before calling the vendor library, which are by
+recursion depth and by matrices size. The former stops when a fixed number $ L $ of recursion levels
+is reached, and the latter when matrices sizes reaches a given size.
+
+\todo{Cutoff comparisons in sequential case??}
 
 \subsection{Dynamic Peeling}
 \label{sec:dynpeel}
