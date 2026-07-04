@@ -1,5 +1,5 @@
 use crate::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
-use faer::{Mat, MatRef};
+use faer::MatRef;
 
 /// Private helper to handle a single dynamic-peeling step of the multiplication C = A × B.
 ///
@@ -120,76 +120,79 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
     /// Computes the CP recursive product for the largest CP-divisible core block.
     ///
     /// # Arguments
-    /// * `c` - The mutable destination matrix `C` where results are written.
-    pub(crate) fn peel_core(&self, c: &mut Mat<f64>) {
+    /// * `c` - The mutable destination matrix `C` subview where results are written.
+    pub(crate) fn peel_core(&self, mut c: faer::MatMut<'_, f64>) {
         if self.core_m > 0 && self.core_n > 0 && self.core_p > 0 {
             let a_core = self.a.get(0..self.core_m, 0..self.core_n);
             let b_core = self.b.get(0..self.core_n, 0..self.core_p);
-            let c_core = self.matmul.cp_matmul_impl(
+            let c_core_view = c.as_mut().get_mut(0..self.core_m, 0..self.core_p);
+            self.matmul.cp_matmul_impl(
+                c_core_view,
                 a_core,
                 b_core,
                 self.mode,
                 self.base_choice,
                 self.recursion_limit,
             );
-            c.as_mut()
-                .get_mut(0..self.core_m, 0..self.core_p)
-                .copy_from(&c_core);
         }
     }
 
     /// Adds the GEMM correction for the peeled inner-dimension (column-row) strip.
     ///
     /// # Arguments
-    /// * `c` - The mutable destination matrix `C` where results are accumulated.
-    pub(crate) fn correct_inner_dimension(&self, c: &mut Mat<f64>) {
+    /// * `c` - The mutable destination matrix `C` subview where results are accumulated.
+    pub(crate) fn correct_inner_dimension(&self, mut c: faer::MatMut<'_, f64>) {
         if self.extra_n > 0 && self.core_m > 0 && self.core_p > 0 {
             let a_extra = self.a.get(0..self.core_m, self.core_n..self.n);
             let b_extra = self.b.get(self.core_n..self.n, 0..self.core_p);
-            let correction = self.matmul.base_matmul_impl(
+            let c_block = c.as_mut().get_mut(0..self.core_m, 0..self.core_p);
+            self.matmul.base_matmul_impl(
+                c_block,
+                faer::Accum::Add,
                 a_extra,
                 b_extra,
                 self.multithreaded,
                 self.base_choice,
             );
-            let mut c_block = c.as_mut().get_mut(0..self.core_m, 0..self.core_p);
-            c_block += &correction;
         }
     }
 
     /// Fills the peeled far-right columns via standard GEMM.
     ///
     /// # Arguments
-    /// * `c` - The mutable destination matrix `C` where results are copied.
-    pub(crate) fn correct_right_columns(&self, c: &mut Mat<f64>) {
+    /// * `c` - The mutable destination matrix `C` subview where results are copied.
+    pub(crate) fn correct_right_columns(&self, mut c: faer::MatMut<'_, f64>) {
         if self.extra_p > 0 {
             let b_extra = self.b.get(0..self.n, self.core_p..self.p);
-            let correction =
-                self.matmul
-                    .base_matmul_impl(self.a, b_extra, self.multithreaded, self.base_choice);
-            c.as_mut()
-                .get_mut(0..self.m, self.core_p..self.p)
-                .copy_from(&correction);
+            let c_block = c.as_mut().get_mut(0..self.m, self.core_p..self.p);
+            self.matmul.base_matmul_impl(
+                c_block,
+                faer::Accum::Replace,
+                self.a,
+                b_extra,
+                self.multithreaded,
+                self.base_choice,
+            );
         }
     }
 
     /// Fills the peeled bottom rows (excluding the rightmost columns) via standard GEMM.
     ///
     /// # Arguments
-    /// * `c` - The mutable destination matrix `C` where results are copied.
-    pub(crate) fn correct_bottom_rows(&self, c: &mut Mat<f64>) {
+    /// * `c` - The mutable destination matrix `C` subview where results are copied.
+    pub(crate) fn correct_bottom_rows(&self, mut c: faer::MatMut<'_, f64>) {
         if self.extra_m > 0 && self.core_p > 0 {
             let a_extra = self.a.get(self.core_m..self.m, 0..self.n);
             let b_extra = self.b.get(0..self.n, 0..self.core_p);
-            let correction = self.matmul.base_matmul_impl(
+            let c_block = c.as_mut().get_mut(self.core_m..self.m, 0..self.core_p);
+            self.matmul.base_matmul_impl(
+                c_block,
+                faer::Accum::Replace,
                 a_extra,
                 b_extra,
                 self.multithreaded,
                 self.base_choice,
             );
-            c.as_mut()
-                .get_mut(self.core_m..self.m, 0..self.core_p)
-                .copy_from(&correction);
         }
     }
 }
