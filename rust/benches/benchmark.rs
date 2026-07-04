@@ -57,17 +57,28 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
-    /// Registers a single-shot benchmark with Criterion.
+    /// Registers a single-shot benchmark with Criterion, printing a progress line.
     ///
     /// Each Criterion sample times exactly one invocation of `f`.  Using
     /// `iter_custom` with a single call prevents Criterion from looping the
     /// function thousands of times, which would be prohibitive for large
     /// matrix sizes.  The mean of the 10 single-shot samples is written to
     /// Criterion's JSON output and picked up by `export_helper`.
-    fn register_bench<F, O>(group: &mut BenchmarkGroup<WallTime>, name: &str, size: usize, mut f: F)
-    where
+    ///
+    /// `counter` is a shared mutable index that is incremented on each call,
+    /// and `total` is the pre-computed total number of benchmarks in this run.
+    fn register_bench<F, O>(
+        group: &mut BenchmarkGroup<WallTime>,
+        name: &str,
+        size: usize,
+        counter: &mut usize,
+        total: usize,
+        mut f: F,
+    ) where
         F: FnMut() -> O,
     {
+        *counter += 1;
+        println!("  Benchmark {} of {}: {} (size {}x{})", counter, total, name, size, size);
         group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
             bench.iter_custom(|_iters| {
                 let start = std::time::Instant::now();
@@ -78,6 +89,7 @@ impl Benchmark {
     }
 
     /// Registers the base sequential and parallel benchmarks for one matrix size.
+    #[allow(clippy::too_many_arguments)]
     fn bench_base(
         &self,
         group: &mut BenchmarkGroup<WallTime>,
@@ -85,18 +97,20 @@ impl Benchmark {
         b: &Mat<f64>,
         size: usize,
         base_choice: BaseMatMul,
+        counter: &mut usize,
+        total: usize,
     ) {
         let name = match base_choice {
             BaseMatMul::Faer => "Faer",
             BaseMatMul::Dgemm => "MKL",
         };
         if self.run_sequential {
-            Self::register_bench(group, &format!("{}-Sequential", name), size, || {
+            Self::register_bench(group, &format!("{}-Sequential", name), size, counter, total, || {
                 util::base_matmul(a, b, false, base_choice)
             });
         }
         if self.run_parallel {
-            Self::register_bench(group, &format!("{}-Parallel", name), size, || {
+            Self::register_bench(group, &format!("{}-Parallel", name), size, counter, total, || {
                 util::base_matmul(a, b, true, base_choice)
             });
         }
@@ -124,6 +138,8 @@ impl Benchmark {
         mm: &MatMul<'_>,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
+        counter: &mut usize,
+        total: usize,
     ) {
         let suffix = match base_choice {
             BaseMatMul::Faer => "Faer",
@@ -134,6 +150,8 @@ impl Benchmark {
                 group,
                 &format!("{}-{}/Sequential", algo, suffix),
                 size,
+                counter,
+                total,
                 || {
                     mm.cp_matmul(
                         a,
@@ -146,13 +164,13 @@ impl Benchmark {
             );
         }
         if self.run_parallel {
-            Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, || {
+            Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, counter, total, || {
                 mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit)
             });
-            Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, || {
+            Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, counter, total, || {
                 mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit)
             });
-            Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, || {
+            Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, counter, total, || {
                 mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit)
             });
         }
@@ -178,9 +196,27 @@ impl Benchmark {
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
     ) -> Result<(), std::io::Error> {
-        println!("Running programmatic Criterion benchmarks...");
+        // --- Compute total benchmark count upfront for progress display ---
+        // Each size contributes:
+        //   2 base variants (Dgemm + Faer) × (seq + par flags)
+        //   + each algo × (seq + 3 par modes)
+        let base_per_size = (if self.run_sequential { 1 } else { 0 }
+            + if self.run_parallel { 1 } else { 0 })
+            * 2; // Dgemm and Faer
+        let cp_per_algo = (if self.run_sequential { 1 } else { 0 })
+            + (if self.run_parallel { 3 } else { 0 }); // DFS + BFS + Hybrid
+        let per_size = base_per_size + algorithms.len() * cp_per_algo;
+        let total = sizes.len() * per_size;
 
-        let mut c = Criterion::default();
+        println!(
+            "Running {} benchmarks across {} sizes ({} per size)...",
+            total,
+            sizes.len(),
+            per_size
+        );
+
+        // Criterion configured without HTML plots; CSV export is handled separately.
+        let mut c = Criterion::default().without_plots();
         let mut group = c.benchmark_group("Matrix Multiplication");
         let mut rng = rand::thread_rng();
 
@@ -192,6 +228,7 @@ impl Benchmark {
             })
             .collect();
 
+        let mut counter: usize = 0;
         let mut successful_sizes = Vec::new();
 
         for &size in sizes {
@@ -205,15 +242,14 @@ impl Benchmark {
                 break;
             }
 
-            println!("Benchmarking size {}x{} with Criterion...", size, size);
+            println!("\nSize {}x{}:", size, size);
             Self::configure_group_for_size(&mut group, size);
 
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
-            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Dgemm);
-
-            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Faer);
+            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Dgemm, &mut counter, total);
+            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Faer, &mut counter, total);
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
@@ -226,6 +262,8 @@ impl Benchmark {
                     &mm,
                     base_choice,
                     recursion_limit,
+                    &mut counter,
+                    total,
                 );
             }
             successful_sizes.push(size);
