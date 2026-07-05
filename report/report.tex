@@ -91,7 +91,7 @@
 \newcommand{\V}{\mathcal{V}}
 \newcommand{\E}{\mathcal{E}}
 \newcommand{\G}{\mathcal{G}}
-\renewcommand{\L}{\mathcal{L}}
+\renewcommand{\L}{\mathbb{L}}
 
 \newcommand{\defeq}{\vcentcolon=}
 \newcommand{\eqdef}{=\vcentcolon}
@@ -341,7 +341,7 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 \end{equation*}
 
 
-\subsection{Strassen algorithm}
+\subsection{Strassen algorithm using CP}
 
 
 The most well known fast algorithm is due to Strassen, and follows the same block structure:
@@ -366,6 +366,43 @@ C_{21} &= M_2 + M_4 & C_{22} &= M_1 - M_2 + M_3 + M_6
 
 We now discuss the algorithm schema for Strassen algorithm for clarity, though results generalize
 easily for any $ \angb{m,n,p} $ base case.
+
+\begin{algorithm}[ht!]
+\label{alg:strassen}
+\caption{Strassen algorithm.}
+\begin{algorithmic}[1]
+\Procedure{Strassen}{$ A,B, N $}
+  \If{stop\_recursing is True}
+    \State \Return{$ A\cdot B $}
+  \EndIf
+  \If{$ N = 2 $}
+  \State Strassen base case
+  \EndIf
+  \If{$ N \mod 2 > 0 $}
+    \State dynamic\_peeling($A,B,N$) \Comment{Recursive call on peeled blocks.}
+  \EndIf
+  \State Compute $ \vec(A) $ and $ \vec(B) $ with block size $ \frac{N}{2} $.
+  \For{$ r = 1, \ldots, R $}
+  \State  $ S_r \leftarrow \sum_{i=1}^{4} U_{i,r} \vec(A)_i$
+  \State  $ T_r \leftarrow \sum_{i=1}^{4} V_{i,r} \vec(B)_i$
+  \State $ M_r \gets\Call{Strassen}{S_r,T_r,\frac{N}{2}} $  \Comment{Recursive call.}
+  \EndFor
+  \For{$ r = 1,\ldots,R $}
+    \For{$i = 1,\ldots,2$}
+      \For{$j = 1,\ldots,2$}
+        \State $ w \gets W_{\L^*(i,j)},r = W_{2i + j,r}$
+        \If{$w \neq 0$}
+          \State $ C_{i\cdot \frac{N}{2}:(i+1)\cdot \frac{N}{2}, j\cdot
+          \frac{N}{2}:(j+1)\frac{N}{2}} \gets w \cdot M_r $
+        \EndIf
+      \EndFor
+    \EndFor
+  \EndFor
+  \State \Return $ C $.
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
 
 The function \texttt{cp\_matmul} comprises into the following submodules:
 
