@@ -44,7 +44,12 @@ fn test_strassen_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_strassen = mm.cp_matmul(&a, &b, mode, base, RecursionLimit::Cutoff(1));
+                let limit = if mode == ParallelismMode::Hybrid {
+                    RecursionLimit::Depth(1)
+                } else {
+                    RecursionLimit::Cutoff(1)
+                };
+                let c_strassen = mm.cp_matmul(&a, &b, mode, base, limit);
                 let c_classical = &a * &b;
 
                 assert_eq!((c_strassen.nrows(), c_strassen.ncols()), (m, p));

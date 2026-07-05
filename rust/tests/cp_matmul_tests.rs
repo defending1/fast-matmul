@@ -48,7 +48,12 @@ fn test_cp_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_fast = mm.cp_matmul(&a, &b, mode, base, RecursionLimit::Cutoff(1));
+                let limit = if mode == ParallelismMode::Hybrid {
+                    RecursionLimit::Depth(5)
+                } else {
+                    RecursionLimit::Cutoff(1)
+                };
+                let c_fast = mm.cp_matmul(&a, &b, mode, base, limit);
                 let c_classical = &a * &b;
 
                 assert_eq!((c_fast.nrows(), c_fast.ncols()), (m, p));
@@ -90,8 +95,12 @@ fn test_cp_matmul_correctness() {
 
         for &mode in &modes {
             for &base in &bases {
-                let c_fast_pad =
-                    mm.cp_matmul(&a_pad, &b_pad, mode, base, RecursionLimit::Cutoff(1));
+                let limit = if mode == ParallelismMode::Hybrid {
+                    RecursionLimit::Depth(1)
+                } else {
+                    RecursionLimit::Cutoff(1)
+                };
+                let c_fast_pad = mm.cp_matmul(&a_pad, &b_pad, mode, base, limit);
                 let c_classical_pad = &a_pad * &b_pad;
 
                 assert_eq!((c_fast_pad.nrows(), c_fast_pad.ncols()), (m_pad, p_pad));
@@ -163,5 +172,73 @@ fn test_recursion_limits() {
                 );
             }
         }
+    }
+}
+
+#[test]
+#[should_panic(expected = "Hybrid parallelism mode is only supported with RecursionLimit::Depth")]
+fn test_hybrid_mode_cutoff_panic() {
+    let cp = CP::load("classical222-8-24");
+    let mm = MatMul::with_cp(&cp);
+    let a = Mat::<f64>::zeros(cp.m, cp.n);
+    let b = Mat::<f64>::zeros(cp.n, cp.p);
+    mm.cp_matmul(
+        &a,
+        &b,
+        ParallelismMode::Hybrid,
+        BaseMatMul::Faer,
+        RecursionLimit::Cutoff(1),
+    );
+}
+
+#[test]
+fn test_hybrid_mode_correctness_and_threads() {
+    let mut rng = rand::thread_rng();
+    let cp = CP::load("classical222-8-24");
+    let mm = MatMul::with_cp(&cp);
+
+    let size = 8;
+    let mut a = Mat::<f64>::zeros(size, size);
+    let mut b = Mat::<f64>::zeros(size, size);
+    for r in 0..size {
+        for c in 0..size {
+            a[(r, c)] = rng.gen_range(-1.0..1.0);
+            b[(r, c)] = rng.gen_range(-1.0..1.0);
+        }
+    }
+
+    let c_classical = &a * &b;
+
+    let thread_counts = [1, 2, 4, 7, 8, 16];
+    for &threads in &thread_counts {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+
+        pool.install(|| {
+            let c_fast = mm.cp_matmul(
+                &a,
+                &b,
+                ParallelismMode::Hybrid,
+                BaseMatMul::Faer,
+                RecursionLimit::Depth(2),
+            );
+
+            assert_eq!((c_fast.nrows(), c_fast.ncols()), (size, size));
+            for i in 0..size {
+                for j in 0..size {
+                    let diff = (c_fast[(i, j)] - c_classical[(i, j)]).abs();
+                    assert!(
+                        diff < 1e-10,
+                        "Mismatch in Hybrid mode with {} threads at ({}, {}): diff = {}",
+                        threads,
+                        i,
+                        j,
+                        diff
+                    );
+                }
+            }
+        });
     }
 }

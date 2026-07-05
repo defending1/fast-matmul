@@ -385,14 +385,13 @@ impl<'a> MatMul<'a> {
         &self,
         a_blocks: &[MatRef<'_, f64>],
         b_blocks: &[MatRef<'_, f64>],
-        m_block: usize,
-        n_block: usize,
-        p_block: usize,
+        _m_block: usize,
+        _n_block: usize,
+        _p_block: usize,
         mode: ParallelismMode,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
     ) -> Vec<Mat<f64>> {
-        const PARALLEL_CUTOFF: usize = 256;
 
         match mode {
             ParallelismMode::Dfs => (0..self.cp.rank)
@@ -424,38 +423,45 @@ impl<'a> MatMul<'a> {
                     .collect()
             }
             ParallelismMode::Hybrid => {
-                if m_block >= PARALLEL_CUTOFF
-                    && n_block >= PARALLEL_CUTOFF
-                    && p_block >= PARALLEL_CUTOFF
-                {
-                    use rayon::prelude::*;
-                    (0..self.cp.rank)
-                        .into_par_iter()
-                        .map(|l| {
-                            self.compute_m_l(
-                                l,
-                                a_blocks,
-                                b_blocks,
-                                ParallelismMode::Hybrid,
-                                base_choice,
-                                recursion_limit,
-                            )
-                        })
-                        .collect()
+                let level = match recursion_limit {
+                    RecursionLimit::Depth(level) => level,
+                    RecursionLimit::Cutoff(_) => {
+                        panic!("Hybrid parallelism mode is only supported with RecursionLimit::Depth");
+                    }
+                };
+
+                let r = self.cp.rank;
+                let p_threads = rayon::current_num_threads().max(1);
+                
+                let r_pow_l = r.pow(level as u32);
+                let k = r_pow_l - (r_pow_l % p_threads);
+                let r_pow_l_minus_1 = r.pow(level.saturating_sub(1) as u32);
+                
+                let c = if r_pow_l_minus_1 > 0 {
+                    k / r_pow_l_minus_1
                 } else {
-                    (0..self.cp.rank)
-                        .map(|l| {
-                            self.compute_m_l(
-                                l,
-                                a_blocks,
-                                b_blocks,
-                                ParallelismMode::Dfs,
-                                base_choice,
-                                recursion_limit,
-                            )
-                        })
-                        .collect()
-                }
+                    0
+                };
+
+                use rayon::prelude::*;
+                (0..r)
+                    .into_par_iter()
+                    .map(|l| {
+                        let child_mode = if l < c {
+                            ParallelismMode::Bfs
+                        } else {
+                            ParallelismMode::Dfs
+                        };
+                        self.compute_m_l(
+                            l,
+                            a_blocks,
+                            b_blocks,
+                            child_mode,
+                            base_choice,
+                            recursion_limit,
+                        )
+                    })
+                    .collect()
             }
             ParallelismMode::Sequential => (0..self.cp.rank)
                 .map(|l| {
@@ -550,6 +556,10 @@ impl<'a> MatMul<'a> {
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
     ) {
+        if mode == ParallelismMode::Hybrid && matches!(recursion_limit, RecursionLimit::Cutoff(_)) {
+            panic!("Hybrid parallelism mode is only supported with RecursionLimit::Depth");
+        }
+
         let m = a.nrows();
         let n = a.ncols();
         let n_b = b.nrows();
@@ -571,7 +581,16 @@ impl<'a> MatMul<'a> {
         };
 
         if stop_recursing {
-            let leaf_multithreaded = matches!(mode, ParallelismMode::Dfs | ParallelismMode::Hybrid);
+            let leaf_multithreaded = match mode {
+                ParallelismMode::Dfs => true,
+                ParallelismMode::Bfs => false,
+                ParallelismMode::Sequential => false,
+                ParallelismMode::Hybrid => {
+                    // This can only occur if depth = 0 and mode is Hybrid
+                    let p_threads = rayon::current_num_threads().max(1);
+                    p_threads > 1
+                }
+            };
             self.base_matmul_impl(
                 dst,
                 faer::Accum::Replace,
