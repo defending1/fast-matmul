@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --partition=cl2
+#SBATCH --partition=gpu
 #SBATCH --time=08:30:00
 #SBATCH --mem=128G
 #SBATCH --output=benchmark_seq_%j.log
@@ -12,9 +12,8 @@
 # Ensure we exit on any error
 set -e
 
-# Source Spack, activate, concretize, and install the project's Spack environment
+# Source Spack and load Environment Modules (avoiding local environment activation block for MKL)
 source /software/spack/share/spack/setup-env.sh
-spack env activate -d rust
 
 module load gcc/13.2.0
 module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0
@@ -71,8 +70,15 @@ if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
         ARCH="native"
     fi
 
-    echo "Executing: ./generated/bin/bench_${ARCH} --sequential --full"
-    ./generated/bin/bench_${ARCH} --sequential --full
+    # Set sequential/parallel flags depending on Slurm allocation
+    if [ "${SLURM_CPUS_PER_TASK:-1}" -gt 1 ]; then
+        MODE_FLAG="--par"
+    else
+        MODE_FLAG="--seq"
+    fi
+
+    echo "Executing: ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full"
+    ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full
 fi
 
 # Run C/C++ project if selected

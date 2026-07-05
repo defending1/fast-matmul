@@ -3,7 +3,7 @@ mod export_helper;
 mod util;
 mod job_helper;
 
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, black_box, measurement::WallTime};
+use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
@@ -40,18 +40,16 @@ impl Benchmark {
     /// size so that CPU caches and thermal state are stabilised before
     /// measurement begins, without wasting minutes on huge matrices.
     fn configure_group_for_size(group: &mut BenchmarkGroup<WallTime>, size: usize) {
-        // 10 is Criterion's hard minimum for sample_size.
-        group.sample_size(10);
-        // Scale warmup with matrix size: enough to warm caches and reach
-        // thermal steady-state, but not so long it dominates the run time.
-        let warmup_secs = match size {
-            ..=64 => 1,
-            65..=512 => 2,
-            _ => 5,
+        let (samples, warmup_ms, measure_ms) = match size {
+            ..=16 => (10, 50, 100),
+            17..=64 => (10, 100, 200),
+            65..=256 => (10, 200, 500),
+            257..=1024 => (10, 500, 1000),
+            _ => (10, 1000, 2000),
         };
-        group.warm_up_time(std::time::Duration::from_secs(warmup_secs));
-        // Allow enough wall-time for one sample to complete at any matrix size.
-        group.measurement_time(std::time::Duration::from_secs(120));
+        group.sample_size(samples);
+        group.warm_up_time(std::time::Duration::from_millis(warmup_ms));
+        group.measurement_time(std::time::Duration::from_millis(measure_ms));
     }
 
     /// Allocates a random `size × size` matrix.
@@ -82,11 +80,7 @@ impl Benchmark {
         *counter += 1;
         println!("  Benchmark {} of {}: {} (size {}x{})", counter, total, name, size, size);
         group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
-            bench.iter_custom(|_iters| {
-                let start = std::time::Instant::now();
-                black_box(f());
-                start.elapsed()
-            });
+            bench.iter(&mut f);
         });
     }
 
