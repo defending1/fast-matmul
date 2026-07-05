@@ -1,14 +1,13 @@
 mod check_memory_helper;
 mod export_helper;
-mod util;
 mod job_helper;
+mod util;
 
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
+use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
-
 
 /// A struct for running benchmarks on various matrix multiplication algorithms.
 pub struct Benchmark {
@@ -78,7 +77,10 @@ impl Benchmark {
         F: FnMut() -> O,
     {
         *counter += 1;
-        println!("  Benchmark {} of {}: {} (size {}x{})", counter, total, name, size, size);
+        println!(
+            "  Benchmark {} of {}: {} (size {}x{})",
+            counter, total, name, size, size
+        );
         group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
             bench.iter(&mut f);
         });
@@ -101,14 +103,24 @@ impl Benchmark {
             BaseMatMul::Dgemm => "MKL",
         };
         if self.run_sequential {
-            Self::register_bench(group, &format!("{}-Sequential", name), size, counter, total, || {
-                util::base_matmul(a, b, false, base_choice)
-            });
+            Self::register_bench(
+                group,
+                &format!("{}-Sequential", name),
+                size,
+                counter,
+                total,
+                || util::base_matmul(a, b, false, base_choice),
+            );
         }
         if self.run_parallel {
-            Self::register_bench(group, &format!("{}-Parallel", name), size, counter, total, || {
-                util::base_matmul(a, b, true, base_choice)
-            });
+            Self::register_bench(
+                group,
+                &format!("{}-Parallel", name),
+                size,
+                counter,
+                total,
+                || util::base_matmul(a, b, true, base_choice),
+            );
         }
     }
 
@@ -160,16 +172,31 @@ impl Benchmark {
             );
         }
         if self.run_parallel {
-            Self::register_bench(group, &format!("{}-{}/DFS", algo, suffix), size, counter, total, || {
-                mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit)
-            });
-            Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, counter, total, || {
-                mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit)
-            });
+            Self::register_bench(
+                group,
+                &format!("{}-{}/DFS", algo, suffix),
+                size,
+                counter,
+                total,
+                || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit),
+            );
+            Self::register_bench(
+                group,
+                &format!("{}-{}/BFS", algo, suffix),
+                size,
+                counter,
+                total,
+                || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit),
+            );
             if let RecursionLimit::Depth(_) = recursion_limit {
-                Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, counter, total, || {
-                    mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit)
-                });
+                Self::register_bench(
+                    group,
+                    &format!("{}-{}/Hybrid", algo, suffix),
+                    size,
+                    counter,
+                    total,
+                    || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit),
+                );
             }
         }
     }
@@ -198,11 +225,10 @@ impl Benchmark {
         // Each size contributes:
         //   2 base variants (Dgemm + Faer) × (seq + par flags)
         //   + each algo × (seq + 3 par modes)
-        let base_per_size = (if self.run_sequential { 1 } else { 0 }
-            + if self.run_parallel { 1 } else { 0 })
-            * 2; // Dgemm and Faer
-        let cp_per_algo = (if self.run_sequential { 1 } else { 0 })
-            + (if self.run_parallel { 3 } else { 0 }); // DFS + BFS + Hybrid
+        let base_per_size =
+            (if self.run_sequential { 1 } else { 0 } + if self.run_parallel { 1 } else { 0 }) * 2; // Dgemm and Faer
+        let cp_per_algo =
+            (if self.run_sequential { 1 } else { 0 }) + (if self.run_parallel { 3 } else { 0 }); // DFS + BFS + Hybrid
         let per_size = base_per_size + algorithms.len() * cp_per_algo;
         let total = sizes.len() * per_size;
 
@@ -246,8 +272,24 @@ impl Benchmark {
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
-            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Dgemm, &mut counter, total);
-            self.bench_base(&mut group, &a, &b, size, BaseMatMul::Faer, &mut counter, total);
+            self.bench_base(
+                &mut group,
+                &a,
+                &b,
+                size,
+                BaseMatMul::Dgemm,
+                &mut counter,
+                total,
+            );
+            self.bench_base(
+                &mut group,
+                &a,
+                &b,
+                size,
+                BaseMatMul::Faer,
+                &mut counter,
+                total,
+            );
 
             for &(algo, ref cp) in &cps {
                 let mm = MatMul::with_cp(cp);
@@ -296,8 +338,6 @@ impl Benchmark {
     }
 }
 
-
-
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
     job_helper::handle_job_dependent_execution();
@@ -319,7 +359,7 @@ fn main() {
 
     // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
     // which will dynamically check system memory and stop before exceeding limits.
-    let n_limit = if full { 20 } else { 11 };
+    let n_limit = if full { 15 } else { 11 };
     let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
 
     let cutoffs = [256, 512, 1024, 2048];
@@ -365,9 +405,9 @@ fn main() {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
         for (limit, _file_prefix, label) in configs {
             for &(base, name, _suffix) in &targets {
-                if let Err(e) =
-                    export_helper::export_results_to_csv(&sizes, algorithms, &out_file, base, limit, true)
-                {
+                if let Err(e) = export_helper::export_results_to_csv(
+                    &sizes, algorithms, &out_file, base, limit, true,
+                ) {
                     eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
                 } else {
                     println!(

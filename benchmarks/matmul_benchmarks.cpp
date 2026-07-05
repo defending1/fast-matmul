@@ -128,7 +128,7 @@ void BenchmarkSet(std::ostream &os, std::vector<int> &m_vals,
 
 void SquareTest(std::ostream &os, bool full) {
   std::vector<int> m_vals;
-  int limit = full ? 1048576 : 2048;
+  int limit = full ? 32768 : 2048;
   for (int i = 2; i <= limit; i *= 2) {
     m_vals.push_back(i);
   }
@@ -141,7 +141,7 @@ void SquareTest(std::ostream &os, bool full) {
 
 void SquareTestPar(std::ostream &os, bool full) {
   std::vector<int> m_vals;
-  int limit = full ? 1048576 : 2048;
+  int limit = full ? 32768 : 2048;
   for (int i = 2; i <= limit; i *= 2) {
     m_vals.push_back(i);
   }
@@ -385,10 +385,11 @@ void TSSquareBenchmark(std::ostream &os, int which) {
 }
 
 int main(int argc, char **argv) {
-  // Re-route execution to a job-specific copy if running in a cluster job environment.
-  const char* slurm_job_id = std::getenv("SLURM_JOB_ID");
-  const char* pbs_job_id = std::getenv("PBS_JOBID");
-  const char* env_run_id = std::getenv("RUN_ID");
+  // Re-route execution to a job-specific copy if running in a cluster job
+  // environment.
+  const char *slurm_job_id = std::getenv("SLURM_JOB_ID");
+  const char *pbs_job_id = std::getenv("PBS_JOBID");
+  const char *env_run_id = std::getenv("RUN_ID");
   std::string job_id = "";
   if (slurm_job_id && *slurm_job_id) {
     job_id = slurm_job_id;
@@ -405,11 +406,12 @@ int main(int argc, char **argv) {
       path_buf[len] = '\0';
       std::string current_exe(path_buf);
       std::string suffix = "_" + job_id;
-      if (current_exe.length() < suffix.length() || 
-          current_exe.compare(current_exe.length() - suffix.length(), suffix.length(), suffix) != 0) {
-        
+      if (current_exe.length() < suffix.length() ||
+          current_exe.compare(current_exe.length() - suffix.length(),
+                              suffix.length(), suffix) != 0) {
+
         std::string unique_exe = current_exe + suffix;
-        
+
         // Copy the executable file
         std::ifstream src(current_exe, std::ios::binary);
         std::ofstream dst(unique_exe, std::ios::binary);
@@ -417,10 +419,12 @@ int main(int argc, char **argv) {
           dst << src.rdbuf();
           src.close();
           dst.close();
-          
+
           chmod(unique_exe.c_str(), 0755);
           execv(unique_exe.c_str(), argv);
-          std::cerr << "Warning: Failed to exec job-dependent C++ binary, falling back to original." << std::endl;
+          std::cerr << "Warning: Failed to exec job-dependent C++ binary, "
+                       "falling back to original."
+                    << std::endl;
         }
       }
     }
@@ -510,8 +514,9 @@ int main(int argc, char **argv) {
       path_buf[len] = '\0';
       std::string current_exe(path_buf);
       std::string suffix = "_" + job_id;
-      if (current_exe.length() >= suffix.length() && 
-          current_exe.compare(current_exe.length() - suffix.length(), suffix.length(), suffix) == 0) {
+      if (current_exe.length() >= suffix.length() &&
+          current_exe.compare(current_exe.length() - suffix.length(),
+                              suffix.length(), suffix) == 0) {
         unlink(current_exe.c_str());
       }
     }
