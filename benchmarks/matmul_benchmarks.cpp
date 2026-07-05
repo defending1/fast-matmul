@@ -14,10 +14,14 @@
 #endif
 
 #include <algorithm>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 // Returns available system memory in bytes via /proc/meminfo on Linux.
@@ -381,6 +385,47 @@ void TSSquareBenchmark(std::ostream &os, int which) {
 }
 
 int main(int argc, char **argv) {
+  // Re-route execution to a job-specific copy if running in a cluster job environment.
+  const char* slurm_job_id = std::getenv("SLURM_JOB_ID");
+  const char* pbs_job_id = std::getenv("PBS_JOBID");
+  const char* env_run_id = std::getenv("RUN_ID");
+  std::string job_id = "";
+  if (slurm_job_id && *slurm_job_id) {
+    job_id = slurm_job_id;
+  } else if (pbs_job_id && *pbs_job_id) {
+    job_id = pbs_job_id;
+  } else if (env_run_id && *env_run_id) {
+    job_id = env_run_id;
+  }
+
+  if (!job_id.empty()) {
+    char path_buf[1024];
+    ssize_t len = readlink("/proc/self/exe", path_buf, sizeof(path_buf) - 1);
+    if (len != -1) {
+      path_buf[len] = '\0';
+      std::string current_exe(path_buf);
+      std::string suffix = "_" + job_id;
+      if (current_exe.length() < suffix.length() || 
+          current_exe.compare(current_exe.length() - suffix.length(), suffix.length(), suffix) != 0) {
+        
+        std::string unique_exe = current_exe + suffix;
+        
+        // Copy the executable file
+        std::ifstream src(current_exe, std::ios::binary);
+        std::ofstream dst(unique_exe, std::ios::binary);
+        if (src && dst) {
+          dst << src.rdbuf();
+          src.close();
+          dst.close();
+          
+          chmod(unique_exe.c_str(), 0755);
+          execv(unique_exe.c_str(), argv);
+          std::cerr << "Warning: Failed to exec job-dependent C++ binary, falling back to original." << std::endl;
+        }
+      }
+    }
+  }
+
   // Parse command-line -full flag first, stripping it to avoid options crash
   bool full = false;
   std::vector<char *> new_argv;
@@ -398,11 +443,15 @@ int main(int argc, char **argv) {
   // Create the generated output directory if it doesn't exist
   mkdir("benchmarks/generated", 0755);
 
-  // Open output file (overwrites previous run)
-  std::ofstream fout("benchmarks/generated/benchmarks.txt");
+  std::string out_filename = "benchmarks/generated/benchmarks";
+  if (!job_id.empty()) {
+    out_filename += "_" + job_id;
+  }
+  out_filename += ".txt";
+
+  std::ofstream fout(out_filename);
   if (!fout.is_open()) {
-    std::cerr << "Error: could not open benchmarks/generated/benchmarks.txt"
-              << std::endl;
+    std::cerr << "Error: could not open " << out_filename << std::endl;
     return 1;
   }
 
@@ -410,6 +459,7 @@ int main(int argc, char **argv) {
   if (OptExists(opts, "square_all")) {
     for (int i = 0; i <= 21; ++i) {
       SquareBenchmark(fout, i);
+      fout.flush();
     }
   }
 
@@ -417,32 +467,54 @@ int main(int argc, char **argv) {
   if (OptExists(opts, "square")) {
     int which = GetIntOpt(opts, "square");
     SquareBenchmark(fout, which);
+    fout.flush();
   }
 
   // Run <N, k, N> benchmark for fixed k
   if (OptExists(opts, "outer_prod_like")) {
     int which = GetIntOpt(opts, "outer_prod_like");
     OuterProductBenchmark(fout, which);
+    fout.flush();
   }
 
   // Run <N, k, k> benchmark for fixed k
   if (OptExists(opts, "ts_square_like")) {
     int which = GetIntOpt(opts, "ts_square_like");
     TSSquareBenchmark(fout, which);
+    fout.flush();
   }
 
   // Functions for testing
   if (OptExists(opts, "square_test")) {
     SquareTest(fout, full);
+    fout.flush();
   }
   if (OptExists(opts, "square_test_par")) {
     SquareTestPar(fout, full);
+    fout.flush();
   }
   if (OptExists(opts, "outer_test_par")) {
     OuterTestPar(fout);
+    fout.flush();
   }
   if (OptExists(opts, "ts_square_test_par")) {
     TSSquareTestPar(fout);
+    fout.flush();
+  }
+
+  // Clean up job-dependent copy on exit if running the clone
+  if (!job_id.empty()) {
+    char path_buf[1024];
+    ssize_t len = readlink("/proc/self/exe", path_buf, sizeof(path_buf) - 1);
+    if (len != -1) {
+      path_buf[len] = '\0';
+      std::string current_exe(path_buf);
+      std::string suffix = "_" + job_id;
+      if (current_exe.length() >= suffix.length() && 
+          current_exe.compare(current_exe.length() - suffix.length(), suffix.length(), suffix) == 0) {
+        unlink(current_exe.c_str());
+      }
+    }
   }
 
   return 0;

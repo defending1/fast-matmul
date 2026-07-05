@@ -1,12 +1,14 @@
 mod check_memory_helper;
 mod export_helper;
 mod util;
+mod job_helper;
 
 use criterion::{BenchmarkGroup, BenchmarkId, Criterion, black_box, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
+
 
 /// A struct for running benchmarks on various matrix multiplication algorithms.
 pub struct Benchmark {
@@ -170,9 +172,11 @@ impl Benchmark {
             Self::register_bench(group, &format!("{}-{}/BFS", algo, suffix), size, counter, total, || {
                 mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit)
             });
-            Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, counter, total, || {
-                mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit)
-            });
+            if let RecursionLimit::Depth(_) = recursion_limit {
+                Self::register_bench(group, &format!("{}-{}/Hybrid", algo, suffix), size, counter, total, || {
+                    mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit)
+                });
+            }
         }
     }
 
@@ -267,6 +271,16 @@ impl Benchmark {
                 );
             }
             successful_sizes.push(size);
+
+            // Checkpoint-save: export the results computed so far (without running plot script)
+            export_helper::export_results_to_csv(
+                &successful_sizes,
+                algorithms,
+                filename,
+                base_choice,
+                recursion_limit,
+                false,
+            )?;
         }
 
         group.finish();
@@ -288,8 +302,12 @@ impl Benchmark {
     }
 }
 
+
+
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
+    job_helper::handle_job_dependent_execution();
+
     let args: Vec<String> = std::env::args().collect();
     let plot_only = args.iter().any(|arg| arg == "--plot-only" || arg == "-p");
 
@@ -338,14 +356,23 @@ fn main() {
         list
     };
 
-    let out_file = "generated/csv/benchmark_results.csv";
+    let out_file = {
+        let job_id = std::env::var("SLURM_JOB_ID")
+            .or_else(|_| std::env::var("PBS_JOBID"))
+            .or_else(|_| std::env::var("RUN_ID"));
+        if let Ok(id) = job_id {
+            format!("generated/csv/benchmark_results_{}.csv", id)
+        } else {
+            "generated/csv/benchmark_results.csv".to_string()
+        }
+    };
 
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
         for (limit, _file_prefix, label) in configs {
             for &(base, name, _suffix) in &targets {
                 if let Err(e) =
-                    export_helper::export_results_to_csv(&sizes, algorithms, out_file, base, limit, true)
+                    export_helper::export_results_to_csv(&sizes, algorithms, &out_file, base, limit, true)
                 {
                     eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
                 } else {
@@ -366,7 +393,7 @@ fn main() {
                     "\n--- Benchmark Set: Using {} Base MatMul, {} ---",
                     name, label
                 );
-                if let Err(e) = bench.run(&sizes, algorithms, out_file, base, limit) {
+                if let Err(e) = bench.run(&sizes, algorithms, &out_file, base, limit) {
                     eprintln!("Failed to run {} benchmarks for {}: {:?}", name, label, e);
                 } else {
                     println!(
@@ -377,4 +404,7 @@ fn main() {
             }
         }
     }
+
+    // Clean up job-dependent clone on exit if we are running the clone
+    job_helper::cleanup_job_dependent_execution();
 }

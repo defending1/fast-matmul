@@ -824,9 +824,12 @@ def main() -> None:
 
     csv_path = args.csv_path
     if csv_path is None:
-        csv_path = os.path.join(
-            project_root, "rust", "generated", "csv", "benchmark_results.csv"
-        )
+        csv_dir = os.path.join(project_root, "rust", "generated", "csv")
+        job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or os.environ.get("RUN_ID")
+        if job_id:
+            csv_path = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv")
+        else:
+            csv_path = os.path.join(csv_dir, "benchmark_results.csv")
     else:
         csv_path = os.path.abspath(csv_path)
 
