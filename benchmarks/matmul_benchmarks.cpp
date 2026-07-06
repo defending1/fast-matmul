@@ -448,6 +448,24 @@ int main(int argc, char **argv) {
   mkdir("benchmarks/generated", 0755);
 
   std::string out_filename = "benchmarks/generated/benchmarks";
+#if defined(_OPENMP)
+  #if defined(_PARALLEL_)
+    #if _PARALLEL_ == _DFS_PAR_
+      out_filename += "_dfs";
+    #elif _PARALLEL_ == _BFS_PAR_
+      out_filename += "_bfs";
+    #elif _PARALLEL_ == _HYBRID_PAR_
+      out_filename += "_hybrid";
+    #else
+      out_filename += "_par";
+    #endif
+  #else
+    out_filename += "_par";
+  #endif
+#else
+  out_filename += "_seq";
+#endif
+
   if (!job_id.empty()) {
     out_filename += "_" + job_id;
   }
