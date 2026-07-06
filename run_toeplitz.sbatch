@@ -45,40 +45,40 @@ PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 
 # Run Rust project if selected
 if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
-    echo "============================================="
-    echo "=== Running Rust Benchmarks ==="
-    echo "============================================="
-    cd "${PROJECT_ROOT}/rust"
+echo "============================================="
+echo "=== Running Rust Benchmarks ==="
+echo "============================================="
+cd "${PROJECT_ROOT}/rust"
 
-    # Resolve architecture: use parameter if provided, otherwise detect automatically
-    if [ "${TARGET_ARCH}" != "detect" ]; then
-        ARCH="${TARGET_ARCH}"
-    else
-        # Detect target architecture automatically based on system CPU
-        if grep -q "EPYC" /proc/cpuinfo; then
-            ARCH="znver3"
-        elif grep -q "Xeon" /proc/cpuinfo; then
-            ARCH="broadwell"
-        else
-            ARCH="native"
-        fi
-    fi
+# Resolve architecture: use parameter if provided, otherwise detect automatically
+if [ "${TARGET_ARCH}" != "detect" ]; then
+ARCH="${TARGET_ARCH}"
+else
+# Detect target architecture automatically based on system CPU
+if grep -q "EPYC" /proc/cpuinfo; then
+ARCH="znver3"
+elif grep -q "Xeon" /proc/cpuinfo; then
+ARCH="broadwell"
+else
+ARCH="native"
+fi
+fi
 
-    # Fallback to native if the specific architecture binary is not found
-    if [ ! -f "./generated/bin/bench_${ARCH}" ]; then
-        echo "Warning: ./generated/bin/bench_${ARCH} not found. Falling back to native."
-        ARCH="native"
-    fi
+# Fallback to native if the specific architecture binary is not found
+if [ ! -f "./generated/bin/bench_${ARCH}" ]; then
+echo "Warning: ./generated/bin/bench_${ARCH} not found. Falling back to native."
+ARCH="native"
+fi
 
-    # Set sequential/parallel flags depending on Slurm allocation
-    if [ "${SLURM_CPUS_PER_TASK:-1}" -gt 1 ]; then
-        MODE_FLAG="--par"
-    else
-        MODE_FLAG="--seq"
-    fi
+# Set sequential/parallel flags depending on Slurm allocation
+if [ "${SLURM_CPUS_PER_TASK:-1}" -gt 1 ]; then
+MODE_FLAG="--par"
+else
+MODE_FLAG="--seq"
+fi
 
-    echo "Executing: ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full"
-    ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full
+echo "Executing: ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full"
+./generated/bin/bench_${ARCH} ${MODE_FLAG} --full
 fi
 
 # Run C/C++ project if selected
