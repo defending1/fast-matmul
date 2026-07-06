@@ -149,8 +149,51 @@ def parse_matlab_vector(filepath: str, vec_name: str) -> pd.DataFrame:
     return df.sort_values("size").reset_index(drop=True)
 
 
+def load_ballard_data(mode_suffix: str) -> dict:
+    """Loads Ballard reference data for a specific mode suffix (e.g. 'seq', 'dfs', 'bfs', 'hybrid').
+
+    Args:
+        mode_suffix: The suffix indicating parallelization mode.
+
+    Returns:
+        A dictionary containing 'mkl' (DataFrame) and 'strassen' (list of DataFrames),
+        or None if parsing fails or file doesn't exist.
+    """
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "benchmarks", "generated", f"benchmarks_{mode_suffix}.txt"
+    )
+    if not os.path.exists(path):
+        # Fallback to the old benchmarks.txt if it exists and mode is seq
+        if mode_suffix == "seq":
+            old_path = os.path.join(
+                os.path.dirname(__file__), "..", "benchmarks", "generated", "benchmarks.txt"
+            )
+            if os.path.exists(old_path):
+                path = old_path
+            else:
+                return None
+        else:
+            return None
+
+    try:
+        df_mkl = parse_matlab_vector(path, "MKL_0")
+        df_strassen_1 = parse_matlab_vector(path, "STRASSEN_1")
+        df_strassen_2 = parse_matlab_vector(path, "STRASSEN_2")
+        df_strassen_3 = parse_matlab_vector(path, "STRASSEN_3")
+        return {
+            "mkl": df_mkl,
+            "strassen": [df_strassen_1, df_strassen_2, df_strassen_3]
+        }
+    except Exception as e:
+        print(f"Warning: Could not parse Ballard data for '{mode_suffix}' from {path} ({e})")
+        return None
+
+
 def plot_ballard_lines(
-    ax: plt.Axes, df_ballard_mkl: pd.DataFrame, *df_ballard_strassen: pd.DataFrame
+    ax: plt.Axes,
+    df_ballard_mkl: pd.DataFrame,
+    *df_ballard_strassen: pd.DataFrame,
+    mode_label: str = ""
 ) -> None:
     """Plot Ballard reference lines on a given axis.
 
@@ -159,11 +202,13 @@ def plot_ballard_lines(
         df_ballard_mkl: MKL Ballard data with size and time_ms columns.
         df_ballard_strassen: One or more Strassen Ballard dataframes
                            (expected order: STRASSEN_1, STRASSEN_2, STRASSEN_3).
+        mode_label: Optional label suffix to append to the legend (e.g. 'DFS', 'BFS', 'Hybrid').
     """
+    suffix = f" {mode_label}" if mode_label else ""
     strassen_labels = {
-        "strassen_ballard_1": "Strassen 1 (Ballard)",
-        "strassen_ballard_2": "Strassen 2 (Ballard)",
-        "strassen_ballard_3": "Strassen 3 (Ballard)",
+        "strassen_ballard_1": f"Strassen 1{suffix} (Ballard)",
+        "strassen_ballard_2": f"Strassen 2{suffix} (Ballard)",
+        "strassen_ballard_3": f"Strassen 3{suffix} (Ballard)",
     }
     entries = [("mkl_ballard", df_ballard_mkl)]
     for i, df in enumerate(df_ballard_strassen):
@@ -174,7 +219,7 @@ def plot_ballard_lines(
         time_s = df["time_ms"] / 1000.0
         n = df["size"]
         gflops = (2 * n**3 - 2 * n**2) / (time_s * 1e9)
-        label = "MKL (Ballard)" if name == "mkl_ballard" else strassen_labels[name]
+        label = f"MKL{suffix} (Ballard)" if name == "mkl_ballard" else strassen_labels[name]
         ax.plot(n, gflops, label=label, markersize=5.0, **style)
 
 
@@ -349,17 +394,6 @@ def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None
         "strassen_ballard_3": BALLARD_STYLES["strassen_ballard_3"],
     }
 
-    # Parse Ballard reference data
-    try:
-        df_mkl_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "MKL_0")
-        df_strassen_ballard_1 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_1")
-        df_strassen_ballard_2 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_2")
-        df_strassen_ballard_3 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_3")
-        has_ballard = True
-    except Exception as e:
-        print(f"Warning: Could not parse Ballard data ({e})")
-        has_ballard = False
-
     # Plot each column except size (converting time to Effective GFLOPS)
     num_cores = os.cpu_count() or 1
     for col in df.columns:
@@ -390,11 +424,44 @@ def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None
             **style,
         )
 
-    # Plot Ballard reference lines
-    if has_ballard:
-        plot_ballard_lines(
-            ax, df_mkl_ballard, df_strassen_ballard_1, df_strassen_ballard_2, df_strassen_ballard_3
-        )
+    # Determine which Ballard modes to plot based on the plotted columns
+    active_modes = set()
+    for col in df.columns:
+        if col == "size":
+            continue
+        if df[col].isna().all():
+            continue
+
+        is_col_parallel = is_parallel(col)
+        # Skip depending on the chosen mode
+        if mode == "sequential" and is_col_parallel:
+            continue
+        if mode == "parallel" and not is_col_parallel:
+            continue
+
+        # Map column name to Ballard mode suffix
+        if is_col_parallel:
+            if "_dfs" in col:
+                active_modes.add("dfs")
+            elif "_bfs" in col:
+                active_modes.add("bfs")
+            elif "_hybrid" in col:
+                active_modes.add("hybrid")
+            else:
+                active_modes.add("dfs")
+        else:
+            active_modes.add("seq")
+
+    for m in sorted(active_modes):
+        data = load_ballard_data(m)
+        if data:
+            mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
+            plot_ballard_lines(
+                ax,
+                data["mkl"],
+                *data["strassen"],
+                mode_label=mode_labels.get(m, m.upper())
+            )
 
     # Configure axes
     ax.set_xscale("log", base=2)
@@ -533,16 +600,7 @@ def generate_grid_plot_core(
         "strassen_ballard_3": BALLARD_STYLES["strassen_ballard_3"],
     }
 
-    # Parse Ballard reference data
-    try:
-        df_mkl_ballard = parse_matlab_vector(BALLARD_DATA_PATH, "MKL_0")
-        df_strassen_ballard_1 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_1")
-        df_strassen_ballard_2 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_2")
-        df_strassen_ballard_3 = parse_matlab_vector(BALLARD_DATA_PATH, "STRASSEN_3")
-        has_ballard = True
-    except Exception as e:
-        print(f"Warning: Could not parse Ballard data ({e})")
-        has_ballard = False
+    # (Ballard reference data is parsed dynamically per axis based on active modes)
 
     # Helpers to filter columns
     def is_seq(col: str) -> bool:
@@ -586,10 +644,36 @@ def generate_grid_plot_core(
         ax.set_xticks(df["size"])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-        if has_ballard:
-            plot_ballard_lines(
-                ax, df_mkl_ballard, df_strassen_ballard_1, df_strassen_ballard_2, df_strassen_ballard_3
-            )
+        # Determine which Ballard modes to plot based on the plotted columns for this axis
+        active_modes = set()
+        for col in df.columns:
+            if col == "size" or not filter_fn(col):
+                continue
+            if df[col].isna().all():
+                continue
+
+            if is_par(col):
+                if "_dfs" in col:
+                    active_modes.add("dfs")
+                elif "_bfs" in col:
+                    active_modes.add("bfs")
+                elif "_hybrid" in col:
+                    active_modes.add("hybrid")
+                else:
+                    active_modes.add("dfs")
+            else:
+                active_modes.add("seq")
+
+        for m in sorted(active_modes):
+            data = load_ballard_data(m)
+            if data:
+                mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
+                plot_ballard_lines(
+                    ax,
+                    data["mkl"],
+                    *data["strassen"],
+                    mode_label=mode_labels.get(m, m.upper())
+                )
 
         if has_lines:
             ax.legend(loc="upper left", frameon=True, framealpha=0.9)
