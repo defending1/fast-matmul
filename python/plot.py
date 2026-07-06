@@ -160,13 +160,21 @@ def load_ballard_data(mode_suffix: str) -> dict:
         or None if parsing fails or file doesn't exist.
     """
     path = os.path.join(
-        os.path.dirname(__file__), "..", "benchmarks", "generated", f"benchmarks_{mode_suffix}.txt"
+        os.path.dirname(__file__),
+        "..",
+        "benchmarks",
+        "generated",
+        f"benchmarks_{mode_suffix}.txt",
     )
     if not os.path.exists(path):
         # Fallback to the old benchmarks.txt if it exists and mode is seq
         if mode_suffix == "seq":
             old_path = os.path.join(
-                os.path.dirname(__file__), "..", "benchmarks", "generated", "benchmarks.txt"
+                os.path.dirname(__file__),
+                "..",
+                "benchmarks",
+                "generated",
+                "benchmarks.txt",
             )
             if os.path.exists(old_path):
                 path = old_path
@@ -182,10 +190,12 @@ def load_ballard_data(mode_suffix: str) -> dict:
         df_strassen_3 = parse_matlab_vector(path, "STRASSEN_3")
         return {
             "mkl": df_mkl,
-            "strassen": [df_strassen_1, df_strassen_2, df_strassen_3]
+            "strassen": [df_strassen_1, df_strassen_2, df_strassen_3],
         }
     except Exception as e:
-        print(f"Warning: Could not parse Ballard data for '{mode_suffix}' from {path} ({e})")
+        print(
+            f"Warning: Could not parse Ballard data for '{mode_suffix}' from {path} ({e})"
+        )
         return None
 
 
@@ -193,7 +203,7 @@ def plot_ballard_lines(
     ax: plt.Axes,
     df_ballard_mkl: pd.DataFrame,
     strassen_dataframes: list,
-    mode_label: str = ""
+    mode_label: str = "",
 ) -> None:
     """Plot Ballard reference lines on a given axis.
 
@@ -206,7 +216,9 @@ def plot_ballard_lines(
     suffix = f" {mode_label}" if mode_label else ""
     entries = [("mkl_ballard", df_ballard_mkl, f"MKL{suffix} (Ballard)")]
     for level, df in strassen_dataframes:
-        entries.append((f"strassen_ballard_{level}", df, f"Strassen {level}{suffix} (Ballard)"))
+        entries.append(
+            (f"strassen_ballard_{level}", df, f"Strassen {level}{suffix} (Ballard)")
+        )
 
     for name, df, label in entries:
         style = BALLARD_STYLES.get(name, BALLARD_STYLES.get("strassen_ballard_1"))
@@ -295,7 +307,8 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
                     df_dgemm_to_plot,
                     out_grid_path,
                     mode=mode,
-                    recursion_level=r_level
+                    recursion_level=r_level,
+                    size_cutoff=s_cutoff,
                 )
     else:
         plot_df_core(df, output_path, mode=mode)
@@ -305,7 +318,8 @@ def plot_df_core(
     df: pd.DataFrame,
     output_path: str,
     mode: str = "both",
-    recursion_level: float = None
+    recursion_level: float = None,
+    size_cutoff: float = None,
 ) -> None:
     """Core logic to generate a performance plot from a dataframe in both PDF and PNG formats.
 
@@ -465,12 +479,9 @@ def plot_df_core(
                 level = int(recursion_level)
                 if 1 <= level <= len(data["strassen"]):
                     strassen_dfs.append((level, data["strassen"][level - 1]))
-            
+
             plot_ballard_lines(
-                ax,
-                data["mkl"],
-                strassen_dfs,
-                mode_label=mode_labels.get(m, m.upper())
+                ax, data["mkl"], strassen_dfs, mode_label=mode_labels.get(m, m.upper())
             )
 
     # Configure axes
@@ -478,7 +489,18 @@ def plot_df_core(
     ax.set_yscale("linear")
     ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
     ax.set_ylabel(r"Effective GFLOPS", labelpad=10)
-    ax.set_title("Matrix Multiplication Performance Comparison", pad=15)
+    subtitle = ""
+    if recursion_level is not None and not pd.isna(recursion_level):
+        subtitle = (
+            f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
+        )
+    elif size_cutoff is not None and not pd.isna(size_cutoff):
+        subtitle = f"Fallback to vendor matmul when N $\\le$ {int(size_cutoff)}"
+
+    title = "Matrix Multiplication Performance Comparison"
+    if subtitle:
+        title += f"\n{subtitle}"
+    ax.set_title(title, pad=15)
 
     # Set x-ticks explicitly to size values
     ax.set_xticks(df["size"])
@@ -516,7 +538,8 @@ def generate_grid_plot_core(
     df_dgemm: pd.DataFrame,
     output_path: str,
     mode: str = "both",
-    recursion_level: float = None
+    recursion_level: float = None,
+    size_cutoff: float = None,
 ) -> None:
     """Generates a grid performance plot comparing faer and dgemm bases.
 
@@ -531,6 +554,14 @@ def generate_grid_plot_core(
         output_path: The target filepath to save the grid plot.
         mode: The plotting mode to filter by. Can be 'sequential', 'parallel', or 'both'.
     """
+    subtitle = ""
+    if recursion_level is not None and not pd.isna(recursion_level):
+        subtitle = (
+            f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
+        )
+    elif size_cutoff is not None and not pd.isna(size_cutoff):
+        subtitle = f"Fallback to vendor matmul when N <= {int(size_cutoff)}"
+
     import shutil
 
     latex_installed = (
@@ -681,18 +712,23 @@ def generate_grid_plot_core(
         for m in sorted(active_modes):
             data = load_ballard_data(m)
             if data:
-                mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
+                mode_labels = {
+                    "seq": "Seq",
+                    "dfs": "DFS",
+                    "bfs": "BFS",
+                    "hybrid": "Hybrid",
+                }
                 strassen_dfs = []
                 if recursion_level is not None and not pd.isna(recursion_level):
                     level = int(recursion_level)
                     if 1 <= level <= len(data["strassen"]):
                         strassen_dfs.append((level, data["strassen"][level - 1]))
-                
+
                 plot_ballard_lines(
                     ax,
                     data["mkl"],
                     strassen_dfs,
-                    mode_label=mode_labels.get(m, m.upper())
+                    mode_label=mode_labels.get(m, m.upper()),
                 )
 
         if has_lines:
@@ -714,12 +750,14 @@ def generate_grid_plot_core(
         for ax in axs[:, 0]:
             ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
 
-        plt.suptitle(
-            "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
-        )
+        suptitle = "Matrix Multiplication Performance Grid Comparison"
+        if subtitle:
+            suptitle += f"\n{subtitle}"
+        plt.suptitle(suptitle, fontsize=14, y=0.98)
         plt.tight_layout()
+        top_val = 0.84 if subtitle else 0.88
         fig.subplots_adjust(
-            hspace=0.12, wspace=0.32, top=0.88, bottom=0.08, left=0.08, right=0.92
+            hspace=0.12, wspace=0.32, top=top_val, bottom=0.08, left=0.08, right=0.92
         )
     else:
         filter_fn = is_seq if mode == "sequential" else is_par
@@ -735,12 +773,14 @@ def generate_grid_plot_core(
         for ax in axs:
             ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
 
-        plt.suptitle(
-            "Matrix Multiplication Performance Grid Comparison", fontsize=14, y=0.98
-        )
+        suptitle = "Matrix Multiplication Performance Grid Comparison"
+        if subtitle:
+            suptitle += f"\n{subtitle}"
+        plt.suptitle(suptitle, fontsize=14, y=0.98)
         plt.tight_layout()
+        top_val = 0.84 if subtitle else 0.88
         fig.subplots_adjust(
-            hspace=0.15, top=0.88, bottom=0.08, left=0.12, right=0.84
+            hspace=0.15, top=top_val, bottom=0.08, left=0.12, right=0.84
         )
 
     # Force a draw to resolve final positions of all labels and layout bounds
@@ -752,6 +792,7 @@ def generate_grid_plot_core(
         return bbox.transformed(fig.transFigure.inverted())
 
     from matplotlib.patches import FancyBboxPatch
+
     pad_val = 0.015
 
     if mode == "both":
@@ -881,7 +922,9 @@ def generate_grid_plot_core(
 
         # Title centered above the single column
         y_col_title = y1_col + pad_val + 0.01
-        col_title = "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
+        col_title = (
+            "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
+        )
         fig.text(
             (x0_col + x1_col) / 2.0,
             y_col_title,
@@ -965,32 +1008,35 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, ".."))
 
-    parser = argparse.ArgumentParser(description="Plot matrix multiplication benchmarks.")
+    parser = argparse.ArgumentParser(
+        description="Plot matrix multiplication benchmarks."
+    )
     parser.add_argument(
-        "csv_path",
-        nargs="?",
-        default=None,
-        help="Path to the input CSV file."
+        "csv_path", nargs="?", default=None, help="Path to the input CSV file."
     )
     parser.add_argument(
         "--mode",
         "-m",
         choices=["sequential", "parallel", "both"],
         default="both",
-        help="Plotting mode: sequential, parallel, or both (default: both)."
+        help="Plotting mode: sequential, parallel, or both (default: both).",
     )
     parser.add_argument(
         "--clean",
         "-c",
         action="store_true",
-        help="Clean the output plots directory (deletes all PDF and PNG files) before/instead of plotting."
+        help="Clean the output plots directory (deletes all PDF and PNG files) before/instead of plotting.",
     )
     args = parser.parse_args()
 
     csv_path = args.csv_path
     if csv_path is None:
         csv_dir = os.path.join(project_root, "rust", "generated", "csv")
-        job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or os.environ.get("RUN_ID")
+        job_id = (
+            os.environ.get("SLURM_JOB_ID")
+            or os.environ.get("PBS_JOBID")
+            or os.environ.get("RUN_ID")
+        )
         if job_id:
             csv_path = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv")
         else:
@@ -1000,7 +1046,10 @@ def main() -> None:
 
     # Determine fallback output path name and plots output directory based on the CSV path
     csv_dir = os.path.abspath(os.path.dirname(csv_path))
-    if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
+    if (
+        os.path.basename(csv_dir) == "csv"
+        and os.path.basename(os.path.dirname(csv_dir)) == "generated"
+    ):
         out_dir = os.path.join(os.path.dirname(csv_dir), "plots")
     else:
         out_dir = csv_dir
