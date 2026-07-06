@@ -390,16 +390,11 @@ def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None
             **style,
         )
 
-    # Plot Ballard reference lines (only if sequential algorithms are present and mode is sequential or both)
-    if has_ballard and mode in ["sequential", "both"]:
-        has_seq_col = any(
-            col != "size" and not is_parallel(col)
-            for col in df.columns
+    # Plot Ballard reference lines
+    if has_ballard:
+        plot_ballard_lines(
+            ax, df_mkl_ballard, df_strassen_ballard_1, df_strassen_ballard_2, df_strassen_ballard_3
         )
-        if has_seq_col:
-            plot_ballard_lines(
-                ax, df_mkl_ballard, df_strassen_ballard_1, df_strassen_ballard_2, df_strassen_ballard_3
-            )
 
     # Configure axes
     ax.set_xscale("log", base=2)
@@ -559,7 +554,7 @@ def generate_grid_plot_core(
     # Helper to plot on a specific axis
     num_cores = os.cpu_count() or 1
 
-    def plot_on_ax(ax, df, filter_fn, sequential=False):
+    def plot_on_ax(ax, df, filter_fn):
         ax.set_facecolor("none")
         ax.set_xscale("log", base=2)
         ax.set_yscale("linear")
@@ -591,7 +586,7 @@ def generate_grid_plot_core(
         ax.set_xticks(df["size"])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-        if has_ballard and sequential:
+        if has_ballard:
             plot_ballard_lines(
                 ax, df_mkl_ballard, df_strassen_ballard_1, df_strassen_ballard_2, df_strassen_ballard_3
             )
@@ -602,12 +597,12 @@ def generate_grid_plot_core(
     # Plot Row 1 & Row 2 based on layout mode
     if mode == "both":
         # Plot Row 1: Faer Base
-        plot_on_ax(axs[0, 0], df_faer, is_seq, sequential=True)
-        plot_on_ax(axs[0, 1], df_faer, is_par, sequential=False)
+        plot_on_ax(axs[0, 0], df_faer, is_seq)
+        plot_on_ax(axs[0, 1], df_faer, is_par)
 
         # Plot Row 2: MKL Base
-        plot_on_ax(axs[1, 0], df_dgemm, is_seq, sequential=True)
-        plot_on_ax(axs[1, 1], df_dgemm, is_par, sequential=False)
+        plot_on_ax(axs[1, 0], df_dgemm, is_seq)
+        plot_on_ax(axs[1, 1], df_dgemm, is_par)
 
         # Shared labels
         for ax in axs[1, :]:
@@ -624,13 +619,12 @@ def generate_grid_plot_core(
         )
     else:
         filter_fn = is_seq if mode == "sequential" else is_par
-        is_sequential_flag = (mode == "sequential")
 
         # Plot Row 1: Faer Base
-        plot_on_ax(axs[0], df_faer, filter_fn, sequential=is_sequential_flag)
+        plot_on_ax(axs[0], df_faer, filter_fn)
 
         # Plot Row 2: MKL Base
-        plot_on_ax(axs[1], df_dgemm, filter_fn, sequential=is_sequential_flag)
+        plot_on_ax(axs[1], df_dgemm, filter_fn)
 
         # Shared labels
         axs[1].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
