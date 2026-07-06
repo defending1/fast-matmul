@@ -116,7 +116,15 @@ echo "============================================="
 echo "=== Running C/C++ Benchmarks ==="
 echo "============================================="
 cd "${PROJECT_ROOT}"
-./build/matmul_benchmarks -square_test_par 1 -full
+
+echo "--- Running DFS Parallel Benchmark ---"
+./build/matmul_bench_dfs -square_test_par 1 -full
+
+echo "--- Running BFS Parallel Benchmark ---"
+./build/matmul_bench_bfs -square_test_par 1 -full
+
+echo "--- Running HYBRID Parallel Benchmark ---"
+./build/matmul_bench_hybrid -square_test_par 1 -full
 fi
 
 echo "Done!"

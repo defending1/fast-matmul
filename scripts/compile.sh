@@ -65,8 +65,8 @@ cd "${PROJECT_ROOT}"
 echo "Cleaning previous C/C++ build artifacts..."
 make clean
 
-echo "Building C/C++ strassen and matmul_benchmarks..."
-make OPT="-O3 -march=${TARGET_ARCH} -mtune=${TARGET_ARCH}" strassen matmul_benchmarks
+echo "Building C/C++ strassen, matmul_benchmarks, and parallel benchmarks..."
+make OPT="-O3 -march=${TARGET_ARCH} -mtune=${TARGET_ARCH}" strassen matmul_benchmarks matmul_bench_dfs matmul_bench_bfs matmul_bench_hybrid
 
 echo "=================================================="
 echo "Compilation complete!"

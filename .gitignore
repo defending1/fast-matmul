@@ -55,3 +55,4 @@ resources/
 benchmarks/generated/
 rust/generated/
 .agents/
+generated
