@@ -357,9 +357,8 @@ fn main() {
     let run_parallel = has_par_flag || !has_seq_flag;
     let run_plot = args.iter().any(|arg| arg == "--plot");
 
-    // Default limit is 2^10 (1024). Under --full, we run up to 2^20 (1,048,576),
-    // which will dynamically check system memory and stop before exceeding limits.
-    let n_limit = if full { 15 } else { 11 };
+    // Running with --full will dynamically check system memory and stop before exceeding limits.
+    let n_limit = if full { 15 } else { 13 };
     let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
 
     let cutoffs = [256, 512, 1024, 2048];
