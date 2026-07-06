@@ -192,7 +192,7 @@ def load_ballard_data(mode_suffix: str) -> dict:
 def plot_ballard_lines(
     ax: plt.Axes,
     df_ballard_mkl: pd.DataFrame,
-    *df_ballard_strassen: pd.DataFrame,
+    strassen_dataframes: list,
     mode_label: str = ""
 ) -> None:
     """Plot Ballard reference lines on a given axis.
@@ -200,26 +200,19 @@ def plot_ballard_lines(
     Args:
         ax: Matplotlib axis to plot on.
         df_ballard_mkl: MKL Ballard data with size and time_ms columns.
-        df_ballard_strassen: One or more Strassen Ballard dataframes
-                           (expected order: STRASSEN_1, STRASSEN_2, STRASSEN_3).
+        strassen_dataframes: List of (level, df) tuples for Strassen Ballard data.
         mode_label: Optional label suffix to append to the legend (e.g. 'DFS', 'BFS', 'Hybrid').
     """
     suffix = f" {mode_label}" if mode_label else ""
-    strassen_labels = {
-        "strassen_ballard_1": f"Strassen 1{suffix} (Ballard)",
-        "strassen_ballard_2": f"Strassen 2{suffix} (Ballard)",
-        "strassen_ballard_3": f"Strassen 3{suffix} (Ballard)",
-    }
-    entries = [("mkl_ballard", df_ballard_mkl)]
-    for i, df in enumerate(df_ballard_strassen):
-        entries.append((f"strassen_ballard_{i + 1}", df))
+    entries = [("mkl_ballard", df_ballard_mkl, f"MKL{suffix} (Ballard)")]
+    for level, df in strassen_dataframes:
+        entries.append((f"strassen_ballard_{level}", df, f"Strassen {level}{suffix} (Ballard)"))
 
-    for name, df in entries:
-        style = BALLARD_STYLES[name]
+    for name, df, label in entries:
+        style = BALLARD_STYLES.get(name, BALLARD_STYLES.get("strassen_ballard_1"))
         time_s = df["time_ms"] / 1000.0
         n = df["size"]
         gflops = (2 * n**3 - 2 * n**2) / (time_s * 1e9)
-        label = f"MKL{suffix} (Ballard)" if name == "mkl_ballard" else strassen_labels[name]
         ax.plot(n, gflops, label=label, markersize=5.0, **style)
 
 
@@ -297,12 +290,23 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
                 out_grid_name = f"benchmark_{prefix}_grid{mode_suffix}.pdf"
                 out_grid_path = os.path.join(out_dir, out_grid_name)
 
-                generate_grid_plot_core(df_faer_to_plot, df_dgemm_to_plot, out_grid_path, mode=mode)
+                generate_grid_plot_core(
+                    df_faer_to_plot,
+                    df_dgemm_to_plot,
+                    out_grid_path,
+                    mode=mode,
+                    recursion_level=r_level
+                )
     else:
         plot_df_core(df, output_path, mode=mode)
 
 
-def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None:
+def plot_df_core(
+    df: pd.DataFrame,
+    output_path: str,
+    mode: str = "both",
+    recursion_level: float = None
+) -> None:
     """Core logic to generate a performance plot from a dataframe in both PDF and PNG formats.
 
     This function converts raw benchmark timings (in seconds) to Effective GFLOPS
@@ -456,10 +460,16 @@ def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None
         data = load_ballard_data(m)
         if data:
             mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
+            strassen_dfs = []
+            if recursion_level is not None and not pd.isna(recursion_level):
+                level = int(recursion_level)
+                if 1 <= level <= len(data["strassen"]):
+                    strassen_dfs.append((level, data["strassen"][level - 1]))
+            
             plot_ballard_lines(
                 ax,
                 data["mkl"],
-                *data["strassen"],
+                strassen_dfs,
                 mode_label=mode_labels.get(m, m.upper())
             )
 
@@ -502,7 +512,11 @@ def plot_df_core(df: pd.DataFrame, output_path: str, mode: str = "both") -> None
 
 
 def generate_grid_plot_core(
-    df_faer: pd.DataFrame, df_dgemm: pd.DataFrame, output_path: str, mode: str = "both"
+    df_faer: pd.DataFrame,
+    df_dgemm: pd.DataFrame,
+    output_path: str,
+    mode: str = "both",
+    recursion_level: float = None
 ) -> None:
     """Generates a grid performance plot comparing faer and dgemm bases.
 
@@ -668,10 +682,16 @@ def generate_grid_plot_core(
             data = load_ballard_data(m)
             if data:
                 mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
+                strassen_dfs = []
+                if recursion_level is not None and not pd.isna(recursion_level):
+                    level = int(recursion_level)
+                    if 1 <= level <= len(data["strassen"]):
+                        strassen_dfs.append((level, data["strassen"][level - 1]))
+                
                 plot_ballard_lines(
                     ax,
                     data["mkl"],
-                    *data["strassen"],
+                    strassen_dfs,
                     mode_label=mode_labels.get(m, m.upper())
                 )
 
