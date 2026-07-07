@@ -146,6 +146,9 @@ public:
 #endif
 
 # if defined(_PARALLEL_) && (_PARALLEL_ == _HYBRID_PAR_)
+#ifdef __INTEL_MKL__
+#include "mkl.h"
+#endif
 // Switch to DFS style sub-problems in the hybrid parallelism
 void SwitchToDFS(LockAndCounter& locker, int num_threads) {
     locker.Acquire();

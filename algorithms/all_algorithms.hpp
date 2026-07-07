@@ -93,11 +93,15 @@ enum {
 template <typename Scalar>
 double RunAlgorithm(int algorithm, Matrix<Scalar>& A, Matrix<Scalar>& B,
                   Matrix<Scalar>& C1, int num_steps) {
+  int num_threads = 1;
+#ifdef _PARALLEL_
+  num_threads = omp_get_max_threads();
+#endif
   double x = 1e-8;
   switch (algorithm) {
   case MKL:
     // Just run the classical version with zero steps of recursion.
-    return classical222_8_24::FastMatmul(A, B, C1, 0);
+    return classical222_8_24::FastMatmul(A, B, C1, 0, x, num_threads);
     break;
   case BINI322_10_52_APPROX:
     // These values of x provide the minimum error, on average.
@@ -117,7 +121,7 @@ double RunAlgorithm(int algorithm, Matrix<Scalar>& A, Matrix<Scalar>& B,
       x = 1e-8;
       break;
     }
-    return bini322_10_52_approx::FastMatmul(A, B, C1, num_steps, x);
+    return bini322_10_52_approx::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SCHONHAGE333_21_117_APPROX:
     // These values of x provide the minimum error, on average.
@@ -136,106 +140,106 @@ double RunAlgorithm(int algorithm, Matrix<Scalar>& A, Matrix<Scalar>& B,
       x = 1e-4;
       break;
     }
-    return schonhage333_21_117_approx::FastMatmul(A, B, C1, num_steps, x);
+    return schonhage333_21_117_approx::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case CLASSICAL222:
-    return classical222_8_24::FastMatmul(A, B, C1, num_steps);
+    return classical222_8_24::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case CLASSICAL423:
-    return classical423_24_72::FastMatmul(A, B, C1, num_steps);
+    return classical423_24_72::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case CLASSICAL333:
-    return classical333_27_81::FastMatmul(A, B, C1, num_steps);
+    return classical333_27_81::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST322_11_50:
-    return grey322_11_50::FastMatmul(A, B, C1, num_steps);      
+    return grey322_11_50::FastMatmul(A, B, C1, num_steps, x, num_threads);      
     break;
   case FAST332_15_103:
-    return grey332_15_103::FastMatmul(A, B, C1, num_steps);
+    return grey332_15_103::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST323_15_103:
-    return grey323_15_103::FastMatmul(A, B, C1, num_steps);
+    return grey323_15_103::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST323_15_89:
-    return grey323_15_103::FastMatmul(A, B, C1, num_steps);
+    return grey323_15_103::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST333_23_125:
-    return grey333_23_125::FastMatmul(A, B, C1, num_steps);
+    return grey333_23_125::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST333_23_152:
-    return grey333_23_152::FastMatmul(A, B, C1, num_steps);
+    return grey333_23_152::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST333_23_221:
-    return grey333_23_221::FastMatmul(A, B, C1, num_steps);
+    return grey333_23_221::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST432_20_144:
-    return grey432_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey432_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST423_20_144:
-    return grey423_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey423_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST324_20_144:
-    return grey324_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey324_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST342_20_144:
-    return grey342_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey342_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST234_20_144:
-    return grey234_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey234_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST243_20_144:
-    return grey243_20_144::FastMatmul(A, B, C1, num_steps);
+    return grey243_20_144::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST433_29_234:
-    return grey433_29_234::FastMatmul(A, B, C1, num_steps);
+    return grey433_29_234::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST343_29_234:
-    return grey343_29_234::FastMatmul(A, B, C1, num_steps);
+    return grey343_29_234::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SMIRNOV333_23_128:
-    return smirnov333_23_128::FastMatmul(A, B, C1, num_steps);
+    return smirnov333_23_128::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SMIRNOV333_23_139:
-    return smirnov333_23_139::FastMatmul(A, B, C1, num_steps);
+    return smirnov333_23_139::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SMIRNOV336_40_960:
-    return smirnov336_40_960::FastMatmul(A, B, C1, num_steps);
+    return smirnov336_40_960::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SMIRNOV363_40_960:
-    return smirnov363_40_960::FastMatmul(A, B, C1, num_steps);
+    return smirnov363_40_960::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case SMIRNOV633_40_960:
-    return smirnov633_40_960::FastMatmul(A, B, C1, num_steps);
+    return smirnov633_40_960::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case HK332_15_94:
-    return hk332_15_94::FastMatmul(A, B, C1, num_steps);
+    return hk332_15_94::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case HK323_15_94:
-    return hk323_15_94::FastMatmul(A, B, C1, num_steps);
+    return hk323_15_94::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case HK323_15_84:
-    return hk323_15_84::FastMatmul(A, B, C1, num_steps);
+    return hk323_15_84::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case STRASSEN:
-    return strassen::FastMatmul(A, B, C1, num_steps);
+    return strassen::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST422_14_84:
-    return grey422_14_84::FastMatmul(A, B, C1, num_steps);
+    return grey422_14_84::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST424_26_257:
-    return grey424_26_257::FastMatmul(A, B, C1, num_steps);
+    return grey424_26_257::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST442_26_257:
-    return grey442_26_257::FastMatmul(A, B, C1, num_steps);
+    return grey442_26_257::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST424_26_206:
-    return grey424_26_206::FastMatmul(A, B, C1, num_steps);
+    return grey424_26_206::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST522_18_99:
-    return grey522_18_99::FastMatmul(A, B, C1, num_steps);
+    return grey522_18_99::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   case FAST252_18_99:
-    return grey252_18_99::FastMatmul(A, B, C1, num_steps);
+    return grey252_18_99::FastMatmul(A, B, C1, num_steps, x, num_threads);
     break;
   default:
     std::cout << "Unknown algorithm type!" << std::endl;
