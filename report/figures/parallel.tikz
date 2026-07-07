@@ -1,0 +1,59 @@
+\begin{tikzpicture}[
+    font=\sffamily,
+    % Define a style for the tree nodes
+    rootNode/.style={text=red!80!black, font=\large\bfseries},
+    leafNode/.style={text=black, font=\small},
+    activeLeaf/.style={text=red!80!black, font=\small},
+    % Step labels
+    labelStyle/.style={font=\Large\bfseries\sffamily}
+]
+
+    % ==========================================================
+    % BREADTH-FIRST-SEARCH (BFS) TREE - LEFT SIDE
+    % ==========================================================
+    \node[labelStyle] (bfsTitle) at (0, 2) {Breadth-First-Search (BFS)};
+
+    % Root node
+    \node[rootNode] (bfsRoot) at (0, 0) {$A \cdot B$};
+
+    % Leaf nodes (All 7 multiplications executed in parallel)
+    \node[activeLeaf] (b0) at (-3.3, -2.5) {$T_0 \cdot S_0$};
+    \node[activeLeaf] (b1) at (-2.2, -2.5) {$T_1 \cdot S_1$};
+    \node[activeLeaf] (b2) at (-1.1, -2.5) {$T_2 \cdot S_2$};
+    \node[activeLeaf] (b3) at (0.0, -2.5) {$T_3 \cdot S_3$};
+    \node[activeLeaf] (b4) at (1.1, -2.5) {$T_4 \cdot S_4$};
+    \node[activeLeaf] (b5) at (2.2, -2.5) {$T_5 \cdot S_5$};
+    \node[activeLeaf] (b6) at (3.3, -2.5) {$T_6 \cdot S_6$};
+
+    % Connect lines (All branches highlighted in red for parallel processing)
+    \foreach \leaf in {b0, b1, b2, b3, b4, b5, b6} {
+        \draw[red!80!black, line width=1.5pt] (bfsRoot.south) -- (\leaf.north);
+    }
+
+
+    % ==========================================================
+    % DEPTH-FIRST-SEARCH (DFS) TREE - RIGHT SIDE
+    % ==========================================================
+    \begin{scope}[xshift=9cm]
+        \node[labelStyle] (dfsTitle) at (0, 2) {Depth-First-Search (DFS)};
+
+        % Root node
+        \node[rootNode] (dfsRoot) at (0, 0) {$A \cdot B$};
+
+        % Leaf nodes (Multiplications executed sequentially, highlighting one step)
+        \node[leafNode] (d0) at (-3.3, -2.5) {$T_0 \cdot S_0$};
+        \node[leafNode] (d1) at (-2.2, -2.5) {$T_1 \cdot S_1$};
+        \node[activeLeaf] (d2) at (-1.1, -2.5) {$T_2 \cdot S_2$}; % Active branch step
+        \node[leafNode] (d3) at (0.0, -2.5) {$T_3 \cdot S_3$};
+        \node[leafNode] (d4) at (1.1, -2.5) {$T_4 \cdot S_4$};
+        \node[leafNode] (d5) at (2.2, -2.5) {$T_5 \cdot S_5$};
+        \node[leafNode] (d6) at (3.3, -2.5) {$T_6 \cdot S_6$};
+
+        % Connect lines (Inactive branches are black, active branch step is red)
+        \foreach \leaf in {d0, d1, d3, d4, d5, d6} {
+            \draw[black, line width=1.5pt] (dfsRoot.south) -- (\leaf.north);
+        }
+        \draw[red!80!black, line width=2pt] (dfsRoot.south) -- (d2.north);
+    \end{scope}
+
+\end{tikzpicture}

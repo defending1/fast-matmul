@@ -134,7 +134,7 @@
 \title{%
    Fast matrix multiplication using CP decomposition
     \\ \large Computational laboratory project report}
-\author{Alberto Defendi}
+\author{Alberto Defendi\\Project supervisor: Leonardo Robol}
 
 \date{}
 
@@ -359,6 +359,7 @@ C_{11} &= M_1 + M_4 - M_5 + M_7 & C_{12} &= M_3 + M_5 \\
 C_{21} &= M_2 + M_4 & C_{22} &= M_1 - M_2 + M_3 + M_6
 \end{align*}
 
+\todo{complete}
 
 \section{Implementation and practical consideration}
 
@@ -429,6 +430,9 @@ A_{22}\right] $.
   T_r$.
 \end{enumerate}
 
+\subsection{Toeplitz cluster}
+
+The project experiments were executed on Toeplitz cluster on \todo{node specs}.
 
 \subsection{Technical overview}
 
@@ -437,7 +441,12 @@ The project burns as a Rust porting of the c++ project made by Benson and Ballar
 provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
 multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
 computation, and OpenMP for parallelization.
-Our project differs
+Our project differs from their implementation mainly for the language (Rust) and code
+generation---we apply CP matrix multiplication without code generation, which delivers simpler code
+at the cost of speed \todo{is this True?}. Also, our project uses the numerical library Faer (cite)
+with Rust's Rayon parallelization,
+and selectively switches to Faer or MKL Dgemm for matrix multiplication,
+while the other uses Lapack and MKL Dgemm, and OpenMP for parallelization.
 
 
 Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
@@ -526,10 +535,26 @@ We use Rust's Rayon to handle parallelization, and we can summarize the parallel
   \item \textbf{BFS:} Each recursive matrix multiplication routine and the associated matrix
     additions are launched by Rayon as an iterable, and then are collected in an array of matrices $
     \left[M_1, \ldots, M_r \right]$.
-  \item \textbf{DFS:} Each Faer matrix multiplication call uses all thread, and matrix
-    multiplications are always fully parallelized. \todo{implement}
-  \item \textbf{Hybrid:} TODO.
+  \item \textbf{DFS:} Each vendor matrix multiplication call uses all thread, and matrix
+    multiplications are always fully parallelized.
+  \item \textbf{Hybrid:} The Hybrid approach developed in \cite{bensonballard2015} compensates the
+    for the load imbalance in BFS by applying DFS on a subset of the base case problems. With $ L $
+    levels of recursion and $ P $ threads, the hybrid algorithm applies task parallelism (BFS) to
+    the first $ R^L - (R^L \mod P) $ multiplication. Because the number of subproblems is a multiple
+    of $ P $, this part is load balanced. On the remaining $ R^L \mod P $ subproblems, all threads
+    are used on each matrix multiplication (DFS).
 \end{itemize}
+
+
+\begin{figure}[ht]
+  \centering
+  \resizebox{0.9\textwidth}{!}{%
+    \input{./figures/parallel.tikz}
+  }%
+  \caption{BFS and DFS load balancing. The parallelized tasks are in red.}
+  \label{fig:unfoldings}
+\end{figure}
+
 
 \subsection{Benchmarking}
 
