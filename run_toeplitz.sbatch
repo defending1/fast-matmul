@@ -43,13 +43,6 @@ echo "Target architecture parameter: ${TARGET_ARCH}"
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 
-# Run Rust project if selected
-if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
-echo "============================================="
-echo "=== Running Rust Benchmarks ==="
-echo "============================================="
-cd "${PROJECT_ROOT}/rust"
-
 # Resolve architecture: use parameter if provided, otherwise detect automatically
 if [ "${TARGET_ARCH}" != "detect" ]; then
 ARCH="${TARGET_ARCH}"
@@ -63,6 +56,21 @@ else
 ARCH="native"
 fi
 fi
+
+# Compile/Pre-setup if COMPILE=1 or COMPILE=yes
+if [ "${COMPILE}" = "1" ] || [ "${COMPILE}" = "yes" ]; then
+echo "============================================="
+echo "=== Compiling / Pre-setting up Project ==="
+echo "============================================="
+"${PROJECT_ROOT}/scripts/pre-setup.sh" "${ARCH}"
+fi
+
+# Run Rust project if selected
+if [ "${TARGET_PROJECT}" = "rust" ] || [ "${TARGET_PROJECT}" = "both" ]; then
+echo "============================================="
+echo "=== Running Rust Benchmarks ==="
+echo "============================================="
+cd "${PROJECT_ROOT}/rust"
 
 # Fallback to native if the specific architecture binary is not found
 if [ ! -f "./generated/bin/bench_${ARCH}" ]; then

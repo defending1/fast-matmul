@@ -21,7 +21,6 @@ module load gcc/13.2.0
 module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0
 module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
 module load intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4
-module load cuda/12.0 2>/dev/null || true
 
 # Print Slurm metadata and environment information for debugging
 echo "=== Slurm Job Information ==="
@@ -50,21 +49,15 @@ echo "Target architecture parameter: ${TARGET_ARCH}"
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 cd "${PROJECT_ROOT}"
 
-# Resolve architecture: use parameter if provided, otherwise detect automatically
-if [ "${TARGET_ARCH}" != "detect" ]; then
-ARCH="${TARGET_ARCH}"
-else
-# Detect target architecture automatically based on system CPU
-if grep -q "EPYC" /proc/cpuinfo; then
 ARCH="znver3"
-elif grep -q "Xeon" /proc/cpuinfo; then
-ARCH="broadwell"
-else
-ARCH="native"
-fi
-fi
 
-echo "Resolved architecture: ${ARCH}"
+# Compile/Pre-setup if COMPILE=1 or COMPILE=yes
+if [ "${COMPILE}" = "1" ] || [ "${COMPILE}" = "yes" ]; then
+echo "============================================="
+echo "=== Compiling / Pre-setting up Project ==="
+echo "============================================="
+"${PROJECT_ROOT}/scripts/pre-setup.sh" "${ARCH}"
+fi
 
 # Compile compiler flags targeting the resolved CPU architecture of the node
 export CFLAGS="-O3 -march=${ARCH} -mtune=${ARCH}"
@@ -78,32 +71,7 @@ echo "=== Running Rust Benchmarks ==="
 echo "============================================="
 cd "${PROJECT_ROOT}/rust"
 
-# Resolve architecture: use parameter if provided, otherwise detect automatically
-if [ "${TARGET_ARCH}" != "detect" ]; then
-ARCH="${TARGET_ARCH}"
-else
-# Detect target architecture automatically based on system CPU
-if grep -q "EPYC" /proc/cpuinfo; then
-ARCH="znver3"
-elif grep -q "Xeon" /proc/cpuinfo; then
-ARCH="broadwell"
-else
-ARCH="native"
-fi
-fi
-
-# Fallback to native if the specific architecture binary is not found
-if [ ! -f "./generated/bin/bench_${ARCH}" ]; then
-echo "Warning: ./generated/bin/bench_${ARCH} not found. Falling back to native."
-ARCH="native"
-fi
-
-# Set sequential/parallel flags depending on Slurm allocation
-if [ "${SLURM_CPUS_PER_TASK:-1}" -gt 1 ]; then
 MODE_FLAG="--par"
-else
-MODE_FLAG="--seq"
-fi
 
 echo "Executing: ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full"
 ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full
