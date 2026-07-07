@@ -3,11 +3,11 @@ mod export_helper;
 mod job_helper;
 mod util;
 
-use criterion::{measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion};
 use faer::Mat;
 use fast_matmul::cp::CP;
 use fast_matmul::matmul::{BaseMatMul, MatMul, ParallelismMode, RecursionLimit};
 use rand::Rng;
+use std::collections::HashMap;
 
 /// A struct for running benchmarks on various matrix multiplication algorithms.
 pub struct Benchmark {
@@ -24,6 +24,11 @@ impl Default for Benchmark {
 
 impl Benchmark {
     /// Creates a new `Benchmark` instance.
+    ///
+    /// # Arguments
+    /// * `run_sequential` - Whether to benchmark sequential implementations.
+    /// * `run_parallel` - Whether to benchmark parallel implementations.
+    /// * `run_plot` - Whether to generate performance plots.
     pub fn new(run_sequential: bool, run_parallel: bool, run_plot: bool) -> Self {
         Self {
             run_sequential,
@@ -32,23 +37,18 @@ impl Benchmark {
         }
     }
 
-    /// Configures Criterion group for single-shot sampling.
+    /// Returns the warmup and measurement time in milliseconds for a given size.
     ///
-    /// Every benchmark calls the function exactly once per sample.  Ten samples
-    /// are collected (Criterion's minimum).  Warmup time is scaled with matrix
-    /// size so that CPU caches and thermal state are stabilised before
-    /// measurement begins, without wasting minutes on huge matrices.
-    fn configure_group_for_size(group: &mut BenchmarkGroup<WallTime>, size: usize) {
-        let (samples, warmup_ms, measure_ms) = match size {
-            ..=16 => (10, 50, 100),
-            17..=64 => (10, 100, 200),
-            65..=256 => (10, 200, 500),
-            257..=1024 => (10, 500, 1000),
-            _ => (10, 1000, 2000),
-        };
-        group.sample_size(samples);
-        group.warm_up_time(std::time::Duration::from_millis(warmup_ms));
-        group.measurement_time(std::time::Duration::from_millis(measure_ms));
+    /// # Arguments
+    /// * `size` - The matrix size dimension.
+    fn get_timings_for_size(size: usize) -> (u64, u64) {
+        match size {
+            ..=16 => (50, 100),
+            17..=64 => (100, 200),
+            65..=256 => (200, 500),
+            257..=1024 => (500, 1000),
+            _ => (1000, 2000),
+        }
     }
 
     /// Computes the total number of benchmarks to run based on sizes, configurations, targets, and algorithms.
@@ -89,23 +89,17 @@ impl Benchmark {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
     }
 
-    /// Registers a single-shot benchmark with Criterion, printing a progress line.
-    ///
-    /// Each Criterion sample times exactly one invocation of `f`.  Using
-    /// `iter_custom` with a single call prevents Criterion from looping the
-    /// function thousands of times, which would be prohibitive for large
-    /// matrix sizes.  The mean of the 10 single-shot samples is written to
-    /// Criterion's JSON output and picked up by `export_helper`.
-    ///
-    /// `counter` is a shared mutable index that is incremented on each call,
-    /// and `total` is the pre-computed total number of benchmarks in this run.
+    /// Measures and registers a single benchmark, recording its timing.
+    #[allow(clippy::too_many_arguments)]
     fn register_bench<F, O>(
-        group: &mut BenchmarkGroup<WallTime>,
+        new_timings: &mut HashMap<String, HashMap<usize, f64>>,
         name: &str,
         size: usize,
         counter: &mut usize,
         total: usize,
-        mut f: F,
+        warmup_ms: u64,
+        measure_ms: u64,
+        f: F,
     ) where
         F: FnMut() -> O,
     {
@@ -114,22 +108,26 @@ impl Benchmark {
             "  Benchmark {} of {}: {} (size {}x{})",
             counter, total, name, size, size
         );
-        group.bench_with_input(BenchmarkId::new(name, size), &size, move |bench, &_| {
-            bench.iter(&mut f);
-        });
+        let time_s = util::run_benchmark_minstant(warmup_ms, measure_ms, f);
+        new_timings
+            .entry(name.to_string())
+            .or_default()
+            .insert(size, time_s);
     }
 
     /// Registers the base sequential and parallel benchmarks for one matrix size.
     #[allow(clippy::too_many_arguments)]
     fn bench_base(
         &self,
-        group: &mut BenchmarkGroup<WallTime>,
+        new_timings: &mut HashMap<String, HashMap<usize, f64>>,
         a: &Mat<f64>,
         b: &Mat<f64>,
         size: usize,
         base_choice: BaseMatMul,
         counter: &mut usize,
         total: usize,
+        warmup_ms: u64,
+        measure_ms: u64,
     ) {
         let name = match base_choice {
             BaseMatMul::Faer => "Faer",
@@ -137,41 +135,35 @@ impl Benchmark {
         };
         if self.run_sequential {
             Self::register_bench(
-                group,
+                new_timings,
                 &format!("{}-Sequential", name),
                 size,
                 counter,
                 total,
+                warmup_ms,
+                measure_ms,
                 || util::base_matmul(a, b, false, base_choice),
             );
         }
         if self.run_parallel {
             Self::register_bench(
-                group,
+                new_timings,
                 &format!("{}-Parallel", name),
                 size,
                 counter,
                 total,
+                warmup_ms,
+                measure_ms,
                 || util::base_matmul(a, b, true, base_choice),
             );
         }
     }
 
     /// Registers sequential and parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
-    ///
-    /// # Arguments
-    /// * `group` - The Criterion benchmark group.
-    /// * `a` - The left operand matrix.
-    /// * `b` - The right operand matrix.
-    /// * `size` - The matrix dimension size.
-    /// * `algo` - The name of the algorithm.
-    /// * `mm` - The `MatMul` instance.
-    /// * `base_choice` - The base matrix multiplication choice.
-    /// * `recursion_limit` - The recursion limit choice.
     #[allow(clippy::too_many_arguments)]
     fn bench_cp(
         &self,
-        group: &mut BenchmarkGroup<WallTime>,
+        new_timings: &mut HashMap<String, HashMap<usize, f64>>,
         a: &Mat<f64>,
         b: &Mat<f64>,
         size: usize,
@@ -181,6 +173,8 @@ impl Benchmark {
         recursion_limit: RecursionLimit,
         counter: &mut usize,
         total: usize,
+        warmup_ms: u64,
+        measure_ms: u64,
     ) {
         let suffix = match base_choice {
             BaseMatMul::Faer => "Faer",
@@ -192,11 +186,13 @@ impl Benchmark {
         };
         if self.run_sequential {
             Self::register_bench(
-                group,
+                new_timings,
                 &format!("{}-{}-{}/Sequential", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
+                warmup_ms,
+                measure_ms,
                 || {
                     mm.cp_matmul(
                         a,
@@ -210,46 +206,41 @@ impl Benchmark {
         }
         if self.run_parallel {
             Self::register_bench(
-                group,
+                new_timings,
                 &format!("{}-{}-{}/DFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
+                warmup_ms,
+                measure_ms,
                 || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit),
             );
             Self::register_bench(
-                group,
+                new_timings,
                 &format!("{}-{}-{}/BFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
+                warmup_ms,
+                measure_ms,
                 || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit),
             );
             if let RecursionLimit::Depth(_) = recursion_limit {
                 Self::register_bench(
-                    group,
+                    new_timings,
                     &format!("{}-{}-{}/Hybrid", algo, suffix, config_suffix),
                     size,
                     counter,
                     total,
+                    warmup_ms,
+                    measure_ms,
                     || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit),
                 );
             }
         }
     }
 
-    /// Runs benchmarks using the programmatic Criterion API and exports the results to CSV
-    /// using the specified base matrix multiplication choice and recursion limit.
-    ///
-    /// Stops running benchmarks if a matrix size exceeds the machine's memory capacity,
-    /// printing a clean warning, and still exporting results for the sizes that completed.
-    ///
-    /// # Arguments
-    /// * `sizes` - A slice of matrix dimension sizes to benchmark.
-    /// * `algorithms` - A slice of algorithm names.
-    /// * `filename` - The output CSV filename.
-    /// * `base_choice` - The base matrix multiplication choice.
-    /// * `recursion_limit` - The recursion limit choice.
+    /// Runs benchmarks and exports the results to CSV.
     pub fn run(
         &self,
         sizes: &[usize],
@@ -268,9 +259,7 @@ impl Benchmark {
             per_size
         );
 
-        // Criterion configured without HTML plots; CSV export is handled separately.
-        let mut c = Criterion::default().without_plots();
-        let mut group = c.benchmark_group("Matrix Multiplication");
+        let mut new_timings = HashMap::new();
         let mut rng = rand::thread_rng();
 
         let cps: Vec<(&str, CP)> = algorithms
@@ -296,29 +285,33 @@ impl Benchmark {
             }
 
             println!("\nSize {}x{}:", size, size);
-            Self::configure_group_for_size(&mut group, size);
+            let (warmup_ms, measure_ms) = Self::get_timings_for_size(size);
 
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
             // Run baseline benchmarks exactly once per size
             self.bench_base(
-                &mut group,
+                &mut new_timings,
                 &a,
                 &b,
                 size,
                 BaseMatMul::Dgemm,
                 &mut counter,
                 total,
+                warmup_ms,
+                measure_ms,
             );
             self.bench_base(
-                &mut group,
+                &mut new_timings,
                 &a,
                 &b,
                 size,
                 BaseMatMul::Faer,
                 &mut counter,
                 total,
+                warmup_ms,
+                measure_ms,
             );
 
             // Run CP decomposition algorithms for all configs
@@ -327,7 +320,7 @@ impl Benchmark {
                     for &(algo, ref cp) in &cps {
                         let mm = MatMul::with_cp(cp);
                         self.bench_cp(
-                            &mut group,
+                            &mut new_timings,
                             &a,
                             &b,
                             size,
@@ -337,6 +330,8 @@ impl Benchmark {
                             *limit,
                             &mut counter,
                             total,
+                            warmup_ms,
+                            measure_ms,
                         );
                     }
                 }
@@ -353,12 +348,11 @@ impl Benchmark {
                         base_choice,
                         *limit,
                         false,
+                        &new_timings,
                     )?;
                 }
             }
         }
-
-        group.finish();
 
         if !successful_sizes.is_empty() {
             // Write final results for all configs, only running the plot script on the last configuration
@@ -374,6 +368,7 @@ impl Benchmark {
                         base_choice,
                         *limit,
                         self.run_plot && is_last,
+                        &new_timings,
                     )?;
                     idx += 1;
                 }
@@ -452,11 +447,18 @@ fn main() {
     };
 
     if plot_only {
-        println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
+        println!("Plot-only mode: Regenerating CSV results from cached data...");
+        let empty_timings = HashMap::new();
         for (limit, _file_prefix, label) in &configs {
             for &(base, name, _suffix) in &targets {
                 if let Err(e) = export_helper::export_results_to_csv(
-                    &sizes, algorithms, &out_file, base, *limit, true,
+                    &sizes,
+                    algorithms,
+                    &out_file,
+                    base,
+                    *limit,
+                    true,
+                    &empty_timings,
                 ) {
                     eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
                 } else {

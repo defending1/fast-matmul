@@ -33,21 +33,7 @@ impl PartialOrd for ConfigKey {
     }
 }
 
-/// Helper to read a single point estimate of the mean from Criterion's JSON files, converting it to seconds.
-fn get_criterion_time(folder_name: &str, size: usize) -> Option<f64> {
-    let path = Path::new("target/criterion/Matrix Multiplication")
-        .join(folder_name)
-        .join(size.to_string())
-        .join("new/estimates.json");
-    if !path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(&path).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let nanoseconds = json.get("mean")?.get("point_estimate")?.as_f64()?;
-    // Convert nanoseconds to seconds
-    Some(nanoseconds / 1_000_000_000.0)
-}
+
 
 /// Reads existing benchmark CSV results to avoid overwriting unrelated cached data.
 fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>> {
@@ -120,8 +106,17 @@ fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>>
     map
 }
 
-/// Exports Criterion results from target/criterion to a CSV file and runs the Python plot script.
+/// Exports benchmark results from in-memory timings to a CSV file and runs the Python plot script.
 /// Preserves existing data in the CSV if the benchmarks weren't re-run in the current session.
+///
+/// # Arguments
+/// * `sizes` - A slice of matrix dimension sizes.
+/// * `algorithms` - A slice of algorithm names.
+/// * `filename` - The output CSV filename.
+/// * `base_choice` - The base matrix multiplication choice.
+/// * `recursion_limit` - The recursion limit choice.
+/// * `plot` - Whether to generate a performance plot from the CSV.
+/// * `new_timings` - In-memory map of benchmark names to map of size and elapsed time.
 ///
 /// # Errors
 ///
@@ -133,6 +128,7 @@ pub fn export_results_to_csv(
     base_choice: BaseMatMul,
     recursion_limit: RecursionLimit,
     plot: bool,
+    new_timings: &HashMap<String, HashMap<usize, f64>>,
 ) -> Result<(), std::io::Error> {
     let mut existing = read_existing_csv(filename);
 
@@ -195,13 +191,13 @@ pub fn export_results_to_csv(
         RecursionLimit::Cutoff(cutoff) => (None, Some(cutoff)),
     };
 
-    // 1. Gather new measurements from Criterion, merging with existing data
+    // 1. Gather new measurements, merging with existing data
     for &size in sizes {
         let mut has_new_data = false;
         let mut new_metrics = HashMap::new();
 
         for col in &mappings {
-            if let Some(t) = get_criterion_time(&col.folder, size) {
+            if let Some(t) = new_timings.get(&col.folder).and_then(|m| m.get(&size).copied()) {
                 new_metrics.insert(col.header.clone(), t);
                 has_new_data = true;
             }
@@ -233,7 +229,7 @@ pub fn export_results_to_csv(
                 "faer_par" => "Faer-Parallel",
                 _ => unreachable!(),
             };
-            if let Some(t) = get_criterion_time(folder, size) {
+            if let Some(t) = new_timings.get(folder).and_then(|m| m.get(&size).copied()) {
                 size_base_timings.insert(header.to_string(), t);
             }
         }

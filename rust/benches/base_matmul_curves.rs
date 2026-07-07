@@ -1,78 +1,74 @@
 mod util;
 
-use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 use faer::Mat;
 use fast_matmul::matmul::BaseMatMul;
 use rand::Rng;
 
+/// Returns the warmup and measurement time in milliseconds for a given size.
+///
+/// # Arguments
+/// * `size` - The matrix size dimension.
+fn get_timings_for_size(size: usize) -> (u64, u64) {
+    match size {
+        ..=16 => (50, 100),
+        17..=64 => (100, 200),
+        65..=256 => (200, 500),
+        257..=1024 => (500, 1000),
+        _ => (100, 200),
+    }
+}
+
 /// Helper function to generate a random matrix of double precision floats.
+///
+/// # Arguments
+/// * `rows` - The number of rows in the matrix.
+/// * `cols` - The number of columns in the matrix.
 fn random_matrix(rows: usize, cols: usize) -> Mat<f64> {
     let mut rng = rand::thread_rng();
     Mat::from_fn(rows, cols, |_, _| rng.gen_range(-1.0..1.0))
 }
 
-/// Adjusts Criterion group sampling parameters based on matrix size.
-fn configure_group_for_size(group: &mut BenchmarkGroup<WallTime>, size: usize) {
-    let (samples, warmup_ms, measure_ms) = match size {
-        ..=16 => (30, 50, 100),
-        17..=64 => (20, 100, 200),
-        65..=256 => (10, 200, 500),
-        257..=1024 => (10, 500, 1000),
-        _ => (10, 100, 200),
-    };
-    group.sample_size(samples);
-    group.warm_up_time(std::time::Duration::from_millis(warmup_ms));
-    group.measurement_time(std::time::Duration::from_millis(measure_ms));
-}
+/// Runs baseline benchmarks for all shapes, threading modes, and libraries using minstant.
+fn bench_base_matmul() {
+    println!("\nRunning Base MatMul Curves Benchmarks...");
+    println!("{:<25} {:<10} {:<15}", "Benchmark Name", "Size", "Time (seconds)");
+    println!("----------------------------------------------------------------");
 
-/// Registers the curves benchmarks for all shapes, threading modes, and libraries with Criterion.
-fn bench_base_matmul(c: &mut Criterion) {
-    let mut group = c.benchmark_group("base_matmul_curves");
     const N: i32 = 11;
     let n_vals: Vec<usize> = (1..=N).map(|n| 1usize << n).collect();
 
     for &n in &n_vals {
-        configure_group_for_size(&mut group, n);
+        let (warmup_ms, measure_ms) = get_timings_for_size(n);
+        let a = random_matrix(n, n);
+        let b = random_matrix(n, n);
 
-        // 1. SQUARE: N x N x N
-        {
-            let a = random_matrix(n, n);
-            let b = random_matrix(n, n);
+        // Faer Sequential
+        let t_faer_seq = util::run_benchmark_minstant(warmup_ms, measure_ms, || {
+            util::base_matmul(&a, &b, false, BaseMatMul::Faer)
+        });
+        println!("{:<25} {:<10} {:<15.9}", "Square/Faer-Sequential", n, t_faer_seq);
 
-            group.bench_with_input(
-                BenchmarkId::new("Square/Faer-Sequential", n),
-                &n,
-                |bencher, _| {
-                    bencher.iter(|| util::base_matmul(&a, &b, false, BaseMatMul::Faer));
-                },
-            );
-            group.bench_with_input(
-                BenchmarkId::new("Square/Faer-Parallel", n),
-                &n,
-                |bencher, _| {
-                    bencher.iter(|| util::base_matmul(&a, &b, true, BaseMatMul::Faer));
-                },
-            );
-            group.bench_with_input(
-                BenchmarkId::new("Square/Dgemm-Sequential", n),
-                &n,
-                |bencher, _| {
-                    bencher.iter(|| util::base_matmul(&a, &b, false, BaseMatMul::Dgemm));
-                },
-            );
-            group.bench_with_input(
-                BenchmarkId::new("Square/Dgemm-Parallel", n),
-                &n,
-                |bencher, _| {
-                    bencher.iter(|| util::base_matmul(&a, &b, true, BaseMatMul::Dgemm));
-                },
-            );
-        }
+        // Faer Parallel
+        let t_faer_par = util::run_benchmark_minstant(warmup_ms, measure_ms, || {
+            util::base_matmul(&a, &b, true, BaseMatMul::Faer)
+        });
+        println!("{:<25} {:<10} {:<15.9}", "Square/Faer-Parallel", n, t_faer_par);
+
+        // Dgemm Sequential
+        let t_dgemm_seq = util::run_benchmark_minstant(warmup_ms, measure_ms, || {
+            util::base_matmul(&a, &b, false, BaseMatMul::Dgemm)
+        });
+        println!("{:<25} {:<10} {:<15.9}", "Square/Dgemm-Sequential", n, t_dgemm_seq);
+
+        // Dgemm Parallel
+        let t_dgemm_par = util::run_benchmark_minstant(warmup_ms, measure_ms, || {
+            util::base_matmul(&a, &b, true, BaseMatMul::Dgemm)
+        });
+        println!("{:<25} {:<10} {:<15.9}", "Square/Dgemm-Parallel", n, t_dgemm_par);
     }
-
-    group.finish();
 }
 
+/// Entry point for the base matrix multiplication curves analysis.
 fn main() {
     // 1. Run spline fitting and derivative calculation
     println!("\n==================================================");
@@ -147,8 +143,6 @@ fn main() {
     }
     println!("==================================================\n");
 
-    // 3. Run Criterion benchmarks
-    let mut c = Criterion::default().configure_from_args();
-    bench_base_matmul(&mut c);
-    c.final_summary();
+    // 3. Run direct benchmarks
+    bench_base_matmul();
 }

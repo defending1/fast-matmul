@@ -5,6 +5,63 @@ use splinefit::CubicSplineFit;
 use spliny::SplineCurve;
 use std::io::Write;
 
+/// Runs a benchmark function using minstant with warmup and exactly 2 samples.
+///
+/// # Arguments
+/// * `warmup_ms` - The duration in milliseconds to run warmup iterations.
+/// * `measure_ms` - The target measurement time in milliseconds for the samples.
+/// * `f` - The benchmark function to execute.
+pub fn run_benchmark_minstant<F, O>(
+    warmup_ms: u64,
+    measure_ms: u64,
+    mut f: F,
+) -> f64
+where
+    F: FnMut() -> O,
+{
+    // 1. Warmup phase
+    let warmup_duration = std::time::Duration::from_millis(warmup_ms);
+    let warmup_start = minstant::Instant::now();
+    let mut warmup_runs = 0;
+    while warmup_start.elapsed() < warmup_duration {
+        let _ = f();
+        warmup_runs += 1;
+    }
+
+    // Estimate t_iter (time per iteration) from warmup phase
+    let warmup_elapsed_secs = warmup_start.elapsed().as_secs_f64();
+    let t_iter = if warmup_runs > 0 {
+        warmup_elapsed_secs / (warmup_runs as f64)
+    } else {
+        // Fallback: run once and measure
+        let single_start = minstant::Instant::now();
+        let _ = f();
+        single_start.elapsed().as_secs_f64()
+    };
+
+    // 2. Measurement phase: collect exactly 2 samples.
+    // Divide target measure_ms by 2 for each sample.
+    let target_sample_duration = std::time::Duration::from_millis(measure_ms) / 2;
+    let iters_per_sample = if t_iter > 0.0 {
+        ((target_sample_duration.as_secs_f64() / t_iter).round() as u64).max(1)
+    } else {
+        1
+    };
+
+    let mut sample_means = [0.0; 2];
+    for mean in &mut sample_means {
+        let sample_start = minstant::Instant::now();
+        for _ in 0..iters_per_sample {
+            let _ = f();
+        }
+        let sample_elapsed = sample_start.elapsed().as_secs_f64();
+        *mean = sample_elapsed / (iters_per_sample as f64);
+    }
+
+    // Return the mean of the 2 sample means
+    (sample_means[0] + sample_means[1]) / 2.0
+}
+
 #[allow(dead_code)]
 unsafe extern "C" {
     fn spalder_(
