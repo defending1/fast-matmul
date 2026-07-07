@@ -347,7 +347,7 @@ impl<'a> MatMul<'a> {
     /// * `grid_cols` - Number of columns in the block grid.
     /// * `block_rows` - Number of rows in each block.
     /// * `block_cols` - Number of columns in each block.
-    fn split_into_blocks(
+    fn vec_blocks(
         matrix: MatRef<'_, f64>,
         grid_rows: usize,
         grid_cols: usize,
@@ -392,7 +392,6 @@ impl<'a> MatMul<'a> {
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
     ) -> Vec<Mat<f64>> {
-
         match mode {
             ParallelismMode::Dfs => (0..self.cp.rank)
                 .map(|l| {
@@ -426,17 +425,19 @@ impl<'a> MatMul<'a> {
                 let level = match recursion_limit {
                     RecursionLimit::Depth(level) => level,
                     RecursionLimit::Cutoff(_) => {
-                        panic!("Hybrid parallelism mode is only supported with RecursionLimit::Depth");
+                        panic!(
+                            "Hybrid parallelism mode is only supported with RecursionLimit::Depth"
+                        );
                     }
                 };
 
                 let r = self.cp.rank;
                 let p_threads = rayon::current_num_threads().max(1);
-                
+
                 let r_pow_l = r.pow(level as u32);
                 let k = r_pow_l - (r_pow_l % p_threads);
                 let r_pow_l_minus_1 = r.pow(level.saturating_sub(1) as u32);
-                
+
                 let c = if r_pow_l_minus_1 > 0 {
                     k / r_pow_l_minus_1
                 } else {
@@ -511,7 +512,7 @@ impl<'a> MatMul<'a> {
     /// * `m_block` - The row block size.
     /// * `p_block` - The column block size.
     /// * `m_products` - Slice of computed product blocks as `MatRef`.
-    fn reconstruct_from_products(
+    fn c_blocks_from_s_and_t(
         &self,
         mut c: faer::MatMut<'_, f64>,
         m_block: usize,
@@ -620,8 +621,8 @@ impl<'a> MatMul<'a> {
         let n_block = n / self.cp.n;
         let p_block = p / self.cp.p;
 
-        let a_blocks = Self::split_into_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
-        let b_blocks = Self::split_into_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
+        let a_blocks = Self::vec_blocks(a, self.cp.m, self.cp.n, m_block, n_block);
+        let b_blocks = Self::vec_blocks(b, self.cp.n, self.cp.p, n_block, p_block);
 
         let next_limit = match recursion_limit {
             RecursionLimit::Depth(depth) => RecursionLimit::Depth(depth.saturating_sub(1)),
@@ -640,7 +641,7 @@ impl<'a> MatMul<'a> {
         );
 
         let m_refs: Vec<MatRef<'_, f64>> = m_products.iter().map(|m| m.as_ref()).collect();
-        self.reconstruct_from_products(dst, m_block, p_block, &m_refs);
+        self.c_blocks_from_s_and_t(dst, m_block, p_block, &m_refs);
     }
 
     /// Computes C = A * B using the CP decomposition algorithm recursively with the specified parallel task switching mode and base matrix multiplication choice.
