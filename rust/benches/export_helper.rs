@@ -160,23 +160,28 @@ pub fn export_results_to_csv(
         },
     ];
 
+    let config_suffix = match recursion_limit {
+        RecursionLimit::Depth(level) => format!("level_{}", level),
+        RecursionLimit::Cutoff(cutoff) => format!("cutoff_{}", cutoff),
+    };
+
     for &algo in algorithms {
         let clean = algo.replace(['-', '.'], "_");
         mappings.push(ColumnMapping {
             header: format!("{}_seq", clean),
-            folder: format!("{}-{}_Sequential", algo, suffix),
+            folder: format!("{}-{}-{}_Sequential", algo, suffix, config_suffix),
         });
         mappings.push(ColumnMapping {
             header: format!("{}_dfs", clean),
-            folder: format!("{}-{}_DFS", algo, suffix),
+            folder: format!("{}-{}-{}_DFS", algo, suffix, config_suffix),
         });
         mappings.push(ColumnMapping {
             header: format!("{}_bfs", clean),
-            folder: format!("{}-{}_BFS", algo, suffix),
+            folder: format!("{}-{}-{}_BFS", algo, suffix, config_suffix),
         });
         mappings.push(ColumnMapping {
             header: format!("{}_hybrid", clean),
-            folder: format!("{}-{}_Hybrid", algo, suffix),
+            folder: format!("{}-{}-{}_Hybrid", algo, suffix, config_suffix),
         });
     }
 
@@ -212,6 +217,34 @@ pub fn export_results_to_csv(
             let row = existing.entry(key).or_default();
             for (header, val) in new_metrics {
                 row.insert(header, val);
+            }
+        }
+    }
+
+    // 1.5. Propagate baseline measurements to all other configurations of the same size
+    let base_headers = ["mkl_seq", "mkl_par", "faer_seq", "faer_par"];
+    for &size in sizes {
+        let mut size_base_timings = HashMap::new();
+        for &header in &base_headers {
+            let folder = match header {
+                "mkl_seq" => "MKL-Sequential",
+                "mkl_par" => "MKL-Parallel",
+                "faer_seq" => "Faer-Sequential",
+                "faer_par" => "Faer-Parallel",
+                _ => unreachable!(),
+            };
+            if let Some(t) = get_criterion_time(folder, size) {
+                size_base_timings.insert(header.to_string(), t);
+            }
+        }
+
+        if !size_base_timings.is_empty() {
+            for (k, row_metrics) in &mut existing {
+                if k.size == size {
+                    for (header, &t) in &size_base_timings {
+                        row_metrics.insert(header.clone(), t);
+                    }
+                }
             }
         }
     }

@@ -51,6 +51,39 @@ impl Benchmark {
         group.measurement_time(std::time::Duration::from_millis(measure_ms));
     }
 
+    /// Computes the total number of benchmarks to run based on sizes, configurations, targets, and algorithms.
+    fn compute_total_benchmarks(
+        &self,
+        sizes_len: usize,
+        configs: &[(RecursionLimit, String, String)],
+        targets: &[(BaseMatMul, &str, &str)],
+        algorithms: &[&str],
+    ) -> (usize, usize) {
+        let mut per_size = 0;
+        if self.run_sequential {
+            per_size += 2; // Dgemm-Sequential, Faer-Sequential
+        }
+        if self.run_parallel {
+            per_size += 2; // Dgemm-Parallel, Faer-Parallel
+        }
+        for (limit, _, _) in configs {
+            for _ in targets {
+                for _ in algorithms {
+                    if self.run_sequential {
+                        per_size += 1;
+                    }
+                    if self.run_parallel {
+                        per_size += 2; // DFS, BFS
+                        if let RecursionLimit::Depth(_) = limit {
+                            per_size += 1; // Hybrid
+                        }
+                    }
+                }
+            }
+        }
+        (sizes_len * per_size, per_size)
+    }
+
     /// Allocates a random `size × size` matrix.
     fn random_matrix(size: usize, rng: &mut impl Rng) -> Mat<f64> {
         Mat::from_fn(size, size, |_, _| rng.gen_range(-1.0..1.0))
@@ -153,10 +186,14 @@ impl Benchmark {
             BaseMatMul::Faer => "Faer",
             BaseMatMul::Dgemm => "Dgemm",
         };
+        let config_suffix = match recursion_limit {
+            RecursionLimit::Depth(level) => format!("level_{}", level),
+            RecursionLimit::Cutoff(cutoff) => format!("cutoff_{}", cutoff),
+        };
         if self.run_sequential {
             Self::register_bench(
                 group,
-                &format!("{}-{}/Sequential", algo, suffix),
+                &format!("{}-{}-{}/Sequential", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -174,7 +211,7 @@ impl Benchmark {
         if self.run_parallel {
             Self::register_bench(
                 group,
-                &format!("{}-{}/DFS", algo, suffix),
+                &format!("{}-{}-{}/DFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -182,7 +219,7 @@ impl Benchmark {
             );
             Self::register_bench(
                 group,
-                &format!("{}-{}/BFS", algo, suffix),
+                &format!("{}-{}-{}/BFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -191,7 +228,7 @@ impl Benchmark {
             if let RecursionLimit::Depth(_) = recursion_limit {
                 Self::register_bench(
                     group,
-                    &format!("{}-{}/Hybrid", algo, suffix),
+                    &format!("{}-{}-{}/Hybrid", algo, suffix, config_suffix),
                     size,
                     counter,
                     total,
@@ -218,19 +255,11 @@ impl Benchmark {
         sizes: &[usize],
         algorithms: &[&str],
         filename: &str,
-        base_choice: BaseMatMul,
-        recursion_limit: RecursionLimit,
+        configs: &[(RecursionLimit, String, String)],
+        targets: &[(BaseMatMul, &str, &str)],
     ) -> Result<(), std::io::Error> {
         // --- Compute total benchmark count upfront for progress display ---
-        // Each size contributes:
-        //   2 base variants (Dgemm + Faer) × (seq + par flags)
-        //   + each algo × (seq + 3 par modes)
-        let base_per_size =
-            (if self.run_sequential { 1 } else { 0 } + if self.run_parallel { 1 } else { 0 }) * 2; // Dgemm and Faer
-        let cp_per_algo =
-            (if self.run_sequential { 1 } else { 0 }) + (if self.run_parallel { 3 } else { 0 }); // DFS + BFS + Hybrid
-        let per_size = base_per_size + algorithms.len() * cp_per_algo;
-        let total = sizes.len() * per_size;
+        let (total, per_size) = self.compute_total_benchmarks(sizes.len(), configs, targets, algorithms);
 
         println!(
             "Running {} benchmarks across {} sizes ({} per size)...",
@@ -272,6 +301,7 @@ impl Benchmark {
             let a = Self::random_matrix(size, &mut rng);
             let b = Self::random_matrix(size, &mut rng);
 
+            // Run baseline benchmarks exactly once per size
             self.bench_base(
                 &mut group,
                 &a,
@@ -291,45 +321,63 @@ impl Benchmark {
                 total,
             );
 
-            for &(algo, ref cp) in &cps {
-                let mm = MatMul::with_cp(cp);
-                self.bench_cp(
-                    &mut group,
-                    &a,
-                    &b,
-                    size,
-                    algo,
-                    &mm,
-                    base_choice,
-                    recursion_limit,
-                    &mut counter,
-                    total,
-                );
+            // Run CP decomposition algorithms for all configs
+            for (limit, _, _) in configs {
+                for &(base_choice, _, _) in targets {
+                    for &(algo, ref cp) in &cps {
+                        let mm = MatMul::with_cp(cp);
+                        self.bench_cp(
+                            &mut group,
+                            &a,
+                            &b,
+                            size,
+                            algo,
+                            &mm,
+                            base_choice,
+                            *limit,
+                            &mut counter,
+                            total,
+                        );
+                    }
+                }
             }
             successful_sizes.push(size);
 
             // Checkpoint-save: export the results computed so far (without running plot script)
-            export_helper::export_results_to_csv(
-                &successful_sizes,
-                algorithms,
-                filename,
-                base_choice,
-                recursion_limit,
-                false,
-            )?;
+            for (limit, _, _) in configs {
+                for &(base_choice, _, _) in targets {
+                    export_helper::export_results_to_csv(
+                        &successful_sizes,
+                        algorithms,
+                        filename,
+                        base_choice,
+                        *limit,
+                        false,
+                    )?;
+                }
+            }
         }
 
         group.finish();
 
         if !successful_sizes.is_empty() {
-            export_helper::export_results_to_csv(
-                &successful_sizes,
-                algorithms,
-                filename,
-                base_choice,
-                recursion_limit,
-                self.run_plot,
-            )?;
+            // Write final results for all configs, only running the plot script on the last configuration
+            let last_idx = configs.len() * targets.len() - 1;
+            let mut idx = 0;
+            for (limit, _, _) in configs {
+                for &(base_choice, _, _) in targets {
+                    let is_last = idx == last_idx;
+                    export_helper::export_results_to_csv(
+                        &successful_sizes,
+                        algorithms,
+                        filename,
+                        base_choice,
+                        *limit,
+                        self.run_plot && is_last,
+                    )?;
+                    idx += 1;
+                }
+            }
         } else {
             println!("No matrix sizes were benchmarked.");
         }
@@ -405,10 +453,10 @@ fn main() {
 
     if plot_only {
         println!("Plot-only mode: Regenerating CSV results from cached Criterion data...");
-        for (limit, _file_prefix, label) in configs {
+        for (limit, _file_prefix, label) in &configs {
             for &(base, name, _suffix) in &targets {
                 if let Err(e) = export_helper::export_results_to_csv(
-                    &sizes, algorithms, &out_file, base, limit, true,
+                    &sizes, algorithms, &out_file, base, *limit, true,
                 ) {
                     eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
                 } else {
@@ -423,21 +471,13 @@ fn main() {
         println!("\n--- Running Matrix Multiplication Benchmarks ---");
         let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
 
-        for (limit, _file_prefix, label) in configs {
-            for &(base, name, _suffix) in &targets {
-                println!(
-                    "\n--- Benchmark Set: Using {} Base MatMul, {} ---",
-                    name, label
-                );
-                if let Err(e) = bench.run(&sizes, algorithms, &out_file, base, limit) {
-                    eprintln!("Failed to run {} benchmarks for {}: {:?}", name, label, e);
-                } else {
-                    println!(
-                        "{} ({}) benchmark results successfully written to {}",
-                        name, label, out_file
-                    );
-                }
-            }
+        if let Err(e) = bench.run(&sizes, algorithms, &out_file, &configs, &targets) {
+            eprintln!("Failed to run benchmarks: {:?}", e);
+        } else {
+            println!(
+                "All benchmark results successfully written to {}",
+                out_file
+            );
         }
     }
 
