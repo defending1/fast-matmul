@@ -80,6 +80,8 @@ if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_d
 else:
     output_dir = csv_dir
 
+os.makedirs(output_dir, exist_ok=True)
+
 output_path_png = os.path.join(output_dir, "base_matmul_spline.png")
 plt.savefig(output_path_png, dpi=300)
 print(f"Successfully generated spline plot at: {output_path_png}")

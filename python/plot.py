@@ -184,7 +184,10 @@ def load_ballard_data(mode_suffix: str) -> dict:
             return None
 
     try:
-        df_mkl = parse_matlab_vector(path, "MKL_0")
+        try:
+            df_mkl = parse_matlab_vector(path, "MKL_0")
+        except ValueError:
+            df_mkl = None
         df_strassen_1 = parse_matlab_vector(path, "STRASSEN_1")
         df_strassen_2 = parse_matlab_vector(path, "STRASSEN_2")
         df_strassen_3 = parse_matlab_vector(path, "STRASSEN_3")
@@ -204,6 +207,7 @@ def plot_ballard_lines(
     df_ballard_mkl: pd.DataFrame,
     strassen_dataframes: list,
     mode_label: str = "",
+    num_cores: int = 1,
 ) -> None:
     """Plot Ballard reference lines on a given axis.
 
@@ -212,19 +216,47 @@ def plot_ballard_lines(
         df_ballard_mkl: MKL Ballard data with size and time_ms columns.
         strassen_dataframes: List of (level, df) tuples for Strassen Ballard data.
         mode_label: Optional label suffix to append to the legend (e.g. 'DFS', 'BFS', 'Hybrid').
+        num_cores: Number of CPU cores to divide by in the parallel case.
     """
     suffix = f" {mode_label}" if mode_label else ""
-    entries = [("mkl_ballard", df_ballard_mkl, f"MKL{suffix} (Ballard)")]
+    entries = []
+
+    # Check if MKL (Ballard) was already plotted on this axis to avoid duplicates
+    mkl_already_plotted = False
+    for line in ax.get_lines():
+        lbl = line.get_label()
+        if lbl and "MKL" in lbl and "Ballard" in lbl:
+            mkl_already_plotted = True
+            break
+
+    if df_ballard_mkl is not None and not mkl_already_plotted:
+        entries.append(("mkl_ballard", df_ballard_mkl, f"MKL{suffix} (Ballard)"))
+
     for level, df in strassen_dataframes:
         entries.append(
             (f"strassen_ballard_{level}", df, f"Strassen {level}{suffix} (Ballard)")
         )
 
     for name, df, label in entries:
-        style = BALLARD_STYLES.get(name, BALLARD_STYLES.get("strassen_ballard_1"))
+        style = dict(BALLARD_STYLES.get(name, BALLARD_STYLES.get("strassen_ballard_1")))
+
+        # Customize style based on parallel mode label to distinguish BFS, DFS, Hybrid
+        if name != "mkl_ballard":
+            if mode_label == "DFS":
+                style["linestyle"] = "-."
+                style["marker"] = "^"
+            elif mode_label == "BFS":
+                style["linestyle"] = ":"
+                style["marker"] = "v"
+            elif mode_label == "Hybrid":
+                style["linestyle"] = "-"
+                style["marker"] = "D"
+
         time_s = df["time_ms"] / 1000.0
         n = df["size"]
         gflops = (2 * n**3 - 2 * n**2) / (time_s * 1e9)
+        if num_cores > 1:
+            gflops = gflops / num_cores
         ax.plot(n, gflops, label=label, markersize=5.0, **style)
 
 
@@ -459,14 +491,7 @@ def plot_df_core(
 
         # Map column name to Ballard mode suffix
         if is_col_parallel:
-            if "_dfs" in col:
-                active_modes.add("dfs")
-            elif "_bfs" in col:
-                active_modes.add("bfs")
-            elif "_hybrid" in col:
-                active_modes.add("hybrid")
-            else:
-                active_modes.add("dfs")
+            active_modes.update(["dfs", "bfs", "hybrid"])
         else:
             active_modes.add("seq")
 
@@ -481,14 +506,21 @@ def plot_df_core(
                     strassen_dfs.append((level, data["strassen"][level - 1]))
 
             plot_ballard_lines(
-                ax, data["mkl"], strassen_dfs, mode_label=mode_labels.get(m, m.upper())
+                ax,
+                data["mkl"],
+                strassen_dfs,
+                mode_label=mode_labels.get(m, m.upper()),
+                num_cores=num_cores if m != "seq" else 1,
             )
 
     # Configure axes
     ax.set_xscale("log", base=2)
     ax.set_yscale("linear")
     ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    ax.set_ylabel(r"Effective GFLOPS", labelpad=10)
+    if mode == "parallel":
+        ax.set_ylabel(r"Effective GFLOPS / core", labelpad=10)
+    else:
+        ax.set_ylabel(r"Effective GFLOPS", labelpad=10)
     subtitle = ""
     if recursion_level is not None and not pd.isna(recursion_level):
         subtitle = (
@@ -698,14 +730,7 @@ def generate_grid_plot_core(
                 continue
 
             if is_par(col):
-                if "_dfs" in col:
-                    active_modes.add("dfs")
-                elif "_bfs" in col:
-                    active_modes.add("bfs")
-                elif "_hybrid" in col:
-                    active_modes.add("hybrid")
-                else:
-                    active_modes.add("dfs")
+                active_modes.update(["dfs", "bfs", "hybrid"])
             else:
                 active_modes.add("seq")
 
@@ -729,6 +754,7 @@ def generate_grid_plot_core(
                     data["mkl"],
                     strassen_dfs,
                     mode_label=mode_labels.get(m, m.upper()),
+                    num_cores=num_cores if m != "seq" else 1,
                 )
 
         if has_lines:
@@ -749,6 +775,8 @@ def generate_grid_plot_core(
             ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
         for ax in axs[:, 0]:
             ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
+        for ax in axs[:, 1]:
+            ax.set_ylabel(r"Effective GFLOPS / core", labelpad=8)
 
         suptitle = "Matrix Multiplication Performance Grid Comparison"
         if subtitle:
@@ -757,7 +785,7 @@ def generate_grid_plot_core(
         plt.tight_layout()
         top_val = 0.84 if subtitle else 0.88
         fig.subplots_adjust(
-            hspace=0.12, wspace=0.32, top=top_val, bottom=0.08, left=0.08, right=0.92
+            hspace=0.12, wspace=0.48, top=top_val, bottom=0.08, left=0.08, right=0.92
         )
     else:
         filter_fn = is_seq if mode == "sequential" else is_par
@@ -771,7 +799,10 @@ def generate_grid_plot_core(
         # Shared labels
         axs[1].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
         for ax in axs:
-            ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
+            if mode == "parallel":
+                ax.set_ylabel(r"Effective GFLOPS / core", labelpad=8)
+            else:
+                ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
 
         suptitle = "Matrix Multiplication Performance Grid Comparison"
         if subtitle:
@@ -1031,7 +1062,7 @@ def main() -> None:
 
     csv_path = args.csv_path
     if csv_path is None:
-        csv_dir = os.path.join(project_root, "rust", "generated", "csv")
+        csv_dir = os.path.join(project_root, "generated", "csv")
         job_id = (
             os.environ.get("SLURM_JOB_ID")
             or os.environ.get("PBS_JOBID")

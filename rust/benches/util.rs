@@ -161,3 +161,23 @@ pub fn fit_and_differentiate_spline(
 
     Ok((gflops, derivatives))
 }
+
+/// Helper function to dynamically find the project root directory.
+/// Resolves root by checking if the CWD or any of its parents contain the `rust` subdirectory with a Cargo.toml.
+pub fn get_project_root() -> std::path::PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    if cwd.join("rust").join("Cargo.toml").exists() {
+        cwd
+    } else if cwd.file_name().is_some_and(|n| n == "rust") {
+        cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
+    } else {
+        let mut dir = cwd.clone();
+        while dir.pop() {
+            if dir.join("rust").join("Cargo.toml").exists() {
+                return dir;
+            }
+        }
+        cwd
+    }
+}
+

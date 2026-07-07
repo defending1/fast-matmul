@@ -393,11 +393,14 @@ fn main() {
         let job_id = std::env::var("SLURM_JOB_ID")
             .or_else(|_| std::env::var("PBS_JOBID"))
             .or_else(|_| std::env::var("RUN_ID"));
-        if let Ok(id) = job_id {
-            format!("generated/csv/benchmark_results_{}.csv", id)
+        let root = util::get_project_root();
+        let csv_dir = root.join("generated").join("csv");
+        let path = if let Ok(id) = job_id {
+            csv_dir.join(format!("benchmark_results_{}.csv", id))
         } else {
-            "generated/csv/benchmark_results.csv".to_string()
-        }
+            csv_dir.join("benchmark_results.csv")
+        };
+        path.to_string_lossy().to_string()
     };
 
     if plot_only {
