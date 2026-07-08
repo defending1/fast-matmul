@@ -400,9 +400,45 @@ fn main() {
     let run_parallel = has_par_flag || !has_seq_flag;
     let run_plot = args.iter().any(|arg| arg == "--plot");
 
+    // Parameter parsing
+    let mut param_cutoff = None;
+    let mut param_level = None;
+    let mut param_size = None;
+    let mut param_out = None;
+
+    let mut idx_arg = 0;
+    while idx_arg < args.len() {
+        if args[idx_arg] == "--cutoff" && idx_arg + 1 < args.len() {
+            param_cutoff = args[idx_arg + 1].parse::<usize>().ok();
+            idx_arg += 2;
+        } else if args[idx_arg] == "--level" && idx_arg + 1 < args.len() {
+            param_level = args[idx_arg + 1].parse::<usize>().ok();
+            idx_arg += 2;
+        } else if args[idx_arg] == "--size" && idx_arg + 1 < args.len() {
+            param_size = args[idx_arg + 1].parse::<usize>().ok();
+            idx_arg += 2;
+        } else if (args[idx_arg] == "--out" || args[idx_arg] == "-o") && idx_arg + 1 < args.len() {
+            param_out = Some(args[idx_arg + 1].clone());
+            idx_arg += 2;
+        } else {
+            idx_arg += 1;
+        }
+    }
+
+    let is_param_mode = param_cutoff.is_some() || param_level.is_some() || param_size.is_some();
+
     // Running with --full will dynamically check system memory and stop before exceeding limits.
-    let n_limit = if full { 15 } else { 13 };
-    let sizes: Vec<usize> = (1..=n_limit).map(|n| 1usize << n).collect(); // 2, 4, ..., 2^N
+    let sizes: Vec<usize> = if is_param_mode {
+        if let Some(s) = param_size {
+            vec![s]
+        } else {
+            let n_limit = if full { 15 } else { 13 };
+            (1..=n_limit).map(|n| 1usize << n).collect()
+        }
+    } else {
+        let n_limit = if full { 15 } else { 13 };
+        (1..=n_limit).map(|n| 1usize << n).collect()
+    };
 
     let cutoffs = [256, 512, 1024, 2048];
     let recursion_levels = [1, 2, 3];
@@ -413,7 +449,41 @@ fn main() {
         (BaseMatMul::Dgemm, "Dgemm", "dgemm"),
     ];
 
-    let configs = {
+    let configs = if is_param_mode {
+        let mut list = Vec::new();
+        if let Some(cutoff) = param_cutoff {
+            list.push((
+                RecursionLimit::Cutoff(cutoff),
+                format!("benchmark_cutoff_{}", cutoff),
+                format!("cutoff: {}", cutoff),
+            ));
+        }
+        if let Some(level) = param_level {
+            list.push((
+                RecursionLimit::Depth(level),
+                format!("benchmark_level_{}", level),
+                format!("level: {}", level),
+            ));
+        }
+        if list.is_empty() {
+            // Default configs if cutoff and level are both unspecified
+            for &cutoff in &cutoffs {
+                list.push((
+                    RecursionLimit::Cutoff(cutoff),
+                    format!("benchmark_cutoff_{}", cutoff),
+                    format!("cutoff: {}", cutoff),
+                ));
+            }
+            for &level in &recursion_levels {
+                list.push((
+                    RecursionLimit::Depth(level),
+                    format!("benchmark_level_{}", level),
+                    format!("level: {}", level),
+                ));
+            }
+        }
+        list
+    } else {
         let mut list = Vec::new();
         for &cutoff in &cutoffs {
             list.push((
@@ -432,7 +502,9 @@ fn main() {
         list
     };
 
-    let out_file = {
+    let out_file = if let Some(out) = param_out {
+        out
+    } else {
         let job_id = std::env::var("SLURM_JOB_ID")
             .or_else(|_| std::env::var("PBS_JOBID"))
             .or_else(|_| std::env::var("RUN_ID"));
