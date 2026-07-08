@@ -8,6 +8,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 
+# Create logs directory if it doesn't exist
+mkdir -p "${PROJECT_ROOT}/generated/logs"
+
+
+
 ARCH="znver3"
 
 # Parse command-line arguments:

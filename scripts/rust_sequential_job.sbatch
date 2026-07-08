@@ -35,9 +35,6 @@ MATRIX_SIZE=$3 # e.g., 1024
 ARCH="znver3"
 MODE_FLAG="--seq"
 
-# Create logs directory if it doesn't exist
-mkdir -p "${PROJECT_ROOT}/generated/logs"
-
 # Execute the specific benchmark
 if [ "${PARAM_TYPE}" = "cutoff" ]; then
 echo "Running benchmark with cutoff ${PARAM_VAL} and size ${MATRIX_SIZE} on ${ARCH}"
