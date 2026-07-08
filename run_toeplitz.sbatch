@@ -7,7 +7,6 @@
 #SBATCH --time=08:30:00
 #SBATCH --mem=128G
 #SBATCH --output=benchmark_seq_%j.log
-#SBATCH --exclusive
 
 # Ensure we exit on any error
 set -e

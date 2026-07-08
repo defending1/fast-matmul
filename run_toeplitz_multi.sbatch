@@ -8,7 +8,6 @@
 #SBATCH --mem=64G                                # Allocate 64GB of Host RAM (for f64 matrices)
 #SBATCH --time=8-00:30:00
 #SBATCH --output=fast_matmul_multi_%j.log
-#SBATCH --exclusive                              # Exclusive node allocation for clean benchmarking
 
 # Ensure we exit on any error
 set -e

@@ -269,7 +269,9 @@ impl<'a> MatMul<'a> {
     ) -> Mat<f64> {
         let mut a_comb = Mat::<f64>::zeros(a_blocks[0].nrows(), a_blocks[0].ncols());
         let mut b_comb = Mat::<f64>::zeros(b_blocks[0].nrows(), b_blocks[0].ncols());
+        // S_r in report
         Self::combine_blocks_into(a_comb.as_mut(), a_blocks, self.cp.u.col(l));
+        // T_r in report
         Self::combine_blocks_into(b_comb.as_mut(), b_blocks, self.cp.v.col(l));
 
         let mut m_prod = Mat::<f64>::zeros(a_comb.nrows(), b_comb.ncols());
