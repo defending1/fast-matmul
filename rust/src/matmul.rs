@@ -312,7 +312,11 @@ impl<'a> MatMul<'a> {
     ) {
         dst.fill(0.0);
         for (block, &coeff) in blocks.iter().zip(coeffs.iter()) {
-            if coeff != 0.0 {
+            if coeff == 1.0 {
+                dst += block;
+            } else if coeff == -1.0 {
+                dst -= block;
+            } else if coeff != 0.0 {
                 dst += Scale(coeff) * block;
             }
         }
@@ -522,15 +526,19 @@ impl<'a> MatMul<'a> {
         m_products: &[MatRef<'_, f64>],
     ) {
         c.fill(0.0);
-        for (l, m_prod) in m_products.iter().enumerate() {
-            for i in 0..self.cp.m {
-                for j in 0..self.cp.p {
+        for i in 0..self.cp.m {
+            for j in 0..self.cp.p {
+                let mut block = c.as_mut().get_mut(
+                    i * m_block..(i + 1) * m_block,
+                    j * p_block..(j + 1) * p_block,
+                );
+                for (l, m_prod) in m_products.iter().enumerate() {
                     let coeff = self.cp.w[(i * self.cp.p + j, l)];
-                    if coeff != 0.0 {
-                        let mut block = c.as_mut().get_mut(
-                            i * m_block..(i + 1) * m_block,
-                            j * p_block..(j + 1) * p_block,
-                        );
+                    if coeff == 1.0 {
+                        block += m_prod;
+                    } else if coeff == -1.0 {
+                        block -= m_prod;
+                    } else if coeff != 0.0 {
                         block += Scale(coeff) * m_prod;
                     }
                 }
