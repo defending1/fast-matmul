@@ -19,6 +19,12 @@ pub fn run_benchmark_minstant<F, O>(
 where
     F: FnMut() -> O,
 {
+    let warmup_duration = std::time::Duration::from_millis(2);
+    let warmup_start = minstant::Instant::now();
+    while warmup_start.elapsed() < warmup_duration {
+        let _ = f();
+    }
+
     let start = minstant::Instant::now();
     let _ = f();
     start.elapsed().as_secs_f64()
@@ -134,6 +140,12 @@ pub fn fit_and_differentiate_spline(
         let size = n as usize;
         let a = random_matrix(size, size);
         let b = random_matrix(size, size);
+
+        let warmup_duration = std::time::Duration::from_millis(2);
+        let warmup_start = std::time::Instant::now();
+        while warmup_start.elapsed() < warmup_duration {
+            let _ = base_matmul(&a, &b, false, BaseMatMul::Faer);
+        }
 
         let start = std::time::Instant::now();
         let _ = base_matmul(&a, &b, false, BaseMatMul::Faer);

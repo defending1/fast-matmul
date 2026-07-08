@@ -84,6 +84,17 @@ bool CheckSizeSupported(int m, int k, int n) {
 // If run_check is true, then it also
 void SingleBenchmark(std::ostream &os, int m, int k, int n, int num_steps,
                      int algorithm) {
+  // Warmup for 2ms
+  auto warmup_start = std::chrono::high_resolution_clock::now();
+  do {
+    Matrix<double> A = RandomMatrix<double>(m, k);
+    Matrix<double> B = RandomMatrix<double>(k, n);
+    Matrix<double> C1(m, n);
+    RunAlgorithm(algorithm, A, B, C1, num_steps);
+  } while (std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::high_resolution_clock::now() - warmup_start)
+               .count() < 2);
+
   // Run a set number of trials and pick the median time.
   int num_trials = 1;
   std::vector<double> times(num_trials);

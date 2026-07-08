@@ -23,6 +23,15 @@ double Time(std::function<void ()> func) {
       std::chrono::duration<float, std::chrono::milliseconds::period>;
   static_assert(std::chrono::treat_as_floating_point<FpMilliseconds::rep>::value, 
 		"Rep required to be floating point");
+  // Warmup for 2ms
+  auto warmup_start = std::chrono::high_resolution_clock::now();
+  do {
+    func();
+  } while (std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::high_resolution_clock::now() - warmup_start)
+               .count() < 2);
+
+  // Measure
   auto t1 = std::chrono::high_resolution_clock::now();
   func();
   auto t2 = std::chrono::high_resolution_clock::now();
