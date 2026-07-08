@@ -4,8 +4,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=120G
 #SBATCH --time=02:00:00
 #SBATCH --output=generated/logs/gpu_matmul_%j.log
 
@@ -33,21 +33,21 @@ PARAM_VAL=$2   # e.g., 256 or 1
 MATRIX_SIZE=$3 # e.g., 1024
 
 ARCH="znver3"
-MODE_FLAG="--par"
+MODE_FLAG="--seq"
 
 # Create logs directory if it doesn't exist
 mkdir -p "${PROJECT_ROOT}/generated/logs"
 
 # Execute the specific benchmark
 if [ "${PARAM_TYPE}" = "cutoff" ]; then
-    echo "Running benchmark with cutoff ${PARAM_VAL} and size ${MATRIX_SIZE} on ${ARCH}"
-    ./generated/bin/bench_${ARCH} ${MODE_FLAG} --cutoff ${PARAM_VAL} --size ${MATRIX_SIZE}
+echo "Running benchmark with cutoff ${PARAM_VAL} and size ${MATRIX_SIZE} on ${ARCH}"
+./generated/bin/bench_${ARCH} ${MODE_FLAG} --cutoff ${PARAM_VAL} --size ${MATRIX_SIZE}
 elif [ "${PARAM_TYPE}" = "level" ]; then
-    echo "Running benchmark with level ${PARAM_VAL} and size ${MATRIX_SIZE} on ${ARCH}"
-    ./generated/bin/bench_${ARCH} ${MODE_FLAG} --level ${PARAM_VAL} --size ${MATRIX_SIZE}
+echo "Running benchmark with level ${PARAM_VAL} and size ${MATRIX_SIZE} on ${ARCH}"
+./generated/bin/bench_${ARCH} ${MODE_FLAG} --level ${PARAM_VAL} --size ${MATRIX_SIZE}
 else
-    echo "Error: Unknown parameter type ${PARAM_TYPE}"
-    exit 1
+echo "Error: Unknown parameter type ${PARAM_TYPE}"
+exit 1
 fi
 
 echo "Job completed successfully!"
