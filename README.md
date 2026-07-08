@@ -49,8 +49,7 @@ Options:
 
 ## Instructions for running on Toeplitz cluster
 
-To run benchmarks on the Mathematics Department's Toeplitz cluster with maximum
-performance and reproducibility:
+To run benchmarks on the Mathematics Department's Toeplitz cluster:
 
 ### 1. Pre-compilation
 
@@ -81,32 +80,65 @@ This script will output:
   `rust/generated/bin/base_matmul_curves_${architecture}`.
 - C++ binaries to `build/strassen` and `build/matmul_benchmarks`.
 
-### 2. Running Batch Jobs via SLURM
+### 2. Running Spawned Batch Jobs via SLURM
 
-After pre-compiling the binaries, you can submit the batch job using
-`run_toeplitz.sbatch`. The script executes the pre-compiled binaries directly
-and avoids recompilation overhead on the compute nodes.
+Rather than running all matrix sizes sequentially in a single monolithic job
+(which risks timeout or memory exhaustion), we spawn a separate batch job for
+each matrix size.
 
-You can customize which project benchmarks to execute by passing an argument to
-`sbatch` (defaulting to `both` if omitted):
+We provide two scripts to manage job submission for Rust and C++ benchmarks:
 
-* **Run both C/C++ and Rust benchmarks sequentially** (Option A, recommended for fair head-to-head comparison on the same node):
-  ```bash
-  sbatch run_toeplitz.sbatch both [architecture]
-  # or simply:
-  sbatch run_toeplitz.sbatch
-  ```
-* **Run only Rust benchmarks**:
-  ```bash
-  sbatch run_toeplitz.sbatch rust [architecture]
-  ```
-* **Run only C/C++ benchmarks**:
-  ```bash
-  sbatch run_toeplitz.sbatch c
-  ```
-  *(Note: C++ benchmarks do not depend on the Rust architecture binaries)*
+#### A. Spawning Rust Benchmark Jobs
 
-If the `[architecture]` argument is omitted, the script automatically detects the host CPU at runtime, selecting the target binary or falling back to `native`.
+To spawn benchmark jobs for all matrix sizes ($2^1, 2^2, \dots, 2^{15}$) for the
+Rust project:
+
+```bash
+./scripts/submit_rust_jobs.sh
+```
+
+- **Options**:
+  - Pass `--no-compile` to skip the compilation step if the project is already
+    compiled (e.g., if you ran `pre-setup.sh` beforehand):
+    ```bash
+    ./scripts/submit_gpu_jobs.sh --no-compile
+    ```
+
+#### B. Spawning C/C++ Benchmark Jobs
+
+To spawn benchmark jobs for all matrix sizes ($2^1, 2^2, \dots, 2^{15}$) for the
+C/C++ project:
+
+```bash
+./scripts/submit_c_jobs.sh
+```
+
+- **Options**:
+  - Pass `--no-compile` to skip the compilation step:
+    ```bash
+    ./scripts/submit_c_jobs.sh --no-compile
+    ```
+
+The jobs are submitted to the SLURM `gpu` partition, allocating 16 CPU cores per
+task (`cpus-per-task=16`), a GPU node, and up to 64GB of RAM per matrix size.
+Log files are saved to `generated/logs/` (e.g.,
+`generated/logs/gpu_matmul_%j.log` and `generated/logs/c_matmul_%j.log`).
+
+#### C. Merging C++ Benchmark Results
+
+After all C++ benchmark jobs are complete, you can merge and convert the results
+into CSV format by running:
+
+```bash
+python3 scripts/merge_c_results.py
+```
+
+This script will look for all output text files under `benchmarks/generated/`
+and output:
+
+- `benchmarks/generated/benchmarks_merged.csv` (Long/Tidy format)
+- `benchmarks/generated/benchmarks_merged_wide.csv` (Wide format with algorithms
+  and modes as columns)
 
 ## Fast matrix multiplication
 

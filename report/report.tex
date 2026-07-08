@@ -152,6 +152,9 @@ crate (library) that given matrices $ A,B \in \R^n$ computes their product $ C=A
 {\setlength{\parskip}{0em}
 \tableofcontents}
 
+\section{Introduction}
+
+
 \section{Notation and tensor preliminaries}
 
 The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
@@ -194,7 +197,6 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 
 \section{Fast matrix multiplication}
 
-
 Matrix multiplication is a bilinear operation. \todo{explain}
 We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between a
 matrix $ \Tm{A} \in \R^{m\times n} $ with $ \Tm{B} \in \R^{n\times p} $. Fixing the natural
@@ -206,7 +208,7 @@ multiplication $ \angb{m,n,p} $ such that
 \Vec(\Tm{C}^{\top}) = \Tn{X} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
 .\end{equation}
 Note that we fix the linear order on $ A $ and $ B $, while we fix the reverse ordering on $ C $ by
-applying the transpose operation\todo{why}.
+applying the transpose operation.
 
 \todo{Tensor definition}
 
@@ -283,6 +285,12 @@ C_{11} &= M_1 + M_2 &\qquad C_{12} &= M_3 + M_4 \\
 C_{21} &= M_5 + M_6 &\qquad C_{22} &= M_7 + M_8
 \end{aligned}
 \]
+
+The number of flops performed by standard matrix multiplication for $ N\times N $ matrices is $ T(N)
+= 8T(\frac{N}{2}) + 4(\frac{N}{2})^2$ for $ N>1 $. This can be solved by the master method to get
+$ T(N)  = 2N^3 - N^2 $, where we assume that N is a power of two. In Section \ref{sec:dynpeel} we
+explain how to handle all dimensions.
+
 For example, when $ m=n=p=2 $, we get the tensor with frontal slices
 \[
 \Mx{X}_1 = \begin{bmatrix}
@@ -342,9 +350,11 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 
 
 \subsection{Strassen algorithm using CP}
+\label{sec:cpstrassen}
 
+The idea of fast matrix multiplication algorithms is to perform fewer recursive matrix
+multiplications at the expense of more matrix additions. The most well known fast algorithm is due to Strassen, and follows the same block structure:
 
-The most well known fast algorithm is due to Strassen, and follows the same block structure:
 \begin{align*}
 S_1 &= A_{11} + A_{22} & S_2 &= A_{21} + A_{22} & S_3 &= A_{11} \\
 S_4 &= A_{22} & S_5 &= A_{11} + A_{12} & S_6 &= A_{21} - A_{11} \\
@@ -359,28 +369,60 @@ C_{11} &= M_1 + M_4 - M_5 + M_7 & C_{12} &= M_3 + M_5 \\
 C_{21} &= M_2 + M_4 & C_{22} &= M_1 - M_2 + M_3 + M_6
 \end{align*}
 
+This algorithm uses $ 7 $ matrix multiplications and $ 18 $ matrix additions. The number of flops
+performed by the algorithm is $ T(N) = 7T(\frac{N}{2}) + 18(\frac{N}{2})^2$ for $ N>1 $, solving the
+recursion the complexity is $ T(N) = 7N^{\log_2 7} - 6N^2 = O(N^{\log_2 7}) = O(N^{2.81}) $.
+
 \todo{complete}
+
+
+There are natural extensions to Strassen algorithm:
+
+\begin{enumerate}
+  \item We can't use less than 7 number of additions for $ \angb{2,2,2} $.
+  \item Reduce the number of addition from 18 down to 15, which leads to Strassen-Winograd algorithm
+    \todo{cite}.
+  \item We can change constant on the leading term by chosing a bigger base case dimension (and
+    using the standard algorithm (also called \emph{gemm}) on the base case).
+  \item We can use blocking schemes different from $ \angb{2,2,2} $.
+\end{enumerate}
+
+\subsection{Fast algorithms as low-rank tensor decomposition}
+
+Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A bilinear form is a mapping $ f : X \times Y \to
+Z$ that is linear in each entry, in other words such that $ f(x, \cdot) $ and $ f(\cdot,y) $ are linear for all
+$ x\in X $ and $ y\in Y $. Any bilinear form can be represented by a matrix $ M $ of coefficients: $
+f(x,y) = x^{\top}My = \sum_i \sum_j m_{ij}x_iy_j $, and we can write it component-wise using a
+tensor $ \Tn{t} $ of coefficients $ t_{ijk} $
+\begin{equation}
+  f_k(x,y) = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j, \quad \text{ for all } 1\le k\le K,
+\end{equation}
+or in more succint tensor notation, $ f = \Tn{x} \ttm[1] x \ttm[2] y $.
+
+\todo{Extend and move before defining matmul formula}
 
 \section{Implementation and practical consideration}
 
 \subsection{Algorithm schema}
 
 We now discuss the algorithm schema for Strassen algorithm for clarity, though results generalize
-easily for any $ \angb{m,n,p} $ base case.
+easily for any $ \angb{m,n,p} $ base case. Algorithm \ref{alg:strassen} shows our implementation of
+Strassen's algorithm, which easily extends to other CP algorithms by changing base conditions and
+block sizes---this is how it is implemented in practice.
 
 \begin{algorithm}[ht!]
+\caption{Strassen algorithm using CP factorization.}
 \label{alg:strassen}
-\caption{Strassen algorithm.}
 \begin{algorithmic}[1]
 \Procedure{Strassen}{$ A,B, N $}
-  \If{stop\_recursing is True}
+\If{\Call{stop-recursing}{} is True}
     \State \Return{$ A\cdot B $}
   \EndIf
   \If{$ N = 2 $}
-  \State Strassen base case
+  \State \Call{Strassen-Base-Matmul}{$ A,B $}
   \EndIf
   \If{$ N \mod 2 > 0 $}
-    \State dynamic\_peeling($A,B,N$) \Comment{Recursive call on peeled blocks.}
+    \State \Call{dynamic-peeling}{$A,B,N$} \Comment{Recursive call on peeled blocks.}
   \EndIf
   \State Compute $ \vec(A) $ and $ \vec(B) $ with block size $ \frac{N}{2} $.
   \For{$ r = 1, \ldots, R $}
@@ -405,39 +447,14 @@ easily for any $ \angb{m,n,p} $ base case.
 \end{algorithm}
 
 
-The function \texttt{cp\_matmul} comprises into the following submodules:
-
-\begin{enumerate}
-  \item \texttt{dynamic\_peeling} is described in Section \ref{sec:dynpeel}.
-  \item \texttt{split\_into\_blocks} partitions the matrices $ A $ and $ B $ into subblocks and
-    return them into a flattened array of nodes. For example, at the first iteration of Strassen we
-    might have:
-\begin{equation*}
-  A = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, last-row, margin, xdots/horizontal-labels]
-    & \Hbrace{2}{2^n} &  \\
-    & & &\Vbrace{6}{2^n}  \\
-    & A_{11} & A_{12} & \\
-    & & & \\ \hline
-    & & & \\
-    & A_{21} & A_{22} &  \\
-    & & & \\
-    & \Hbrace{1}{2^{n-1}} &
-  \end{bNiceArray} \qquad,
-\end{equation*}
-the returned blocks are flattened in row-major order, in this case as $ \left[A_{11}, A_{12}, A_{21},
-A_{22}\right] $.
-\item \texttt{compute\_block\_products} Computes the intermediate matrix products $ M_r = S_r \cdot
-  T_r$.
-\end{enumerate}
-
 \subsection{Toeplitz cluster}
 
 The project experiments were executed on Toeplitz cluster on \todo{node specs}.
 
 \subsection{Technical overview}
 
-The project burns as a Rust porting of the c++ project made by Benson and Ballard summarized in
-\cite{bensonballard2015}, pubblicaly available in the relative repository under BSD 2-Clause. They
+The implementation consists in a Rust porting of the c++ project made by Benson and Ballard summarized in
+\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. They
 provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
 multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
 computation, and OpenMP for parallelization.
@@ -451,12 +468,6 @@ while the other uses Lapack and MKL Dgemm, and OpenMP for parallelization.
 
 Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
 decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
-
-We aim to understand how the choice of the base matrix multiplication impacts performance of fast
-algorithms. To so so, we compare Faer
-
-
-
 
 
 Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
@@ -525,7 +536,32 @@ The final block matrix product is computed directly through a combination of the
 Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix
 multiplication, while all other terms are computed via standard matrix multiplication.
 
+
+
 \section{Parallel algorithms for shared memory}
+
+Matrix multiplication is a problem subject to both computational and memory bound. The first is
+limited by the amount of computation the device can handle (i.e cores,cpu/gpu speed), while the
+latter by physical storage of the matrices (i.e available RAM memory). In a parallel implemntation,
+when dealing with recursive algorithms which use divide-et-impera (like Strassen), it is important
+in practice to balance algorithmic load between threads to avoid overhead caused by both taking
+recursive branches and doing parallel matrix multiplication. To address this issue, we adopt the
+scheduling schema suggested by Benson and Ballard in their work~\cite{bensonballard2015}.
+
+\section{Finding the optimal recursive cutoff}
+
+In divide et impera algorithms such as Strassen, we can't afford taking many recursive stes, as
+spawning many children constitutes a significant recursive overhead.
+Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard gemm.
+We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
+under a certain size, the latter is taking a fixed number $ L $ of recursions.
+The authors in~\cite{bensonballard2015} explain an euristical process for finding the optimal cutoff
+size, which can be resumed in looking at the performance plot of the gemm function, where (figure)
+the function exibits a ramp-up and then flatten for large dimensions. They take a
+recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
+manually by the authors. During the experimentation we developed a function to plot this curve, and
+its derivative (using splines) to automatically find this size. In practice, we never use this as we
+believe that our code is not efficient enough to implement this strategy.
 
 \subsection{Implementation}
 
@@ -556,10 +592,12 @@ We use Rust's Rayon to handle parallelization, and we can summarize the parallel
 \end{figure}
 
 
-\subsection{Benchmarking}
+\section{Experimental results}
 
-All benchmarks are run with Rust's Criterion library which performs warm-up before doing
-measurements. In order to compare the performance of matrix multiplication algorithms with different
+\subsection{Metrics}
+
+All benchmarks are recorded using Rust's system clock, performing warm-up before doing measuring
+each matrix multiplication. In order to compare the performance of matrix multiplication algorithms with different
 ocmputational costs, we use the \emph{effective} GFLOPS metric for $ \angb{m,n,r} $ matrix
 multiplication:
 \begin{equation}
@@ -570,6 +608,13 @@ multiplications and additions performed for classical matrix multiplication. Thi
 compare all of the algorithms on an inverse-time scale, normalized by problem size
 \cite{bensonballard2015}. For fast algorithms, considering both multiplications and additions in the metric is more
 accurate than taking multiplications only \cite{commavoidingstrass}.
+
+
+\subsection{Measuring impact of base gemm}
+
+We aim to understand how the choice of the base matrix multiplication impacts performance of fast
+algorithms. To so so, we compare Faer
+
 
 
 \clearpage
