@@ -137,11 +137,17 @@ void BenchmarkSet(std::ostream &os, std::vector<int> &m_vals,
   os << std::endl << std::endl;
 }
 
-void SquareTest(std::ostream &os, bool full) {
+// Run a set of benchmarks comparing MKL and Strassen for square matrices.
+// If size_opt > 0, only that size is benchmarked.
+void SquareTest(std::ostream &os, bool full, int size_opt = -1) {
   std::vector<int> m_vals;
-  int limit = full ? 32768 : 2048;
-  for (int i = 2; i <= limit; i *= 2) {
-    m_vals.push_back(i);
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
+    int limit = full ? 32768 : 8192;
+    for (int i = 2; i <= limit; i *= 2) {
+      m_vals.push_back(i);
+    }
   }
   std::vector<int> num_levels = {0};
   BenchmarkSet(os, m_vals, m_vals, m_vals, num_levels, MKL);
@@ -150,11 +156,17 @@ void SquareTest(std::ostream &os, bool full) {
   return;
 }
 
-void SquareTestPar(std::ostream &os, bool full) {
+// Run a set of parallel benchmarks comparing MKL and Strassen for square matrices.
+// If size_opt > 0, only that size is benchmarked.
+void SquareTestPar(std::ostream &os, bool full, int size_opt = -1) {
   std::vector<int> m_vals;
-  int limit = full ? 32768 : 2048;
-  for (int i = 2; i <= limit; i *= 2) {
-    m_vals.push_back(i);
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
+    int limit = full ? 32768 : 8192;
+    for (int i = 2; i <= limit; i *= 2) {
+      m_vals.push_back(i);
+    }
   }
 
   std::vector<int> num_levels = {0};
@@ -166,10 +178,16 @@ void SquareTestPar(std::ostream &os, bool full) {
   BenchmarkSet(os, m_vals, m_vals, m_vals, num_levels, STRASSEN);
 }
 
-void OuterTestPar(std::ostream &os) {
+// Run a parallel outer-product-like benchmark.
+// If size_opt > 0, only that size is benchmarked.
+void OuterTestPar(std::ostream &os, int size_opt = -1) {
   std::vector<int> m_vals;
-  for (int i = 3000; i <= 18000; i += 500) {
-    m_vals.push_back(i);
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
+    for (int i = 3000; i <= 18000; i += 500) {
+      m_vals.push_back(i);
+    }
   }
   std::vector<int> k_vals(m_vals.size(), 2800);
 
@@ -181,10 +199,16 @@ void OuterTestPar(std::ostream &os) {
   BenchmarkSet(os, m_vals, k_vals, m_vals, num_levels, FAST424_26_257);
 }
 
-void TSSquareTestPar(std::ostream &os) {
+// Run a parallel tall-and-skinny square-like benchmark.
+// If size_opt > 0, only that size is benchmarked.
+void TSSquareTestPar(std::ostream &os, int size_opt = -1) {
   std::vector<int> m_vals;
-  for (int i = 3000; i <= 20000; i += 500) {
-    m_vals.push_back(i);
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
+    for (int i = 3000; i <= 20000; i += 500) {
+      m_vals.push_back(i);
+    }
   }
   std::vector<int> k_vals(m_vals.size(), 3000);
   std::vector<int> num_levels = {0};
@@ -196,10 +220,16 @@ void TSSquareTestPar(std::ostream &os) {
   BenchmarkSet(os, m_vals, k_vals, k_vals, num_levels, FAST433_29_234);
 }
 
-void SquareBenchmark(std::ostream &os, int which) {
+// Run square benchmarks for a specific fast algorithm choice.
+// If size_opt > 0, only that size is benchmarked.
+void SquareBenchmark(std::ostream &os, int which, int size_opt = -1) {
   std::vector<int> m_vals;
-  for (int i = 2; i <= 8192; i *= 2) {
-    m_vals.push_back(i);
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
+    for (int i = 2; i <= 8192; i *= 2) {
+      m_vals.push_back(i);
+    }
   }
   std::vector<int> num_levels_MKL = {0};
   std::vector<int> num_levels = {1, 2};
@@ -283,19 +313,28 @@ void SquareBenchmark(std::ostream &os, int which) {
 }
 
 // (N, k, N) for fixed k ~ 2000
-void OuterProductBenchmark(std::ostream &os, int which) {
+// Run outer-product-like benchmarks for a specific fast algorithm choice.
+// If size_opt > 0, only that size is benchmarked.
+void OuterProductBenchmark(std::ostream &os, int which, int size_opt = -1) {
   std::vector<int> m_vals;
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
 #ifdef _PARALLEL_
-  for (int i = 3000; i <= 18000; i += 500) {
-    m_vals.push_back(i);
-  }
-  std::vector<int> k_vals(m_vals.size(), 2800);
+    for (int i = 3000; i <= 18000; i += 500) {
+      m_vals.push_back(i);
+    }
 #else
-  for (int i = 2000; i <= 12000; i += 500) {
-    m_vals.push_back(i);
-  }
-  std::vector<int> k_vals(m_vals.size(), 1600);
+    for (int i = 2000; i <= 12000; i += 500) {
+      m_vals.push_back(i);
+    }
 #endif
+  }
+  int k_val = 1600;
+#ifdef _PARALLEL_
+  k_val = 2800;
+#endif
+  std::vector<int> k_vals(m_vals.size(), k_val);
 
   std::vector<int> num_levels_MKL = {0};
   std::vector<int> num_levels = {1, 2};
@@ -341,19 +380,28 @@ void OuterProductBenchmark(std::ostream &os, int which) {
 }
 
 // (N, k, k) for fixed k ~ 2000
-void TSSquareBenchmark(std::ostream &os, int which) {
+// Run tall-and-skinny square benchmarks for a specific fast algorithm choice.
+// If size_opt > 0, only that size is benchmarked.
+void TSSquareBenchmark(std::ostream &os, int which, int size_opt = -1) {
   std::vector<int> m_vals;
+  if (size_opt > 0) {
+    m_vals.push_back(size_opt);
+  } else {
 #ifdef _PARALLEL_
-  for (int i = 3000; i <= 20000; i += 500) {
-    m_vals.push_back(i);
-  }
-  std::vector<int> k_vals(m_vals.size(), 3000);
+    for (int i = 3000; i <= 20000; i += 500) {
+      m_vals.push_back(i);
+    }
 #else
-  for (int i = 10000; i <= 18000; i += 500) {
-    m_vals.push_back(i);
-  }
-  std::vector<int> k_vals(m_vals.size(), 2400);
+    for (int i = 10000; i <= 18000; i += 500) {
+      m_vals.push_back(i);
+    }
 #endif
+  }
+  int k_val = 2400;
+#ifdef _PARALLEL_
+  k_val = 3000;
+#endif
+  std::vector<int> k_vals(m_vals.size(), k_val);
 
   std::vector<int> num_levels_MKL = {0};
   std::vector<int> num_levels = {1, 2};
@@ -455,6 +503,11 @@ int main(int argc, char **argv) {
   int new_argc = new_argv.size();
   auto opts = GetOpts(new_argc, new_argv.data());
 
+  int size_opt = -1;
+  if (OptExists(opts, "size")) {
+    size_opt = GetIntOpt(opts, "size");
+  }
+
   // Create the generated output directory if it doesn't exist
   mkdir("benchmarks/generated", 0755);
 
@@ -491,7 +544,7 @@ int main(int argc, char **argv) {
   // Run all <N, N, N> benchmarks
   if (OptExists(opts, "square_all")) {
     for (int i = 0; i <= 21; ++i) {
-      SquareBenchmark(fout, i);
+      SquareBenchmark(fout, i, size_opt);
       fout.flush();
     }
   }
@@ -499,39 +552,39 @@ int main(int argc, char **argv) {
   // Run a single <N, N, N> benchmark
   if (OptExists(opts, "square")) {
     int which = GetIntOpt(opts, "square");
-    SquareBenchmark(fout, which);
+    SquareBenchmark(fout, which, size_opt);
     fout.flush();
   }
 
   // Run <N, k, N> benchmark for fixed k
   if (OptExists(opts, "outer_prod_like")) {
     int which = GetIntOpt(opts, "outer_prod_like");
-    OuterProductBenchmark(fout, which);
+    OuterProductBenchmark(fout, which, size_opt);
     fout.flush();
   }
 
   // Run <N, k, k> benchmark for fixed k
   if (OptExists(opts, "ts_square_like")) {
     int which = GetIntOpt(opts, "ts_square_like");
-    TSSquareBenchmark(fout, which);
+    TSSquareBenchmark(fout, which, size_opt);
     fout.flush();
   }
 
   // Functions for testing
   if (OptExists(opts, "square_test")) {
-    SquareTest(fout, full);
+    SquareTest(fout, full, size_opt);
     fout.flush();
   }
   if (OptExists(opts, "square_test_par")) {
-    SquareTestPar(fout, full);
+    SquareTestPar(fout, full, size_opt);
     fout.flush();
   }
   if (OptExists(opts, "outer_test_par")) {
-    OuterTestPar(fout);
+    OuterTestPar(fout, size_opt);
     fout.flush();
   }
   if (OptExists(opts, "ts_square_test_par")) {
-    TSSquareTestPar(fout);
+    TSSquareTestPar(fout, size_opt);
     fout.flush();
   }
 
