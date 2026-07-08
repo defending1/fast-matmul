@@ -85,7 +85,7 @@ bool CheckSizeSupported(int m, int k, int n) {
 void SingleBenchmark(std::ostream &os, int m, int k, int n, int num_steps,
                      int algorithm) {
   // Run a set number of trials and pick the median time.
-  int num_trials = 2;
+  int num_trials = 1;
   std::vector<double> times(num_trials);
   for (int trial = 0; trial < num_trials; ++trial) {
     Matrix<double> A = RandomMatrix<double>(m, k);
@@ -449,19 +449,19 @@ int main(int argc, char **argv) {
 
   std::string out_filename = "benchmarks/generated/benchmarks";
 #if defined(_OPENMP)
-  #if defined(_PARALLEL_)
-    #if _PARALLEL_ == _DFS_PAR_
-      out_filename += "_dfs";
-    #elif _PARALLEL_ == _BFS_PAR_
-      out_filename += "_bfs";
-    #elif _PARALLEL_ == _HYBRID_PAR_
-      out_filename += "_hybrid";
-    #else
-      out_filename += "_par";
-    #endif
-  #else
-    out_filename += "_par";
-  #endif
+#if defined(_PARALLEL_)
+#if _PARALLEL_ == _DFS_PAR_
+  out_filename += "_dfs";
+#elif _PARALLEL_ == _BFS_PAR_
+  out_filename += "_bfs";
+#elif _PARALLEL_ == _HYBRID_PAR_
+  out_filename += "_hybrid";
+#else
+  out_filename += "_par";
+#endif
+#else
+  out_filename += "_par";
+#endif
 #else
   out_filename += "_seq";
 #endif

@@ -724,7 +724,7 @@ double benchmark(int m, int n, int add_length, int add_type) {
     FillRandom(*A);
   }
 
-  int num_trials = 10;
+  int num_trials = 1;
   auto func = [&] {
     for (int i = 0; i < num_trials; ++i) {
       add_call(C, A_matrices, add_type);

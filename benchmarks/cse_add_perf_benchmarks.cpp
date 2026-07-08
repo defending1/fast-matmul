@@ -166,7 +166,7 @@ void SingleBenchmark(int m, int k, int n, int num_steps, matmul_func func) {
   Matrix<double> C(m, n);
 
   // Run a set number of trials and pick the median time.
-  int num_trials = 3;
+  int num_trials = 1;
   std::vector<double> times(num_trials);
   for (int trial = 0; trial < num_trials; ++trial) {
     times[trial] = Time([&] { FastMatmulShim(A, B, C, num_steps, func); });
@@ -174,7 +174,7 @@ void SingleBenchmark(int m, int k, int n, int num_steps, matmul_func func) {
 
   // Spit out the median time
   std::sort(times.begin(), times.end());
-  size_t ind = num_trials / 2 + 1;
+  size_t ind = num_trials / 2;
   std::cout << " " << m << " " << k << " " << n << " "
             << num_steps << " " << times[ind] << " "
             << "; ";

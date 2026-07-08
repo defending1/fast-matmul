@@ -26,7 +26,7 @@ enum Algorithm {
 };
 
 const int kNumScalingSteps = 5;
-const int kNumTrials = 5;
+const int kNumTrials = 1;
 
 // Run a single benchmark for multiplying m x k x n with num_steps of recursion.
 // To just call GEMM, set num_steps to zero.
@@ -34,7 +34,7 @@ const int kNumTrials = 5;
 // If run_check is true, then it also
 void SingleBenchmark(int m, int k, int n, int alg) {
   // Run a set number of trials and pick the median time.
-  int num_trials = 5;
+  int num_trials = 1;
   std::vector<double> times(num_trials);
   for (int trial = 0; trial < kNumTrials; ++trial) {
     Matrix<double> A = RandomMatrix<double>(m, k);

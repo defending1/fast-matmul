@@ -57,7 +57,7 @@ double benchmark(int m, int n, int type) {
   double *vec2 = new double[m * n];
   FillRandom(vec2, m, n);
 
-  int num_trials = 10;
+  int num_trials = 1;
 
   auto func = [&] {
     for (int i = 0; i < num_trials; ++i) {

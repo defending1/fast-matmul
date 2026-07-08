@@ -30,7 +30,7 @@ void RunSingleTest(Matrix<double>& A, Matrix<double>& B, Matrix<double>& C) {
   mkl_set_num_threads(mkl_get_max_threads());
 #endif
 
-  int num_trials = 5;
+  int num_trials = 1;
   auto func = [&] {
     for (int trial = 0; trial < num_trials; ++trial) {
       MatMul(A, B, C);
