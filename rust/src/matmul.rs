@@ -181,7 +181,7 @@ impl<'a> MatMul<'a> {
         match base_choice {
             BaseMatMul::Faer => {
                 let par =
-                    if multithreaded && a.nrows() >= 384 && a.ncols() >= 384 && b.ncols() >= 384 {
+                    if multithreaded && a.nrows() >= 256 && a.ncols() >= 256 && b.ncols() >= 256 {
                         faer::get_global_parallelism()
                     } else {
                         faer::Par::Seq

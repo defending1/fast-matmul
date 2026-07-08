@@ -28,7 +28,8 @@ void mkl_dgemm_wrapper(
 }
 
 void mkl_set_num_threads_wrapper(int32_t nt) {
-    mkl_set_num_threads(nt);
+    mkl_set_num_threads_local(nt);
+    mkl_set_dynamic(0);
 }
 
 int32_t mkl_get_max_threads_wrapper(void) {
