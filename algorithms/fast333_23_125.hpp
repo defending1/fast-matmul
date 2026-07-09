@@ -17,7 +17,7 @@ void S_Add1(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -33,7 +33,7 @@ void S_Add2(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -49,7 +49,7 @@ void S_Add3(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -67,7 +67,7 @@ void S_Add4(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -85,7 +85,7 @@ void S_Add5(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -103,7 +103,7 @@ void S_Add6(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -119,7 +119,7 @@ void S_Add7(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -135,7 +135,7 @@ void S_Add8(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -151,7 +151,7 @@ void S_Add9(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -171,7 +171,7 @@ void S_Add10(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& S3, Matrix<
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] + dataS2[i + j * strideS2] -dataS3[i + j * strideS3];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2] -dataS3[i + static_cast<size_t>(j) * strideS3];
         }
     }
 }
@@ -187,7 +187,7 @@ void S_Add11(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -205,7 +205,7 @@ void S_Add12(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] -dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] -dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -223,7 +223,7 @@ void S_Add13(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -241,7 +241,7 @@ void S_Add14(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -257,7 +257,7 @@ void S_Add15(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -273,7 +273,7 @@ void S_Add16(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -289,7 +289,7 @@ void S_Add17(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -305,7 +305,7 @@ void S_Add18(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -323,7 +323,7 @@ void S_Add19(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataS1[i + j * strideS1] -dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataS1[i + static_cast<size_t>(j) * strideS1] -dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -339,7 +339,7 @@ void S_Add20(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -359,7 +359,7 @@ void S_Add21(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& S3, Matrix<
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] -dataS2[i + j * strideS2] + dataS3[i + j * strideS3];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] -dataS2[i + static_cast<size_t>(j) * strideS2] + dataS3[i + static_cast<size_t>(j) * strideS3];
         }
     }
 }
@@ -377,7 +377,7 @@ void S_Add22(Matrix<Scalar>& S1, Matrix<Scalar>& S2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1] + dataS2[i + j * strideS2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1] + dataS2[i + static_cast<size_t>(j) * strideS2];
         }
     }
 }
@@ -393,7 +393,7 @@ void S_Add23(Matrix<Scalar>& S1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataS1[i + j * strideS1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataS1[i + static_cast<size_t>(j) * strideS1];
         }
     }
 }
@@ -409,7 +409,7 @@ void T_Add1(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -425,7 +425,7 @@ void T_Add2(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -443,7 +443,7 @@ void T_Add3(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -459,7 +459,7 @@ void T_Add4(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -475,7 +475,7 @@ void T_Add5(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -491,7 +491,7 @@ void T_Add6(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -509,7 +509,7 @@ void T_Add7(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -527,7 +527,7 @@ void T_Add8(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x,
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] -dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] -dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -543,7 +543,7 @@ void T_Add9(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -559,7 +559,7 @@ void T_Add10(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -577,7 +577,7 @@ void T_Add11(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -593,7 +593,7 @@ void T_Add12(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -609,7 +609,7 @@ void T_Add13(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -627,7 +627,7 @@ void T_Add14(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -643,7 +643,7 @@ void T_Add15(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -659,7 +659,7 @@ void T_Add16(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -677,7 +677,7 @@ void T_Add17(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] -dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] -dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -697,7 +697,7 @@ void T_Add18(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& T3, Matrix<
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1] -dataT2[i + j * strideT2] + dataT3[i + j * strideT3];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1] -dataT2[i + static_cast<size_t>(j) * strideT2] + dataT3[i + static_cast<size_t>(j) * strideT3];
         }
     }
 }
@@ -715,7 +715,7 @@ void T_Add19(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] -dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] -dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -733,7 +733,7 @@ void T_Add20(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -749,7 +749,7 @@ void T_Add21(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -765,7 +765,7 @@ void T_Add22(Matrix<Scalar>& T1, Matrix<Scalar>& C, double x, bool sequential) {
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataT1[i + j * strideT1];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataT1[i + static_cast<size_t>(j) * strideT1];
         }
     }
 }
@@ -783,7 +783,7 @@ void T_Add23(Matrix<Scalar>& T1, Matrix<Scalar>& T2, Matrix<Scalar>& C, double x
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataT1[i + j * strideT1] + dataT2[i + j * strideT2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataT1[i + static_cast<size_t>(j) * strideT1] + dataT2[i + static_cast<size_t>(j) * strideT2];
         }
     }
 }
@@ -804,7 +804,7 @@ void M_Add1(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -813,7 +813,7 @@ void M_Add1(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3];
             }
         }
     }
@@ -839,7 +839,7 @@ void M_Add2(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -848,7 +848,7 @@ void M_Add2(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5];
             }
         }
     }
@@ -872,7 +872,7 @@ void M_Add3(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -881,7 +881,7 @@ void M_Add3(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4];
             }
         }
     }
@@ -907,7 +907,7 @@ void M_Add4(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -916,7 +916,7 @@ void M_Add4(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5];
             }
         }
     }
@@ -940,7 +940,7 @@ void M_Add5(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -949,7 +949,7 @@ void M_Add5(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3] + dataM4[i + j * strideM4];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4];
             }
         }
     }
@@ -975,7 +975,7 @@ void M_Add6(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3] -dataM4[i + j * strideM4] + dataM5[i + j * strideM5] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] -dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -984,7 +984,7 @@ void M_Add6(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] + dataM3[i + j * strideM3] -dataM4[i + j * strideM4] + dataM5[i + j * strideM5];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] -dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5];
             }
         }
     }
@@ -1008,7 +1008,7 @@ void M_Add7(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] -dataM4[i + j * strideM4] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] -dataM4[i + static_cast<size_t>(j) * strideM4] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -1017,7 +1017,7 @@ void M_Add7(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] -dataM4[i + j * strideM4];
+                dataC[i + static_cast<size_t>(j) * strideC] = dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] -dataM4[i + static_cast<size_t>(j) * strideM4];
             }
         }
     }
@@ -1043,7 +1043,7 @@ void M_Add8(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -1052,7 +1052,7 @@ void M_Add8(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] + dataM2[i + j * strideM2] -dataM3[i + j * strideM3] + dataM4[i + j * strideM4] + dataM5[i + j * strideM5];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] + dataM2[i + static_cast<size_t>(j) * strideM2] -dataM3[i + static_cast<size_t>(j) * strideM3] + dataM4[i + static_cast<size_t>(j) * strideM4] + dataM5[i + static_cast<size_t>(j) * strideM5];
             }
         }
     }
@@ -1074,7 +1074,7 @@ void M_Add9(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] -dataM2[i + j * strideM2] + dataM3[i + j * strideM3] + beta * dataC[i + j * strideC];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] -dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3] + beta * dataC[i + static_cast<size_t>(j) * strideC];
             }
         }
     } else {
@@ -1083,7 +1083,7 @@ void M_Add9(Matrix<Scalar>& M1, Matrix<Scalar>& M2, Matrix<Scalar>& M3, Matrix<S
 #endif
         for (int j = 0; j < C.n(); ++j) {
             for (int i = 0; i < C.m(); ++i) {
-                dataC[i + j * strideC] = -dataM1[i + j * strideM1] -dataM2[i + j * strideM2] + dataM3[i + j * strideM3];
+                dataC[i + static_cast<size_t>(j) * strideC] = -dataM1[i + static_cast<size_t>(j) * strideM1] -dataM2[i + static_cast<size_t>(j) * strideM2] + dataM3[i + static_cast<size_t>(j) * strideM3];
             }
         }
     }
@@ -1102,7 +1102,7 @@ void SX_Add1(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataSX1[i + j * strideSX1] + dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataSX1[i + static_cast<size_t>(j) * strideSX1] + dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1120,7 +1120,7 @@ void SX_Add2(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataSX1[i + j * strideSX1] -dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataSX1[i + static_cast<size_t>(j) * strideSX1] -dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1138,7 +1138,7 @@ void SX_Add3(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataSX1[i + j * strideSX1] -dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataSX1[i + static_cast<size_t>(j) * strideSX1] -dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1156,7 +1156,7 @@ void SX_Add4(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataSX1[i + j * strideSX1] -dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataSX1[i + static_cast<size_t>(j) * strideSX1] -dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1174,7 +1174,7 @@ void SX_Add5(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataSX1[i + j * strideSX1] + dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataSX1[i + static_cast<size_t>(j) * strideSX1] + dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1192,7 +1192,7 @@ void SX_Add6(Matrix<Scalar>& SX1, Matrix<Scalar>& SX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataSX1[i + j * strideSX1] -dataSX2[i + j * strideSX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataSX1[i + static_cast<size_t>(j) * strideSX1] -dataSX2[i + static_cast<size_t>(j) * strideSX2];
         }
     }
 }
@@ -1210,7 +1210,7 @@ void TX_Add1(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataTX1[i + j * strideTX1] -dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataTX1[i + static_cast<size_t>(j) * strideTX1] -dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1228,7 +1228,7 @@ void TX_Add2(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataTX1[i + j * strideTX1] + dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataTX1[i + static_cast<size_t>(j) * strideTX1] + dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1246,7 +1246,7 @@ void TX_Add3(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataTX1[i + j * strideTX1] -dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataTX1[i + static_cast<size_t>(j) * strideTX1] -dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1264,7 +1264,7 @@ void TX_Add4(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataTX1[i + j * strideTX1] + dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataTX1[i + static_cast<size_t>(j) * strideTX1] + dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1282,7 +1282,7 @@ void TX_Add5(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataTX1[i + j * strideTX1] -dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataTX1[i + static_cast<size_t>(j) * strideTX1] -dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1300,7 +1300,7 @@ void TX_Add6(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataTX1[i + j * strideTX1] + dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataTX1[i + static_cast<size_t>(j) * strideTX1] + dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1318,7 +1318,7 @@ void TX_Add7(Matrix<Scalar>& TX1, Matrix<Scalar>& TX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataTX1[i + j * strideTX1] + dataTX2[i + j * strideTX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataTX1[i + static_cast<size_t>(j) * strideTX1] + dataTX2[i + static_cast<size_t>(j) * strideTX2];
         }
     }
 }
@@ -1336,7 +1336,7 @@ void MX_Add1(Matrix<Scalar>& MX1, Matrix<Scalar>& MX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataMX1[i + j * strideMX1] + dataMX2[i + j * strideMX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataMX1[i + static_cast<size_t>(j) * strideMX1] + dataMX2[i + static_cast<size_t>(j) * strideMX2];
         }
     }
 }
@@ -1354,7 +1354,7 @@ void MX_Add2(Matrix<Scalar>& MX1, Matrix<Scalar>& MX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataMX1[i + j * strideMX1] -dataMX2[i + j * strideMX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataMX1[i + static_cast<size_t>(j) * strideMX1] -dataMX2[i + static_cast<size_t>(j) * strideMX2];
         }
     }
 }
@@ -1372,7 +1372,7 @@ void MX_Add3(Matrix<Scalar>& MX1, Matrix<Scalar>& MX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataMX1[i + j * strideMX1] + dataMX2[i + j * strideMX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataMX1[i + static_cast<size_t>(j) * strideMX1] + dataMX2[i + static_cast<size_t>(j) * strideMX2];
         }
     }
 }
@@ -1390,7 +1390,7 @@ void MX_Add4(Matrix<Scalar>& MX1, Matrix<Scalar>& MX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = -dataMX1[i + j * strideMX1] -dataMX2[i + j * strideMX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = -dataMX1[i + static_cast<size_t>(j) * strideMX1] -dataMX2[i + static_cast<size_t>(j) * strideMX2];
         }
     }
 }
@@ -1408,7 +1408,7 @@ void MX_Add5(Matrix<Scalar>& MX1, Matrix<Scalar>& MX2, Matrix<Scalar>& C, double
 #endif
     for (int j = 0; j < C.n(); ++j) {
         for (int i = 0; i < C.m(); ++i) {
-            dataC[i + j * strideC] = dataMX1[i + j * strideMX1] + dataMX2[i + j * strideMX2];
+            dataC[i + static_cast<size_t>(j) * strideC] = dataMX1[i + static_cast<size_t>(j) * strideMX1] + dataMX2[i + static_cast<size_t>(j) * strideMX2];
         }
     }
 }

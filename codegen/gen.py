@@ -80,7 +80,7 @@ def data_call(name):
 
 
 def data_access(name):
-    return 'data%s[i + j * stride%s]' % (name, name)
+    return 'data%s[i + static_cast<size_t>(j) * stride%s]' % (name, name)
 
 def instantiate_tmp(header, tmp_name, mult_index, mat_name):
     write_line(header, 0, '#ifdef _PARALLEL_')

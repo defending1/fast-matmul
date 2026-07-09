@@ -52,7 +52,7 @@ class MemoryManager {
   Scalar *GetMem(int start_index, int mult, int level, int type);
 
  private:
-  int Size(int level, int m, int n, int num_rows_A, int num_cols_B);
+  size_t Size(int level, int m, int n, int num_rows_A, int num_cols_B);
   // Integer version of x ^ b
   int Pow(int x, int b);
 
@@ -70,9 +70,9 @@ void MemoryManager<Scalar>::Allocate(int m, int k, int n, int num_mults, int num
   T_mem.resize(num_levels);
 
   for (int level = 0; level < num_levels; ++level) {
-    int size_M = Size(level, m, n, num_rows_A, num_cols_B);
-    int size_S = Size(level, m, k, num_rows_A, num_cols_A);
-    int size_T = Size(level, k, n, num_cols_A, num_cols_B);
+    size_t size_M = Size(level, m, n, num_rows_A, num_cols_B);
+    size_t size_S = Size(level, m, k, num_rows_A, num_cols_A);
+    size_t size_T = Size(level, k, n, num_cols_A, num_cols_B);
 	
 	int mults_at_level = Pow(num_mults, level + 1);
 	M_mem[level].resize(mults_at_level);
@@ -103,9 +103,9 @@ Scalar *MemoryManager<Scalar>::GetMem(int start_index, int mult, int level, int 
 
 
 template <typename Scalar>
-int MemoryManager<Scalar>::Size(int level, int m, int n, int num_rows_A, int num_cols_B) {
-  int num_rows = num_rows_A / Pow(m, level + 1);
-  int num_cols = num_cols_B / Pow(n, level + 1);
+size_t MemoryManager<Scalar>::Size(int level, int m, int n, int num_rows_A, int num_cols_B) {
+  size_t num_rows = static_cast<size_t>(num_rows_A) / Pow(m, level + 1);
+  size_t num_cols = static_cast<size_t>(num_cols_B) / Pow(n, level + 1);
   return num_rows * num_cols;
 }
 

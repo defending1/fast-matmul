@@ -64,7 +64,7 @@ public:
     int that_stride = that.stride();
     for (int j = 0; j < n_; ++j) {
       for (int i = 0; i < m_; ++i) {
-        data_[i + j * stride_] = that_data[i + j * that_stride];
+        data_[static_cast<size_t>(i) + static_cast<size_t>(j) * stride_] = that_data[static_cast<size_t>(i) + static_cast<size_t>(j) * that_stride];
       }
     }
   }
@@ -115,7 +115,7 @@ public:
   }
 
   Scalar *data() { return data_; }
-  Scalar *data(int i, int j) { return data_ + i + j * stride_; }
+  Scalar *data(int i, int j) { return data_ + i + static_cast<size_t>(j) * stride_; }
   int stride() { return stride_; }
   int m() { return m_; }
   int n() { return n_; }
@@ -123,8 +123,8 @@ public:
   int height() { return m_; }
   int width() { return n_; }
 
-  const Scalar& operator()(int i, int j) const {  return data_[i + j * stride_]; }
-  Scalar& operator()(int i, int j) {  return data_[i + j * stride_]; }
+  const Scalar& operator()(int i, int j) const {  return data_[static_cast<size_t>(i) + static_cast<size_t>(j) * stride_]; }
+  Scalar& operator()(int i, int j) {  return data_[static_cast<size_t>(i) + static_cast<size_t>(j) * stride_]; }
 
   Scalar OneNorm() { return blas::Lange('1', m_, n_, data_, stride_); }
   Scalar FroNorm() { return blas::Lange('F', m_, n_, data_, stride_); }
@@ -148,11 +148,12 @@ public:
   void allocate() {
     if (n_ > 0 && m_ > 0) {
       assert(stride_ >= m_);
+      size_t num_elements = static_cast<size_t>(m_) * static_cast<size_t>(n_);
 #ifdef __INTEL_MKL__
       int alignment = 32;
-      data_ = static_cast<Scalar *>(mkl_malloc(sizeof(Scalar) * m_ * n_, alignment));
+      data_ = static_cast<Scalar *>(mkl_malloc(sizeof(Scalar) * num_elements, alignment));
 #else
-      data_ = new Scalar[m_ * n_];
+      data_ = new Scalar[num_elements];
 #endif
       assert(data_ != NULL);
     }
@@ -424,8 +425,8 @@ void UpdateAddDaxpy(Matrix<Scalar>& A1,
   Scalar *dataC = C.data();
 
   for (int j = 0; j < C.n(); ++j) {
-    Scalar *dataA_curr = dataA1 + j * strideA1;
-    Scalar *dataC_curr = dataC + j * strideC;
+    Scalar *dataA_curr = dataA1 + static_cast<size_t>(j) * strideA1;
+    Scalar *dataC_curr = dataC + static_cast<size_t>(j) * strideC;
     AxpyWrap(dataC_curr, dataA_curr, C.m(), alpha1);
   }
 }
