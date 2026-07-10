@@ -205,3 +205,85 @@ pub fn get_project_root() -> std::path::PathBuf {
     }
 }
 
+/// Resolves paths for the run_x subdirectories for csv/rust, csv/c, and logs.
+#[allow(dead_code)]
+pub fn resolve_run_directories() -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let root = get_project_root();
+    let csv_dir = root.join("generated").join("csv");
+    let log_dir = root.join("generated").join("log");
+
+    std::fs::create_dir_all(&csv_dir).ok();
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let job_id = std::env::var("SLURM_JOB_ID")
+        .or_else(|_| std::env::var("PBS_JOBID"))
+        .or_else(|_| std::env::var("RUN_ID"))
+        .ok();
+
+    let run_folder_name = if let Some(ref id) = job_id {
+        // Read or update run_mapping.json
+        let mapping_path = csv_dir.join("run_mapping.json");
+        let mut mapping = std::collections::HashMap::new();
+        if let Ok(content) = std::fs::read_to_string(&mapping_path) {
+            if let Ok(m) = serde_json::from_str::<std::collections::HashMap<String, String>>(&content) {
+                mapping = m;
+            }
+        }
+
+        if let Some(folder) = mapping.get(id) {
+            folder.clone()
+        } else {
+            // Determine next x
+            let next_x = get_next_run_number(&csv_dir);
+            let folder = format!("run{}", next_x);
+            mapping.insert(id.clone(), folder.clone());
+            if let Ok(content) = serde_json::to_string_pretty(&mapping) {
+                std::fs::write(&mapping_path, content).ok();
+            }
+            folder
+        }
+    } else {
+        // Check if RUN_FOLDER environment variable is set
+        if let Ok(folder) = std::env::var("RUN_FOLDER") {
+            folder
+        } else {
+            // No job id or RUN_FOLDER env var, create a new run folder each time
+            let next_x = get_next_run_number(&csv_dir);
+            format!("run{}", next_x)
+        }
+    };
+
+    let run_csv_rust = csv_dir.join(&run_folder_name).join("rust");
+    let run_csv_c = csv_dir.join(&run_folder_name).join("c");
+    let run_log = log_dir.join(&run_folder_name);
+
+    std::fs::create_dir_all(&run_csv_rust).ok();
+    std::fs::create_dir_all(&run_csv_c).ok();
+    std::fs::create_dir_all(&run_log).ok();
+
+    (run_csv_rust, run_csv_c, run_log)
+}
+
+#[allow(dead_code)]
+fn get_next_run_number(csv_dir: &std::path::Path) -> usize {
+    let mut max_x = 0;
+    if let Ok(entries) = std::fs::read_dir(csv_dir) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_dir() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.starts_with("run") {
+                        if let Ok(x) = name["run".len()..].parse::<usize>() {
+                            if x > max_x {
+                                max_x = x;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    max_x + 1
+}
+
+

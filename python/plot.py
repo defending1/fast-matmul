@@ -295,30 +295,46 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
     df = pd.read_csv(csv_path, skipinitialspace=True)
 
     new_format_cols = {"base_choice", "recursion_level", "size_cutoff"}
-    if new_format_cols.issubset(df.columns):
+    if "only_base" in df.columns:
+        new_format_cols.add("only_base")
+
+    # Extract baseline timings if only_base is present
+    df_base = pd.DataFrame(columns=["size", "mkl_seq", "mkl_par", "faer_seq", "faer_par"])
+    if "only_base" in df.columns:
+        df_base_rows = df[df["only_base"] == True]
+        if not df_base_rows.empty:
+            df_base = df_base_rows.groupby("size", as_index=False)[["mkl_seq", "mkl_par", "faer_seq", "faer_par"]].first()
+
+    # Filter for runs (where only_base is False)
+    df_runs = df[df["only_base"] == False] if "only_base" in df.columns else df
+
+    if {"base_choice", "recursion_level", "size_cutoff"}.issubset(df.columns):
         out_dir = os.path.dirname(output_path)
         # Drop duplicates to find unique recursion configs (keeping NaNs intact)
-        df_configs = df[["recursion_level", "size_cutoff"]].drop_duplicates()
-        for _, row in df_configs.iterrows():
+        df_configs_data = df_runs[["recursion_level", "size_cutoff"]].dropna(how="all").drop_duplicates()
+        if df_configs_data.empty:
+            df_configs_data = df_runs[["recursion_level", "size_cutoff"]].drop_duplicates()
+
+        for _, row in df_configs_data.iterrows():
             r_level = row["recursion_level"]
             s_cutoff = row["size_cutoff"]
 
             # Safe comparison representing NaN or the numeric level/cutoff
             if pd.isna(r_level):
-                cond_r = df["recursion_level"].isna()
+                cond_r = df_runs["recursion_level"].isna()
                 r_str = ""
             else:
-                cond_r = df["recursion_level"] == r_level
+                cond_r = df_runs["recursion_level"] == r_level
                 r_str = f"level_{int(r_level)}"
 
             if pd.isna(s_cutoff):
-                cond_c = df["size_cutoff"].isna()
+                cond_c = df_runs["size_cutoff"].isna()
                 c_str = ""
             else:
-                cond_c = df["size_cutoff"] == s_cutoff
+                cond_c = df_runs["size_cutoff"] == s_cutoff
                 c_str = f"cutoff_{int(s_cutoff)}"
 
-            df_config = df[cond_r & cond_c]
+            df_config = df_runs[cond_r & cond_c]
             prefix = r_str if r_str else c_str
             mode_suffix = f"_{mode}" if mode != "both" else ""
 
@@ -327,9 +343,21 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
             df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
 
             if not df_faer.empty and not df_dgemm.empty:
+                # Merge baseline timings into df_faer and df_dgemm
+                if not df_base.empty:
+                    df_faer = df_faer.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                    df_dgemm = df_dgemm.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                    
+                    df_faer = pd.merge(df_faer, df_base, on="size", how="left")
+                    df_dgemm = pd.merge(df_dgemm, df_base, on="size", how="left")
+
                 plot_columns = [col for col in df.columns if col not in new_format_cols]
-                df_faer_to_plot = df_faer[plot_columns]
-                df_dgemm_to_plot = df_dgemm[plot_columns]
+                for base_col in ["mkl_seq", "mkl_par", "faer_seq", "faer_par"]:
+                    if base_col not in plot_columns:
+                        plot_columns.append(base_col)
+
+                df_faer_to_plot = df_faer[[c for c in plot_columns if c in df_faer.columns]]
+                df_dgemm_to_plot = df_dgemm[[c for c in plot_columns if c in df_dgemm.columns]]
 
                 out_grid_name = f"benchmark_{prefix}_grid{mode_suffix}.pdf"
                 out_grid_path = os.path.join(out_dir, out_grid_name)
@@ -343,7 +371,10 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
                     size_cutoff=s_cutoff,
                 )
     else:
-        plot_df_core(df, output_path, mode=mode)
+        if "only_base" in df.columns and not df_base.empty:
+            df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+            df_runs = pd.merge(df_runs, df_base, on="size", how="left")
+        plot_df_core(df_runs, output_path, mode=mode)
 
 
 def plot_df_core(
@@ -447,7 +478,7 @@ def plot_df_core(
     # Plot each column except size (converting time to Effective GFLOPS)
     num_cores = os.cpu_count() or 1
     for col in df.columns:
-        if col == "size":
+        if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"]:
             continue
 
         if df[col].isna().all():
@@ -696,7 +727,7 @@ def generate_grid_plot_core(
 
         has_lines = False
         for col in df.columns:
-            if col == "size" or not filter_fn(col):
+            if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"] or not filter_fn(col):
                 continue
 
             # Skip columns if they are entirely empty or NaN
@@ -1062,7 +1093,11 @@ def main() -> None:
 
     csv_path = args.csv_path
     if csv_path is None:
-        csv_dir = os.path.join(project_root, "generated", "csv")
+        run_folder = os.environ.get("RUN_FOLDER")
+        if run_folder:
+            csv_dir = os.path.join(project_root, "generated", "csv", run_folder, "rust")
+        else:
+            csv_dir = os.path.join(project_root, "generated", "csv")
         job_id = (
             os.environ.get("SLURM_JOB_ID")
             or os.environ.get("PBS_JOBID")

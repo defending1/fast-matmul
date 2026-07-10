@@ -16,6 +16,7 @@ struct ConfigKey {
     base_choice: String,
     recursion_level: Option<usize>,
     size_cutoff: Option<usize>,
+    only_base: bool,
 }
 
 impl Ord for ConfigKey {
@@ -24,6 +25,7 @@ impl Ord for ConfigKey {
             .then_with(|| self.base_choice.cmp(&other.base_choice))
             .then_with(|| self.recursion_level.cmp(&other.recursion_level))
             .then_with(|| self.size_cutoff.cmp(&other.size_cutoff))
+            .then_with(|| self.only_base.cmp(&other.only_base))
     }
 }
 
@@ -56,6 +58,7 @@ fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>>
     let base_choice_idx = headers.iter().position(|h| h == "base_choice");
     let recursion_level_idx = headers.iter().position(|h| h == "recursion_level");
     let size_cutoff_idx = headers.iter().position(|h| h == "size_cutoff");
+    let only_base_idx = headers.iter().position(|h| h == "only_base");
 
     let (size_idx, base_choice_idx, recursion_level_idx, size_cutoff_idx) = match (
         size_idx,
@@ -79,18 +82,28 @@ fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>>
         let base_choice = parts[base_choice_idx].trim().to_string();
         let recursion_level = parts[recursion_level_idx].trim().parse::<usize>().ok();
         let size_cutoff = parts[size_cutoff_idx].trim().parse::<usize>().ok();
+        let only_base = only_base_idx
+            .and_then(|idx| parts.get(idx))
+            .map(|s| s.trim() == "true")
+            .unwrap_or(false);
 
         let key = ConfigKey {
             size,
             base_choice,
             recursion_level,
             size_cutoff,
+            only_base,
         };
 
         let mut row_metrics = HashMap::new();
         for (i, part) in parts.iter().enumerate() {
             if i == size_idx || i == base_choice_idx || i == recursion_level_idx || i == size_cutoff_idx {
                 continue;
+            }
+            if let Some(ob_idx) = only_base_idx {
+                if i == ob_idx {
+                    continue;
+                }
             }
             if i < headers.len() {
                 let cleaned = part.trim();
@@ -191,7 +204,7 @@ pub fn export_results_to_csv(
         RecursionLimit::Cutoff(cutoff) => (None, Some(cutoff)),
     };
 
-    // 1. Gather new measurements, merging with existing data
+    // 1. Gather new Strassen / algorithm measurements (only_base = false)
     for &size in sizes {
         let mut has_new_data = false;
         let mut new_metrics = HashMap::new();
@@ -209,6 +222,7 @@ pub fn export_results_to_csv(
                 base_choice: base_choice_str.to_string(),
                 recursion_level,
                 size_cutoff,
+                only_base: false,
             };
             let row = existing.entry(key).or_default();
             for (header, val) in new_metrics {
@@ -217,42 +231,61 @@ pub fn export_results_to_csv(
         }
     }
 
-    // 1.5. Propagate baseline measurements to all other configurations of the same size
-    let base_headers = ["mkl_seq", "mkl_par", "faer_seq", "faer_par"];
+    // 2. Gather new base measurements (only_base = true) and write them as separate rows
     for &size in sizes {
-        let mut size_base_timings = HashMap::new();
-        for &header in &base_headers {
-            let folder = match header {
-                "mkl_seq" => "MKL-Sequential",
-                "mkl_par" => "MKL-Parallel",
-                "faer_seq" => "Faer-Sequential",
-                "faer_par" => "Faer-Parallel",
-                _ => unreachable!(),
+        // Dgemm/MKL
+        let mut mkl_metrics = HashMap::new();
+        if let Some(t) = new_timings.get("MKL-Sequential").and_then(|m| m.get(&size).copied()) {
+            mkl_metrics.insert("mkl_seq".to_string(), t);
+        }
+        if let Some(t) = new_timings.get("MKL-Parallel").and_then(|m| m.get(&size).copied()) {
+            mkl_metrics.insert("mkl_par".to_string(), t);
+        }
+        if !mkl_metrics.is_empty() {
+            let key = ConfigKey {
+                size,
+                base_choice: "dgemm".to_string(),
+                recursion_level: None,
+                size_cutoff: None,
+                only_base: true,
             };
-            if let Some(t) = new_timings.get(folder).and_then(|m| m.get(&size).copied()) {
-                size_base_timings.insert(header.to_string(), t);
+            let row = existing.entry(key).or_default();
+            for (header, val) in mkl_metrics {
+                row.insert(header, val);
             }
         }
 
-        if !size_base_timings.is_empty() {
-            for (k, row_metrics) in &mut existing {
-                if k.size == size {
-                    for (header, &t) in &size_base_timings {
-                        row_metrics.insert(header.clone(), t);
-                    }
-                }
+        // Faer
+        let mut faer_metrics = HashMap::new();
+        if let Some(t) = new_timings.get("Faer-Sequential").and_then(|m| m.get(&size).copied()) {
+            faer_metrics.insert("faer_seq".to_string(), t);
+        }
+        if let Some(t) = new_timings.get("Faer-Parallel").and_then(|m| m.get(&size).copied()) {
+            faer_metrics.insert("faer_par".to_string(), t);
+        }
+        if !faer_metrics.is_empty() {
+            let key = ConfigKey {
+                size,
+                base_choice: "faer".to_string(),
+                recursion_level: None,
+                size_cutoff: None,
+                only_base: true,
+            };
+            let row = existing.entry(key).or_default();
+            for (header, val) in faer_metrics {
+                row.insert(header, val);
             }
         }
     }
 
-    // 2. Write everything back to CSV
+    // 3. Write everything back to CSV
     if let Some(parent) = Path::new(filename).parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let mut file = File::create(filename)?;
 
-    write!(file, "size,base_choice,recursion_level,size_cutoff")?;
+    write!(file, "size,base_choice,recursion_level,size_cutoff,only_base")?;
     for col in &mappings {
         write!(file, ",{}", col.header)?;
     }
@@ -267,17 +300,18 @@ pub fn export_results_to_csv(
             continue;
         }
 
-        write!(file, "{},{}", key.size, key.base_choice)?;
+        write!(file, "{},{},", key.size, key.base_choice)?;
         if let Some(level) = key.recursion_level {
-            write!(file, ",{}", level)?;
+            write!(file, "{},", level)?;
         } else {
             write!(file, ",")?;
         }
         if let Some(cutoff) = key.size_cutoff {
-            write!(file, ",{}", cutoff)?;
+            write!(file, "{},", cutoff)?;
         } else {
             write!(file, ",")?;
         }
+        write!(file, "{},", key.only_base)?;
 
         for col in &mappings {
             if let Some(t) = row_metrics.get(&col.header) {
@@ -327,4 +361,5 @@ pub fn export_results_to_csv(
 
     Ok(())
 }
+
 

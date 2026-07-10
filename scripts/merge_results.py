@@ -18,7 +18,15 @@ import subprocess
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    csv_dir = os.path.join(project_root, "generated", "csv")
+    
+    run_folder = os.environ.get("RUN_FOLDER")
+    if len(sys.argv) > 1 and sys.argv[1].startswith("run"):
+        run_folder = sys.argv[1]
+        
+    if run_folder:
+        csv_dir = os.path.join(project_root, "generated", "csv", run_folder, "rust")
+    else:
+        csv_dir = os.path.join(project_root, "generated", "csv")
     
     # Pattern to find all job CSV files
     pattern = os.path.join(csv_dir, "benchmark_results_*.csv")
@@ -56,17 +64,21 @@ def main():
     # Concatenate all dataframes
     merged_df = pd.concat(dfs, ignore_index=True)
     
-    # We want to combine rows that have the same key: ['size', 'base_choice', 'recursion_level', 'size_cutoff']
+    # We want to combine rows that have the same key: ['size', 'base_choice', 'recursion_level', 'size_cutoff', 'only_base']
     # Group by keys, taking the first non-null value for each column.
     # To handle NaN values in grouping keys across various pandas versions, we temporarily fill them.
-    group_keys = ['size', 'base_choice', 'recursion_level', 'size_cutoff']
+    group_keys = ['size', 'base_choice', 'recursion_level', 'size_cutoff', 'only_base']
     
     temp_df = merged_df.copy()
     temp_df['recursion_level'] = temp_df['recursion_level'].fillna(-1.0)
     temp_df['size_cutoff'] = temp_df['size_cutoff'].fillna(-1.0)
+    if 'only_base' in temp_df.columns:
+        temp_df['only_base'] = temp_df['only_base'].fillna(False)
+    else:
+        temp_df['only_base'] = False
     
     # Group and aggregate taking the first non-null value
-    final_df = temp_df.groupby(['size', 'base_choice', 'recursion_level', 'size_cutoff'], as_index=False).first()
+    final_df = temp_df.groupby(['size', 'base_choice', 'recursion_level', 'size_cutoff', 'only_base'], as_index=False).first()
     
     # Restore -1.0 back to NaN
     import numpy as np
@@ -80,7 +92,7 @@ def main():
     
     # Ensure correct column ordering
     columns_order = [
-        'size', 'base_choice', 'recursion_level', 'size_cutoff',
+        'size', 'base_choice', 'recursion_level', 'size_cutoff', 'only_base',
         'mkl_seq', 'mkl_par', 'faer_seq', 'faer_par',
         'strassen_seq', 'strassen_dfs', 'strassen_bfs', 'strassen_hybrid'
     ]

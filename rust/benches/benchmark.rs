@@ -187,7 +187,7 @@ impl Benchmark {
         if self.run_sequential {
             Self::register_bench(
                 new_timings,
-                &format!("{}-{}-{}/Sequential", algo, suffix, config_suffix),
+                &format!("{}-{}-{}_Sequential", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -207,7 +207,7 @@ impl Benchmark {
         if self.run_parallel {
             Self::register_bench(
                 new_timings,
-                &format!("{}-{}-{}/DFS", algo, suffix, config_suffix),
+                &format!("{}-{}-{}_DFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -217,7 +217,7 @@ impl Benchmark {
             );
             Self::register_bench(
                 new_timings,
-                &format!("{}-{}-{}/BFS", algo, suffix, config_suffix),
+                &format!("{}-{}-{}_BFS", algo, suffix, config_suffix),
                 size,
                 counter,
                 total,
@@ -228,7 +228,7 @@ impl Benchmark {
             if let RecursionLimit::Depth(_) = recursion_limit {
                 Self::register_bench(
                     new_timings,
-                    &format!("{}-{}-{}/Hybrid", algo, suffix, config_suffix),
+                    &format!("{}-{}-{}_Hybrid", algo, suffix, config_suffix),
                     size,
                     counter,
                     total,
@@ -401,21 +401,33 @@ fn main() {
     let run_plot = args.iter().any(|arg| arg == "--plot");
 
     // Parameter parsing
-    let mut param_cutoff = None;
-    let mut param_level = None;
-    let mut param_size = None;
+    let mut param_cutoffs = Vec::new();
+    let mut param_levels = Vec::new();
+    let mut param_sizes = Vec::new();
     let mut param_out = None;
 
     let mut idx_arg = 0;
     while idx_arg < args.len() {
-        if args[idx_arg] == "--cutoff" && idx_arg + 1 < args.len() {
-            param_cutoff = args[idx_arg + 1].parse::<usize>().ok();
+        if (args[idx_arg] == "--cutoff" || args[idx_arg] == "--cutoffs") && idx_arg + 1 < args.len() {
+            for s in args[idx_arg + 1].split(',') {
+                if let Ok(v) = s.trim().parse::<usize>() {
+                    param_cutoffs.push(v);
+                }
+            }
             idx_arg += 2;
-        } else if args[idx_arg] == "--level" && idx_arg + 1 < args.len() {
-            param_level = args[idx_arg + 1].parse::<usize>().ok();
+        } else if (args[idx_arg] == "--level" || args[idx_arg] == "--levels") && idx_arg + 1 < args.len() {
+            for s in args[idx_arg + 1].split(',') {
+                if let Ok(v) = s.trim().parse::<usize>() {
+                    param_levels.push(v);
+                }
+            }
             idx_arg += 2;
-        } else if args[idx_arg] == "--size" && idx_arg + 1 < args.len() {
-            param_size = args[idx_arg + 1].parse::<usize>().ok();
+        } else if (args[idx_arg] == "--size" || args[idx_arg] == "--sizes") && idx_arg + 1 < args.len() {
+            for s in args[idx_arg + 1].split(',') {
+                if let Ok(v) = s.trim().parse::<usize>() {
+                    param_sizes.push(v);
+                }
+            }
             idx_arg += 2;
         } else if (args[idx_arg] == "--out" || args[idx_arg] == "-o") && idx_arg + 1 < args.len() {
             param_out = Some(args[idx_arg + 1].clone());
@@ -425,16 +437,11 @@ fn main() {
         }
     }
 
-    let is_param_mode = param_cutoff.is_some() || param_level.is_some() || param_size.is_some();
+    let is_param_mode = !param_cutoffs.is_empty() || !param_levels.is_empty() || !param_sizes.is_empty();
 
     // Running with --full will dynamically check system memory and stop before exceeding limits.
-    let sizes: Vec<usize> = if is_param_mode {
-        if let Some(s) = param_size {
-            vec![s]
-        } else {
-            let n_limit = if full { 15 } else { 13 };
-            (1..=n_limit).map(|n| 1usize << n).collect()
-        }
+    let sizes: Vec<usize> = if !param_sizes.is_empty() {
+        param_sizes
     } else {
         let n_limit = if full { 15 } else { 13 };
         (1..=n_limit).map(|n| 1usize << n).collect()
@@ -451,14 +458,14 @@ fn main() {
 
     let configs = if is_param_mode {
         let mut list = Vec::new();
-        if let Some(cutoff) = param_cutoff {
+        for &cutoff in &param_cutoffs {
             list.push((
                 RecursionLimit::Cutoff(cutoff),
                 format!("benchmark_cutoff_{}", cutoff),
                 format!("cutoff: {}", cutoff),
             ));
         }
-        if let Some(level) = param_level {
+        for &level in &param_levels {
             list.push((
                 RecursionLimit::Depth(level),
                 format!("benchmark_level_{}", level),
@@ -505,15 +512,14 @@ fn main() {
     let out_file = if let Some(out) = param_out {
         out
     } else {
+        let (run_csv_rust, _, _) = util::resolve_run_directories();
         let job_id = std::env::var("SLURM_JOB_ID")
             .or_else(|_| std::env::var("PBS_JOBID"))
             .or_else(|_| std::env::var("RUN_ID"));
-        let root = util::get_project_root();
-        let csv_dir = root.join("generated").join("csv");
         let path = if let Ok(id) = job_id {
-            csv_dir.join(format!("benchmark_results_{}.csv", id))
+            run_csv_rust.join(format!("benchmark_results_{}.csv", id))
         } else {
-            csv_dir.join("benchmark_results.csv")
+            run_csv_rust.join("benchmark_results.csv")
         };
         path.to_string_lossy().to_string()
     };

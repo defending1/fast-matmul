@@ -41,6 +41,8 @@ echo "Target project to execute: ${TARGET_PROJECT}"
 echo "Target architecture parameter: ${TARGET_ARCH}"
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
+cd "${PROJECT_ROOT}"
+export RUN_FOLDER=$(python3 python/resolve_run_dir.py)
 
 # Resolve architecture: use parameter if provided, otherwise detect automatically
 if [ "${TARGET_ARCH}" != "detect" ]; then
@@ -86,6 +88,10 @@ fi
 
 echo "Executing: ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full"
 ./generated/bin/bench_${ARCH} ${MODE_FLAG} --full
+
+echo "Merging Rust benchmark results..."
+cd "${PROJECT_ROOT}"
+python3 scripts/merge_results.py
 fi
 
 # Run C/C++ project if selected
@@ -95,6 +101,15 @@ echo "=== Running C/C++ Benchmarks ==="
 echo "============================================="
 cd "${PROJECT_ROOT}"
 ./build/matmul_benchmarks -square_test 1 -full
+
+echo "Merging C/C++ benchmark results..."
+python3 scripts/merge_c_results.py
 fi
 
 echo "Done!"
+
+# Copy output log file to the generated logs folder
+if [ -n "${SLURM_JOB_ID}" ] && [ -f "${PROJECT_ROOT}/benchmark_seq_${SLURM_JOB_ID}.log" ]; then
+  sync
+  cp "${PROJECT_ROOT}/benchmark_seq_${SLURM_JOB_ID}.log" "${PROJECT_ROOT}/generated/log/${RUN_FOLDER}/"
+fi
