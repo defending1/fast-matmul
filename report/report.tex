@@ -615,6 +615,11 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 We aim to understand how the choice of the base matrix multiplication impacts performance of fast
 algorithms. To so so, we compare Faer
 
+\subsection{Comparison of MKL dgemm FFI and Faer matmul}
+
+Though we choose mkl-dgemm for a better comparison, our ffi bindings easily extend to any other gemm, such as OpenBlas, which we leave to further work.
+
+\subsection{Numerical comparison with Benson\&Ballard Strassen}
 
 
 \clearpage
