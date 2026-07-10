@@ -47,7 +47,6 @@ echo "Target architecture parameter: ${TARGET_ARCH}"
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 cd "${PROJECT_ROOT}"
-export RUN_FOLDER=$(python3 python/resolve_run_dir.py)
 
 ARCH="znver3"
 
@@ -103,9 +102,3 @@ python3 scripts/merge_c_results.py
 fi
 
 echo "Done!"
-
-# Copy output log file to the generated logs folder
-if [ -n "${SLURM_JOB_ID}" ] && [ -f "${PROJECT_ROOT}/fast_matmul_multi_${SLURM_JOB_ID}.log" ]; then
-  sync
-  cp "${PROJECT_ROOT}/fast_matmul_multi_${SLURM_JOB_ID}.log" "${PROJECT_ROOT}/generated/log/${RUN_FOLDER}/"
-fi

@@ -1093,11 +1093,7 @@ def main() -> None:
 
     csv_path = args.csv_path
     if csv_path is None:
-        run_folder = os.environ.get("RUN_FOLDER")
-        if run_folder:
-            csv_dir = os.path.join(project_root, "generated", "csv", run_folder, "rust")
-        else:
-            csv_dir = os.path.join(project_root, "generated", "csv")
+        csv_dir = os.path.join(project_root, "generated", "csv")
         job_id = (
             os.environ.get("SLURM_JOB_ID")
             or os.environ.get("PBS_JOBID")

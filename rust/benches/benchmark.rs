@@ -512,14 +512,15 @@ fn main() {
     let out_file = if let Some(out) = param_out {
         out
     } else {
-        let (run_csv_rust, _, _) = util::resolve_run_directories();
         let job_id = std::env::var("SLURM_JOB_ID")
             .or_else(|_| std::env::var("PBS_JOBID"))
             .or_else(|_| std::env::var("RUN_ID"));
+        let root = util::get_project_root();
+        let csv_dir = root.join("generated").join("csv");
         let path = if let Ok(id) = job_id {
-            run_csv_rust.join(format!("benchmark_results_{}.csv", id))
+            csv_dir.join(format!("benchmark_results_{}.csv", id))
         } else {
-            run_csv_rust.join("benchmark_results.csv")
+            csv_dir.join("benchmark_results.csv")
         };
         path.to_string_lossy().to_string()
     };

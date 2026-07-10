@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=gpu-matmul
+#SBATCH --job-name=rust-matmul
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=120G
-#SBATCH --time=02:00:00
-#SBATCH --output=generated/logs/gpu_matmul_%j.log
+#SBATCH --time=3-02:00:00
+#SBATCH --output=generated/logs/rust_matmul_%j.log
 
 # Ensure we exit on any error
 set -e
@@ -27,7 +27,6 @@ export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 cd "${PROJECT_ROOT}"
-export RUN_FOLDER=$(python3 python/resolve_run_dir.py)
 cd "${PROJECT_ROOT}/rust"
 
 PARAM_TYPE=$1  # "cutoff" or "level"
@@ -54,9 +53,3 @@ cd "${PROJECT_ROOT}"
 python3 scripts/merge_results.py
 
 echo "Job completed successfully!"
-
-# Copy output log file to the generated logs folder
-if [ -n "${SLURM_JOB_ID}" ] && [ -f "${PROJECT_ROOT}/generated/logs/gpu_matmul_${SLURM_JOB_ID}.log" ]; then
-  sync
-  cp "${PROJECT_ROOT}/generated/logs/gpu_matmul_${SLURM_JOB_ID}.log" "${PROJECT_ROOT}/generated/log/${RUN_FOLDER}/"
-fi

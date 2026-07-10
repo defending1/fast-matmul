@@ -19,14 +19,7 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     
-    run_folder = os.environ.get("RUN_FOLDER")
-    if len(sys.argv) > 1 and sys.argv[1].startswith("run"):
-        run_folder = sys.argv[1]
-        
-    if run_folder:
-        csv_dir = os.path.join(project_root, "generated", "csv", run_folder, "rust")
-    else:
-        csv_dir = os.path.join(project_root, "generated", "csv")
+    csv_dir = os.path.join(project_root, "generated", "csv")
     
     # Pattern to find all job CSV files
     pattern = os.path.join(csv_dir, "benchmark_results_*.csv")

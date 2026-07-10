@@ -27,7 +27,6 @@ export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 cd "${PROJECT_ROOT}"
-export RUN_FOLDER=$(python3 python/resolve_run_dir.py)
 
 MATRIX_SIZE=$1 # e.g., 1024
 
@@ -50,9 +49,3 @@ echo "Merging C/C++ benchmark results..."
 python3 scripts/merge_c_results.py
 
 echo "Job completed successfully!"
-
-# Copy output log file to the generated logs folder
-if [ -n "${SLURM_JOB_ID}" ] && [ -f "${PROJECT_ROOT}/generated/logs/c_matmul_${SLURM_JOB_ID}.log" ]; then
-  sync
-  cp "${PROJECT_ROOT}/generated/logs/c_matmul_${SLURM_JOB_ID}.log" "${PROJECT_ROOT}/generated/log/${RUN_FOLDER}/"
-fi

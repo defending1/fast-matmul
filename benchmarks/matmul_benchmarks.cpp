@@ -508,19 +508,8 @@ int main(int argc, char **argv) {
     size_opt = GetIntOpt(opts, "size");
   }
 
-  // Create the generated output directory if it doesn't exist
-  std::string out_filename;
-  const char* run_folder_env = std::getenv("RUN_FOLDER");
-  if (run_folder_env && *run_folder_env) {
-    std::string run_dir = "generated/csv/" + std::string(run_folder_env) + "/c";
-    std::string mkdir_cmd = "mkdir -p " + run_dir;
-    int ret = system(mkdir_cmd.c_str());
-    (void)ret;
-    out_filename = run_dir + "/benchmarks";
-  } else {
-    mkdir("benchmarks/generated", 0755);
-    out_filename = "benchmarks/generated/benchmarks";
-  }
+  mkdir("benchmarks/generated", 0755);
+  std::string out_filename = "benchmarks/generated/benchmarks";
 
 #if defined(_OPENMP)
 #if defined(_PARALLEL_)

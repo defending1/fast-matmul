@@ -39,7 +39,7 @@ levels=(1 2 3)
 
 # Sizes N = [2, 4, 8, ..., 32768] (2^1 to 2^15)
 sizes=()
-for ((i=1; i<=15; i++)); do
+for ((i=1; i<=16; i++)); do
     sizes+=($((1 << i)))
 done
 
@@ -54,7 +54,7 @@ job_count=0
 for cutoff in "${cutoffs[@]}"; do
     for size in "${sizes[@]}"; do
         echo "Submitting job: cutoff=${cutoff}, size=${size}"
-        sbatch "${PROJECT_ROOT}/scripts/gpu_job.sbatch" cutoff "${cutoff}" "${size}"
+        sbatch "${PROJECT_ROOT}/scripts/rust_sequential_job.sbatch" cutoff "${cutoff}" "${size}"
         job_count=$((job_count + 1))
     done
 done
@@ -63,7 +63,7 @@ done
 for level in "${levels[@]}"; do
     for size in "${sizes[@]}"; do
         echo "Submitting job: level=${level}, size=${size}"
-        sbatch "${PROJECT_ROOT}/scripts/gpu_job.sbatch" level "${level}" "${size}"
+        sbatch "${PROJECT_ROOT}/scripts/rust_sequential_job.sbatch" level "${level}" "${size}"
         job_count=$((job_count + 1))
     done
 done
@@ -74,7 +74,7 @@ job_count=0
 # Iterate over sizes N
 for size in "${sizes[@]}"; do
     echo "Submitting job: size=${size}"
-    sbatch "${PROJECT_ROOT}/scripts/c_job.sbatch" "${size}"
+    sbatch "${PROJECT_ROOT}/scripts/c_sequential_job.sbatch" "${size}"
     job_count=$((job_count + 1))
 done
 

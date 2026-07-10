@@ -20,14 +20,7 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     
-    run_folder = os.environ.get("RUN_FOLDER")
-    if len(sys.argv) > 1 and sys.argv[1].startswith("run"):
-        run_folder = sys.argv[1]
-        
-    if run_folder:
-        generated_dir = os.path.join(project_root, "generated", "csv", run_folder, "c")
-    else:
-        generated_dir = os.path.join(project_root, "benchmarks", "generated")
+    generated_dir = os.path.join(project_root, "benchmarks", "generated")
     
     # Pattern to find all benchmark files
     pattern = os.path.join(generated_dir, "benchmarks_*.txt")
