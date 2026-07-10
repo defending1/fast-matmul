@@ -51,38 +51,7 @@ impl Benchmark {
         }
     }
 
-    /// Computes the total number of benchmarks to run based on sizes, configurations, targets, and algorithms.
-    fn compute_total_benchmarks(
-        &self,
-        sizes_len: usize,
-        configs: &[(RecursionLimit, String, String)],
-        targets: &[(BaseMatMul, &str, &str)],
-        algorithms: &[&str],
-    ) -> (usize, usize) {
-        let mut per_size = 0;
-        if self.run_sequential {
-            per_size += 2; // Dgemm-Sequential, Faer-Sequential
-        }
-        if self.run_parallel {
-            per_size += 2; // Dgemm-Parallel, Faer-Parallel
-        }
-        for (limit, _, _) in configs {
-            for _ in targets {
-                for _ in algorithms {
-                    if self.run_sequential {
-                        per_size += 1;
-                    }
-                    if self.run_parallel {
-                        per_size += 2; // DFS, BFS
-                        if let RecursionLimit::Depth(_) = limit {
-                            per_size += 1; // Hybrid
-                        }
-                    }
-                }
-            }
-        }
-        (sizes_len * per_size, per_size)
-    }
+
 
     /// Allocates a random `size × size` matrix.
     fn random_matrix(size: usize, rng: &mut impl Rng) -> Mat<f64> {
@@ -90,23 +59,19 @@ impl Benchmark {
     }
 
     /// Measures and registers a single benchmark, recording its timing.
-    #[allow(clippy::too_many_arguments)]
     fn register_bench<F, O>(
         new_timings: &mut HashMap<String, HashMap<usize, f64>>,
         name: &str,
         size: usize,
-        counter: &mut usize,
-        total: usize,
         warmup_ms: u64,
         measure_ms: u64,
         f: F,
     ) where
         F: FnMut() -> O,
     {
-        *counter += 1;
         println!(
-            "  Benchmark {} of {}: {} (size {}x{})",
-            counter, total, name, size, size
+            "  Benchmark: {} (size {}x{})",
+            name, size, size
         );
         let time_s = util::run_benchmark_minstant(warmup_ms, measure_ms, f);
         new_timings
@@ -116,7 +81,6 @@ impl Benchmark {
     }
 
     /// Registers the base sequential and parallel benchmarks for one matrix size.
-    #[allow(clippy::too_many_arguments)]
     fn bench_base(
         &self,
         new_timings: &mut HashMap<String, HashMap<usize, f64>>,
@@ -124,8 +88,6 @@ impl Benchmark {
         b: &Mat<f64>,
         size: usize,
         base_choice: BaseMatMul,
-        counter: &mut usize,
-        total: usize,
         warmup_ms: u64,
         measure_ms: u64,
     ) {
@@ -138,8 +100,6 @@ impl Benchmark {
                 new_timings,
                 &format!("{}-Sequential", name),
                 size,
-                counter,
-                total,
                 warmup_ms,
                 measure_ms,
                 || util::base_matmul(a, b, false, base_choice),
@@ -150,8 +110,6 @@ impl Benchmark {
                 new_timings,
                 &format!("{}-Parallel", name),
                 size,
-                counter,
-                total,
                 warmup_ms,
                 measure_ms,
                 || util::base_matmul(a, b, true, base_choice),
@@ -160,7 +118,6 @@ impl Benchmark {
     }
 
     /// Registers sequential and parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
-    #[allow(clippy::too_many_arguments)]
     fn bench_cp(
         &self,
         new_timings: &mut HashMap<String, HashMap<usize, f64>>,
@@ -171,8 +128,6 @@ impl Benchmark {
         mm: &MatMul<'_>,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
-        counter: &mut usize,
-        total: usize,
         warmup_ms: u64,
         measure_ms: u64,
     ) {
@@ -189,8 +144,6 @@ impl Benchmark {
                 new_timings,
                 &format!("{}-{}-{}_Sequential", algo, suffix, config_suffix),
                 size,
-                counter,
-                total,
                 warmup_ms,
                 measure_ms,
                 || {
@@ -209,8 +162,6 @@ impl Benchmark {
                 new_timings,
                 &format!("{}-{}-{}_DFS", algo, suffix, config_suffix),
                 size,
-                counter,
-                total,
                 warmup_ms,
                 measure_ms,
                 || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit),
@@ -219,8 +170,6 @@ impl Benchmark {
                 new_timings,
                 &format!("{}-{}-{}_BFS", algo, suffix, config_suffix),
                 size,
-                counter,
-                total,
                 warmup_ms,
                 measure_ms,
                 || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit),
@@ -230,8 +179,6 @@ impl Benchmark {
                     new_timings,
                     &format!("{}-{}-{}_Hybrid", algo, suffix, config_suffix),
                     size,
-                    counter,
-                    total,
                     warmup_ms,
                     measure_ms,
                     || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit),
@@ -239,57 +186,58 @@ impl Benchmark {
             }
         }
     }
-
     /// Runs benchmarks and exports the results to CSV.
+    ///
+    /// # Arguments
+    /// * `size` - The matrix size dimension.
+    /// * `algorithms` - List of algorithms.
+    /// * `filename` - The output CSV filename.
+    /// * `config` - A single configuration tuple, optional if matmul_mode is "base".
+    /// * `targets` - Base target matrix multiplication algorithms.
+    /// * `matmul_mode` - The benchmark mode: "base" or "strassen".
     pub fn run(
         &self,
-        sizes: &[usize],
+        size: usize,
         algorithms: &[&str],
         filename: &str,
-        configs: &[(RecursionLimit, String, String)],
+        config: Option<(RecursionLimit, String, String)>,
         targets: &[(BaseMatMul, &str, &str)],
+        matmul_mode: &str,
     ) -> Result<(), std::io::Error> {
-        // --- Compute total benchmark count upfront for progress display ---
-        let (total, per_size) = self.compute_total_benchmarks(sizes.len(), configs, targets, algorithms);
-
         println!(
-            "Running {} benchmarks across {} sizes ({} per size)...",
-            total,
-            sizes.len(),
-            per_size
+            "Running benchmarks for size {}x{}...",
+            size,
+            size
         );
 
         let mut new_timings = HashMap::new();
         let mut rng = rand::thread_rng();
 
-        let cps: Vec<(&str, CP)> = algorithms
-            .iter()
-            .map(|&algo| {
-                println!("Loading CP decomposition for '{}'...", algo);
-                (algo, CP::load(algo))
-            })
-            .collect();
+        let cps: Vec<(&str, CP)> = if matmul_mode == "base" {
+            Vec::new()
+        } else {
+            algorithms
+                .iter()
+                .map(|&algo| {
+                    println!("Loading CP decomposition for '{}'...", algo);
+                    (algo, CP::load(algo))
+                })
+                .collect()
+        };
 
-        let mut counter: usize = 0;
-        let mut successful_sizes = Vec::new();
+        if let Err(e) = check_memory_helper::CheckMemoryHelper::check_size_supported(size) {
+            println!("\n--- Gracefully Stopping Benchmarks ---");
+            println!("Reason: {}", e);
+            return Ok(());
+        }
 
-        for &size in sizes {
-            if let Err(e) = check_memory_helper::CheckMemoryHelper::check_size_supported(size) {
-                println!("\n--- Gracefully Stopping Benchmarks ---");
-                println!("Reason: {}", e);
-                println!(
-                    "Writing results for completed sizes {:?} and exiting...",
-                    successful_sizes
-                );
-                break;
-            }
+        println!("\nSize {}x{}:", size, size);
+        let (warmup_ms, measure_ms) = Self::get_timings_for_size(size);
 
-            println!("\nSize {}x{}:", size, size);
-            let (warmup_ms, measure_ms) = Self::get_timings_for_size(size);
+        let a = Self::random_matrix(size, &mut rng);
+        let b = Self::random_matrix(size, &mut rng);
 
-            let a = Self::random_matrix(size, &mut rng);
-            let b = Self::random_matrix(size, &mut rng);
-
+        if matmul_mode == "base" {
             // Run baseline benchmarks exactly once per size
             self.bench_base(
                 &mut new_timings,
@@ -297,8 +245,6 @@ impl Benchmark {
                 &b,
                 size,
                 BaseMatMul::Dgemm,
-                &mut counter,
-                total,
                 warmup_ms,
                 measure_ms,
             );
@@ -308,73 +254,53 @@ impl Benchmark {
                 &b,
                 size,
                 BaseMatMul::Faer,
-                &mut counter,
-                total,
                 warmup_ms,
                 measure_ms,
             );
-
-            // Run CP decomposition algorithms for all configs
-            for (limit, _, _) in configs {
-                for &(base_choice, _, _) in targets {
-                    for &(algo, ref cp) in &cps {
-                        let mm = MatMul::with_cp(cp);
-                        self.bench_cp(
-                            &mut new_timings,
-                            &a,
-                            &b,
-                            size,
-                            algo,
-                            &mm,
-                            base_choice,
-                            *limit,
-                            &mut counter,
-                            total,
-                            warmup_ms,
-                            measure_ms,
-                        );
-                    }
-                }
-            }
-            successful_sizes.push(size);
-
-            // Checkpoint-save: export the results computed so far (without running plot script)
-            for (limit, _, _) in configs {
-                for &(base_choice, _, _) in targets {
-                    export_helper::export_results_to_csv(
-                        &successful_sizes,
-                        algorithms,
-                        filename,
+        } else {
+            let (limit, _, _) = config.as_ref().unwrap();
+            // Run CP decomposition algorithms
+            for &(base_choice, _, _) in targets {
+                for &(algo, ref cp) in &cps {
+                    let mm = MatMul::with_cp(cp);
+                    self.bench_cp(
+                        &mut new_timings,
+                        &a,
+                        &b,
+                        size,
+                        algo,
+                        &mm,
                         base_choice,
                         *limit,
-                        false,
-                        &new_timings,
-                    )?;
+                        warmup_ms,
+                        measure_ms,
+                    );
                 }
             }
         }
 
-        if !successful_sizes.is_empty() {
-            // Write final results for all configs, only running the plot script on the last configuration
-            let last_idx = configs.len() * targets.len() - 1;
-            let mut idx = 0;
-            for (limit, _, _) in configs {
-                for &(base_choice, _, _) in targets {
-                    let is_last = idx == last_idx;
-                    export_helper::export_results_to_csv(
-                        &successful_sizes,
-                        algorithms,
-                        filename,
-                        base_choice,
-                        *limit,
-                        self.run_plot && is_last,
-                        &new_timings,
-                    )?;
-                    idx += 1;
-                }
-            }
+        // Export results
+        if matmul_mode == "base" {
+            export_helper::export_base_results_to_csv(
+                size,
+                filename,
+                &new_timings,
+            )?;
         } else {
-            println!("No matrix sizes were benchmarked.");
+            let (limit, _, _) = config.as_ref().unwrap();
+            let last_idx = targets.len() - 1;
+            for (idx, &(base_choice, _, _)) in targets.iter().enumerate() {
+                let is_last = idx == last_idx;
+                export_helper::export_results_to_csv(
+                    &[size],
+                    algorithms,
+                    filename,
+                    base_choice,
+                    *limit,
+                    self.run_plot && is_last,
+                    &new_timings,
+                )?;
+            }
         }
 
         Ok(())
@@ -384,11 +310,7 @@ impl Benchmark {
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
     job_helper::handle_job_dependent_execution();
-
     let args: Vec<String> = std::env::args().collect();
-    let plot_only = args.iter().any(|arg| arg == "--plot-only" || arg == "-p");
-
-    let full = args.iter().any(|arg| arg == "--full");
 
     let has_seq_flag = args
         .iter()
@@ -405,10 +327,14 @@ fn main() {
     let mut param_levels = Vec::new();
     let mut param_sizes = Vec::new();
     let mut param_out = None;
+    let mut matmul_mode = "strassen".to_string();
 
     let mut idx_arg = 0;
     while idx_arg < args.len() {
-        if (args[idx_arg] == "--cutoff" || args[idx_arg] == "--cutoffs") && idx_arg + 1 < args.len() {
+        if args[idx_arg] == "--matmul" && idx_arg + 1 < args.len() {
+            matmul_mode = args[idx_arg + 1].clone();
+            idx_arg += 2;
+        } else if (args[idx_arg] == "--cutoff" || args[idx_arg] == "--cutoffs") && idx_arg + 1 < args.len() {
             for s in args[idx_arg + 1].split(',') {
                 if let Ok(v) = s.trim().parse::<usize>() {
                     param_cutoffs.push(v);
@@ -437,77 +363,47 @@ fn main() {
         }
     }
 
-    let is_param_mode = !param_cutoffs.is_empty() || !param_levels.is_empty() || !param_sizes.is_empty();
-
-    // Running with --full will dynamically check system memory and stop before exceeding limits.
-    let sizes: Vec<usize> = if !param_sizes.is_empty() {
-        param_sizes
+    if matmul_mode == "base" {
+        if param_sizes.is_empty() {
+            eprintln!("Error: Base benchmark must be run with --size.");
+            std::process::exit(1);
+        }
+    } else if matmul_mode == "strassen" {
+        let is_param_mode = (!param_cutoffs.is_empty() || !param_levels.is_empty()) && !param_sizes.is_empty();
+        if !is_param_mode {
+            eprintln!("Error: Strassen benchmark must be run in parameter mode. Provide --size and either --cutoff or --level.");
+            std::process::exit(1);
+        }
     } else {
-        let n_limit = if full { 15 } else { 13 };
-        (1..=n_limit).map(|n| 1usize << n).collect()
+        eprintln!("Error: Unknown matmul mode '{}'. Supported modes: base, strassen", matmul_mode);
+        std::process::exit(1);
+    }
+
+    let size = param_sizes[0];
+    let config = if matmul_mode == "base" {
+        None
+    } else if !param_cutoffs.is_empty() {
+        let cutoff = param_cutoffs[0];
+        Some((
+            RecursionLimit::Cutoff(cutoff),
+            format!("benchmark_cutoff_{}", cutoff),
+            format!("cutoff: {}", cutoff),
+        ))
+    } else {
+        let level = param_levels[0];
+        Some((
+            RecursionLimit::Depth(level),
+            format!("benchmark_level_{}", level),
+            format!("level: {}", level),
+        ))
     };
 
-    let cutoffs = [256, 512, 1024, 2048];
-    let recursion_levels = [1, 2, 3];
     let algorithms = &["strassen"];
 
     let targets = [
         (BaseMatMul::Faer, "Faer", "faer"),
         (BaseMatMul::Dgemm, "Dgemm", "dgemm"),
     ];
-
-    let configs = if is_param_mode {
-        let mut list = Vec::new();
-        for &cutoff in &param_cutoffs {
-            list.push((
-                RecursionLimit::Cutoff(cutoff),
-                format!("benchmark_cutoff_{}", cutoff),
-                format!("cutoff: {}", cutoff),
-            ));
-        }
-        for &level in &param_levels {
-            list.push((
-                RecursionLimit::Depth(level),
-                format!("benchmark_level_{}", level),
-                format!("level: {}", level),
-            ));
-        }
-        if list.is_empty() {
-            // Default configs if cutoff and level are both unspecified
-            for &cutoff in &cutoffs {
-                list.push((
-                    RecursionLimit::Cutoff(cutoff),
-                    format!("benchmark_cutoff_{}", cutoff),
-                    format!("cutoff: {}", cutoff),
-                ));
-            }
-            for &level in &recursion_levels {
-                list.push((
-                    RecursionLimit::Depth(level),
-                    format!("benchmark_level_{}", level),
-                    format!("level: {}", level),
-                ));
-            }
-        }
-        list
-    } else {
-        let mut list = Vec::new();
-        for &cutoff in &cutoffs {
-            list.push((
-                RecursionLimit::Cutoff(cutoff),
-                format!("benchmark_cutoff_{}", cutoff),
-                format!("cutoff: {}", cutoff),
-            ));
-        }
-        for &level in &recursion_levels {
-            list.push((
-                RecursionLimit::Depth(level),
-                format!("benchmark_level_{}", level),
-                format!("level: {}", level),
-            ));
-        }
-        list
-    };
 
     let out_file = if let Some(out) = param_out {
         out
@@ -518,48 +414,31 @@ fn main() {
         let root = util::get_project_root();
         let csv_dir = root.join("generated").join("csv");
         let path = if let Ok(id) = job_id {
-            csv_dir.join(format!("benchmark_results_{}.csv", id))
+            if matmul_mode == "base" {
+                csv_dir.join(format!("benchmark_results_base_{}.csv", id))
+            } else {
+                csv_dir.join(format!("benchmark_results_{}.csv", id))
+            }
         } else {
-            csv_dir.join("benchmark_results.csv")
+            if matmul_mode == "base" {
+                csv_dir.join("benchmark_results_base.csv")
+            } else {
+                csv_dir.join("benchmark_results.csv")
+            }
         };
         path.to_string_lossy().to_string()
     };
 
-    if plot_only {
-        println!("Plot-only mode: Regenerating CSV results from cached data...");
-        let empty_timings = HashMap::new();
-        for (limit, _file_prefix, label) in &configs {
-            for &(base, name, _suffix) in &targets {
-                if let Err(e) = export_helper::export_results_to_csv(
-                    &sizes,
-                    algorithms,
-                    &out_file,
-                    base,
-                    *limit,
-                    true,
-                    &empty_timings,
-                ) {
-                    eprintln!("Failed to export {} CSV for {}: {:?}", name, label, e);
-                } else {
-                    println!(
-                        "{} CSV results ({}) successfully updated from cache.",
-                        name, label
-                    );
-                }
-            }
-        }
-    } else {
-        println!("\n--- Running Matrix Multiplication Benchmarks ---");
-        let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
+    println!("\n--- Running Matrix Multiplication Benchmarks ---");
+    let bench = Benchmark::new(run_sequential, run_parallel, run_plot);
 
-        if let Err(e) = bench.run(&sizes, algorithms, &out_file, &configs, &targets) {
-            eprintln!("Failed to run benchmarks: {:?}", e);
-        } else {
-            println!(
-                "All benchmark results successfully written to {}",
-                out_file
-            );
-        }
+    if let Err(e) = bench.run(size, algorithms, &out_file, config, &targets, &matmul_mode) {
+        eprintln!("Failed to run benchmarks: {:?}", e);
+    } else {
+        println!(
+            "All benchmark results successfully written to {}",
+            out_file
+        );
     }
 
     // Clean up job-dependent clone on exit if we are running the clone

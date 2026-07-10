@@ -50,34 +50,37 @@ echo "--------------------------------------------------"
 
 job_count=0
 
-# Iterate over cutoffs and sizes N
+# Iterate over sizes N for baseline Rust benchmarks
+for size in "${sizes[@]}"; do
+    echo "Submitting baseline job: size=${size}"
+    sbatch "${PROJECT_ROOT}/scripts/rust_sequential_job.sbatch" base "_" "${size}"
+    job_count=$((job_count + 1))
+done
+
+# Iterate over cutoffs and sizes N for Strassen benchmarks
 for cutoff in "${cutoffs[@]}"; do
     for size in "${sizes[@]}"; do
-        echo "Submitting job: cutoff=${cutoff}, size=${size}"
+        echo "Submitting Strassen job: cutoff=${cutoff}, size=${size}"
         sbatch "${PROJECT_ROOT}/scripts/rust_sequential_job.sbatch" cutoff "${cutoff}" "${size}"
         job_count=$((job_count + 1))
     done
 done
 
-# Iterate over levels and sizes N
+# Iterate over levels and sizes N for Strassen benchmarks
 for level in "${levels[@]}"; do
     for size in "${sizes[@]}"; do
-        echo "Submitting job: level=${level}, size=${size}"
+        echo "Submitting Strassen job: level=${level}, size=${size}"
         sbatch "${PROJECT_ROOT}/scripts/rust_sequential_job.sbatch" level "${level}" "${size}"
         job_count=$((job_count + 1))
     done
 done
 
-
-job_count=0
-
-# Iterate over sizes N
+# Iterate over sizes N for C sequential benchmarks
 for size in "${sizes[@]}"; do
-    echo "Submitting job: size=${size}"
+    echo "Submitting C job: size=${size}"
     sbatch "${PROJECT_ROOT}/scripts/c_sequential_job.sbatch" "${size}"
     job_count=$((job_count + 1))
 done
-
 
 echo "--------------------------------------------------"
 echo "Successfully submitted ${job_count} jobs to the GPU partition!"

@@ -295,18 +295,24 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
     df = pd.read_csv(csv_path, skipinitialspace=True)
 
     new_format_cols = {"base_choice", "recursion_level", "size_cutoff"}
-    if "only_base" in df.columns:
-        new_format_cols.add("only_base")
 
-    # Extract baseline timings if only_base is present
+    # Extract baseline timings from the corresponding base CSV if it exists
+    dir_name = os.path.dirname(csv_path)
+    base_name = os.path.basename(csv_path)
+    if "benchmark_results" in base_name:
+        base_csv_name = base_name.replace("benchmark_results", "benchmark_results_base")
+    else:
+        base_csv_name = "base_" + base_name
+    base_csv_path = os.path.join(dir_name, base_csv_name)
+
     df_base = pd.DataFrame(columns=["size", "mkl_seq", "mkl_par", "faer_seq", "faer_par"])
-    if "only_base" in df.columns:
-        df_base_rows = df[df["only_base"] == True]
-        if not df_base_rows.empty:
-            df_base = df_base_rows.groupby("size", as_index=False)[["mkl_seq", "mkl_par", "faer_seq", "faer_par"]].first()
+    if os.path.exists(base_csv_path):
+        try:
+            df_base = pd.read_csv(base_csv_path, skipinitialspace=True)
+        except Exception as e:
+            print(f"Warning: Failed to load baseline timings from {base_csv_path}: {e}")
 
-    # Filter for runs (where only_base is False)
-    df_runs = df[df["only_base"] == False] if "only_base" in df.columns else df
+    df_runs = df
 
     if {"base_choice", "recursion_level", "size_cutoff"}.issubset(df.columns):
         out_dir = os.path.dirname(output_path)
@@ -371,7 +377,7 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
                     size_cutoff=s_cutoff,
                 )
     else:
-        if "only_base" in df.columns and not df_base.empty:
+        if not df_base.empty:
             df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
             df_runs = pd.merge(df_runs, df_base, on="size", how="left")
         plot_df_core(df_runs, output_path, mode=mode)

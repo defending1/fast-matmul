@@ -16,7 +16,6 @@ struct ConfigKey {
     base_choice: String,
     recursion_level: Option<usize>,
     size_cutoff: Option<usize>,
-    only_base: bool,
 }
 
 impl Ord for ConfigKey {
@@ -25,7 +24,6 @@ impl Ord for ConfigKey {
             .then_with(|| self.base_choice.cmp(&other.base_choice))
             .then_with(|| self.recursion_level.cmp(&other.recursion_level))
             .then_with(|| self.size_cutoff.cmp(&other.size_cutoff))
-            .then_with(|| self.only_base.cmp(&other.only_base))
     }
 }
 
@@ -82,17 +80,12 @@ fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>>
         let base_choice = parts[base_choice_idx].trim().to_string();
         let recursion_level = parts[recursion_level_idx].trim().parse::<usize>().ok();
         let size_cutoff = parts[size_cutoff_idx].trim().parse::<usize>().ok();
-        let only_base = only_base_idx
-            .and_then(|idx| parts.get(idx))
-            .map(|s| s.trim() == "true")
-            .unwrap_or(false);
 
         let key = ConfigKey {
             size,
             base_choice,
             recursion_level,
             size_cutoff,
-            only_base,
         };
 
         let mut row_metrics = HashMap::new();
@@ -204,7 +197,7 @@ pub fn export_results_to_csv(
         RecursionLimit::Cutoff(cutoff) => (None, Some(cutoff)),
     };
 
-    // 1. Gather new Strassen / algorithm measurements (only_base = false)
+    // 1. Gather new Strassen / algorithm measurements
     for &size in sizes {
         let mut has_new_data = false;
         let mut new_metrics = HashMap::new();
@@ -222,7 +215,6 @@ pub fn export_results_to_csv(
                 base_choice: base_choice_str.to_string(),
                 recursion_level,
                 size_cutoff,
-                only_base: false,
             };
             let row = existing.entry(key).or_default();
             for (header, val) in new_metrics {
@@ -231,61 +223,14 @@ pub fn export_results_to_csv(
         }
     }
 
-    // 2. Gather new base measurements (only_base = true) and write them as separate rows
-    for &size in sizes {
-        // Dgemm/MKL
-        let mut mkl_metrics = HashMap::new();
-        if let Some(t) = new_timings.get("MKL-Sequential").and_then(|m| m.get(&size).copied()) {
-            mkl_metrics.insert("mkl_seq".to_string(), t);
-        }
-        if let Some(t) = new_timings.get("MKL-Parallel").and_then(|m| m.get(&size).copied()) {
-            mkl_metrics.insert("mkl_par".to_string(), t);
-        }
-        if !mkl_metrics.is_empty() {
-            let key = ConfigKey {
-                size,
-                base_choice: "dgemm".to_string(),
-                recursion_level: None,
-                size_cutoff: None,
-                only_base: true,
-            };
-            let row = existing.entry(key).or_default();
-            for (header, val) in mkl_metrics {
-                row.insert(header, val);
-            }
-        }
-
-        // Faer
-        let mut faer_metrics = HashMap::new();
-        if let Some(t) = new_timings.get("Faer-Sequential").and_then(|m| m.get(&size).copied()) {
-            faer_metrics.insert("faer_seq".to_string(), t);
-        }
-        if let Some(t) = new_timings.get("Faer-Parallel").and_then(|m| m.get(&size).copied()) {
-            faer_metrics.insert("faer_par".to_string(), t);
-        }
-        if !faer_metrics.is_empty() {
-            let key = ConfigKey {
-                size,
-                base_choice: "faer".to_string(),
-                recursion_level: None,
-                size_cutoff: None,
-                only_base: true,
-            };
-            let row = existing.entry(key).or_default();
-            for (header, val) in faer_metrics {
-                row.insert(header, val);
-            }
-        }
-    }
-
-    // 3. Write everything back to CSV
+    // 2. Write everything back to CSV
     if let Some(parent) = Path::new(filename).parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let mut file = File::create(filename)?;
 
-    write!(file, "size,base_choice,recursion_level,size_cutoff,only_base")?;
+    write!(file, "size,base_choice,recursion_level,size_cutoff")?;
     for col in &mappings {
         write!(file, ",{}", col.header)?;
     }
@@ -300,18 +245,17 @@ pub fn export_results_to_csv(
             continue;
         }
 
-        write!(file, "{},{},", key.size, key.base_choice)?;
+        write!(file, "{},{}", key.size, key.base_choice)?;
         if let Some(level) = key.recursion_level {
-            write!(file, "{},", level)?;
+            write!(file, ",{}", level)?;
         } else {
             write!(file, ",")?;
         }
         if let Some(cutoff) = key.size_cutoff {
-            write!(file, "{},", cutoff)?;
+            write!(file, ",{}", cutoff)?;
         } else {
             write!(file, ",")?;
         }
-        write!(file, "{},", key.only_base)?;
 
         for col in &mappings {
             if let Some(t) = row_metrics.get(&col.header) {
@@ -361,5 +305,107 @@ pub fn export_results_to_csv(
 
     Ok(())
 }
+
+/// Reads existing base benchmark CSV results to avoid overwriting unrelated cached data.
+fn read_existing_base_csv(filename: &str) -> HashMap<usize, HashMap<String, f64>> {
+    let mut map = HashMap::new();
+    let content = match std::fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(_) => return map,
+    };
+    let mut lines = content.lines();
+    let header_line = match lines.next() {
+        Some(h) => h,
+        None => return map,
+    };
+    let headers: Vec<String> = header_line
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let size_idx = headers.iter().position(|h| h == "size");
+    let size_idx = match size_idx {
+        Some(s) => s,
+        None => return map,
+    };
+
+    for line in lines {
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() <= size_idx {
+            continue;
+        }
+        let size: usize = match parts[size_idx].trim().parse() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let mut row_metrics = HashMap::new();
+        for (i, part) in parts.iter().enumerate() {
+            if i == size_idx {
+                continue;
+            }
+            if i < headers.len() {
+                let cleaned = part.trim();
+                if let Ok(val) = cleaned.parse::<f64>() {
+                    row_metrics.insert(headers[i].clone(), val);
+                }
+            }
+        }
+        if !row_metrics.is_empty() {
+            map.insert(size, row_metrics);
+        }
+    }
+    map
+}
+
+/// Exports base matmul results to a separate CSV file.
+pub fn export_base_results_to_csv(
+    size: usize,
+    filename: &str,
+    new_timings: &HashMap<String, HashMap<usize, f64>>,
+) -> Result<(), std::io::Error> {
+    let mut existing = read_existing_base_csv(filename);
+
+    let row = existing.entry(size).or_default();
+    if let Some(t) = new_timings.get("MKL-Sequential").and_then(|m| m.get(&size).copied()) {
+        row.insert("mkl_seq".to_string(), t);
+    }
+    if let Some(t) = new_timings.get("MKL-Parallel").and_then(|m| m.get(&size).copied()) {
+        row.insert("mkl_par".to_string(), t);
+    }
+    if let Some(t) = new_timings.get("Faer-Sequential").and_then(|m| m.get(&size).copied()) {
+        row.insert("faer_seq".to_string(), t);
+    }
+    if let Some(t) = new_timings.get("Faer-Parallel").and_then(|m| m.get(&size).copied()) {
+        row.insert("faer_par".to_string(), t);
+    }
+
+    if let Some(parent) = Path::new(filename).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut file = File::create(filename)?;
+    writeln!(file, "size,mkl_seq,mkl_par,faer_seq,faer_par")?;
+
+    let mut sorted_sizes: Vec<usize> = existing.keys().copied().collect();
+    sorted_sizes.sort();
+
+    for sz in sorted_sizes {
+        let metrics = &existing[&sz];
+        write!(file, "{}", sz)?;
+        for col in &["mkl_seq", "mkl_par", "faer_seq", "faer_par"] {
+            if let Some(t) = metrics.get(*col) {
+                write!(file, ",{:.9}", t)?;
+            } else {
+                write!(file, ",")?;
+            }
+        }
+        writeln!(file)?;
+    }
+
+    println!("Successfully wrote base benchmark CSV output to: {}", filename);
+    Ok(())
+}
+
 
 
