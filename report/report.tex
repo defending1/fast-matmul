@@ -132,7 +132,7 @@
 \newtheorem*{experiment}{Experiment}
 
 \title{%
-   Fast matrix multiplication using CP decomposition
+   Fast matrix multiplication algorithms in Rust
     \\ \large Computational laboratory project report}
 \author{Alberto Defendi\\Project supervisor: Leonardo Robol}
 
@@ -194,12 +194,36 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 \end{tabular}
 \end{table}
 
+\subsection{Fast algorithms as low-rank tensor decomposition}
+
+Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A bilinear form is a mapping $ f : X \times Y \to
+Z$ that is linear in each entry, in other words such that $ f(x, \cdot) $ and $ f(\cdot,y) $ are linear for all
+$ x\in X $ and $ y\in Y $. Any bilinear form can be represented by a matrix $ M $ of coefficients: $
+f(x,y) = x^{\top}My = \sum_i \sum_j m_{ij}x_iy_j $, and we can write it component-wise using a
+tensor $ \Tn{t} $ of coefficients $ t_{ijk} $ as follows:
+\begin{equation}
+  f_k(x,y) = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j, \quad \text{ for all } 1\le k\le K,
+\end{equation}
+or in more succint tensor notation, 
+\begin{equation}
+  \label{eq:bil_tensor}
+ f = \Tn{x} \ttm[1] x \ttm[2] y.
+\end{equation}
+
+\todo{Extend and move before defining matmul formula}
+
 
 \section{Fast matrix multiplication}
 
-Matrix multiplication is a bilinear operation. \todo{explain}
-We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between a
-matrix $ \Tm{A} \in \R^{m\times n} $ with $ \Tm{B} \in \R^{n\times p} $. Fixing the natural
+Matrix multiplication is a bilinear operation; given two matrices $ A \in \R^{m\times n} $ and $ B
+\in \R^{n\times p} $, their product is
+\begin{equation*}
+  C = AB = \left(\sum_{k=1}^n A_{ik}B_{kj}\right)_{\substack{1\le i\le m, \\ 1\le j\le p}} =
+  \begin{bmatrix}  A_{:1} | \cdots | A_{:n} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{n:}
+\end{bmatrix} = \sum_{k=1}^n A_{:k}B_{k:},
+\end{equation*}
+We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between $ A $
+and $ B $. Thus we can rewrite this form as in Equation~\label{eq:bil_tensor}: fixing the natural
 ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
 \Tm{A}\Tm{B} $, we get a representation of $ \Tn{x} \in \R^{mn\times np\times mp} $ of the matrix
 multiplication $ \angb{m,n,p} $ such that
@@ -207,8 +231,8 @@ multiplication $ \angb{m,n,p} $ such that
   \label{eq:mulvec}
 \Vec(\Tm{C}^{\top}) = \Tn{X} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
 .\end{equation}
-Note that we fix the linear order on $ A $ and $ B $, while we fix the reverse ordering on $ C $ by
-applying the transpose operation.
+Note that by transposing $ C $ and then vectorizing, we get a vector whose indexes are in
+reverse order.
 
 \todo{Tensor definition}
 
@@ -387,21 +411,33 @@ There are natural extensions to Strassen algorithm:
   \item We can use blocking schemes different from $ \angb{2,2,2} $.
 \end{enumerate}
 
-\subsection{Fast algorithms as low-rank tensor decomposition}
-
-Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A bilinear form is a mapping $ f : X \times Y \to
-Z$ that is linear in each entry, in other words such that $ f(x, \cdot) $ and $ f(\cdot,y) $ are linear for all
-$ x\in X $ and $ y\in Y $. Any bilinear form can be represented by a matrix $ M $ of coefficients: $
-f(x,y) = x^{\top}My = \sum_i \sum_j m_{ij}x_iy_j $, and we can write it component-wise using a
-tensor $ \Tn{t} $ of coefficients $ t_{ijk} $
-\begin{equation}
-  f_k(x,y) = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j, \quad \text{ for all } 1\le k\le K,
-\end{equation}
-or in more succint tensor notation, $ f = \Tn{x} \ttm[1] x \ttm[2] y $.
-
-\todo{Extend and move before defining matmul formula}
 
 \section{Implementation and practical consideration}
+
+\subsection{Technical overview}
+
+The implementation consists in a Rust porting of the c++ project made by Benson and Ballard summarized in
+\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. They
+provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
+multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
+computation, and OpenMP for parallelization.
+Our project differs from their implementation mainly for the language (Rust) and code
+generation---we apply CP matrix multiplication without code generation, which delivers simpler code
+at the cost of speed \todo{is this True?}. Also, our project uses the numerical library Faer (cite)
+with Rust's Rayon parallelization,
+and selectively switches to Faer or MKL Dgemm for matrix multiplication,
+while the other uses Lapack and MKL Dgemm, and OpenMP for parallelization.
+
+
+Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
+decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
+
+
+Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
+implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
+former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
+
+
 
 \subsection{Algorithm schema}
 
@@ -447,35 +483,18 @@ block sizes---this is how it is implemented in practice.
 \end{algorithm}
 
 
-\subsection{Toeplitz cluster}
+\subsection{Execution platform and reproducibility}
 
-The project experiments were executed on Toeplitz cluster on \todo{node specs}.
+Since the comparison targets both sequential and parallel matrix multiplication kernels, we ran all experiments on one node of a dual-socket AMD EPYC 7763 server (64 physical cores per socket, 2 threads per core) with 2 TB of RAM. The system ran Ubuntu 24.04.5 LTS with Linux 5.15.0-179-generic on x86\_64. For sequential benchmarks, library-level threading was restricted with \texttt{OMP\_NUM\_THREADS=1} and \texttt{MKL\_NUM\_THREADS=1}. These choices remove scheduler migration and library-level parallelism from the measurements to isolate microarchitectural performance and compiler optimizations without the interference of thread scheduling and synchronization overheads. The software environment is configured and reproduced using Environment
+Modules. The configuration loads \texttt{gcc/13.2.0} as the base compiler toolchain, alongside the
+\texttt{intel-oneapi-compilers} version \texttt{2025.0.4-gcc-11.4.0}. To provide a highly optimized BLAS/LAPACK backend, the environment loads \texttt{intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4}. When building the C wrappers and Rust bindings, all compilation targets are explicitly optimized for the server architecture using the target microarchitecture flags (\texttt{-march=znver3 -mtune=znver3}).
+In the C++ project, to support both sequential and parallel modes within a single executable, the MKL backend was dynamically linked against the GNU OpenMP threading layer (\texttt{mkl\_gnu\_thread} and \texttt{-lgomp}) instead of the sequential MKL library.
+We build the Rust code with the nightly-2026-06-23 toolchain because this release uses LLVM 22. Benchmark runs set \texttt{RUSTFLAGS="-C target-cpu=znver3"}, generating optimized vector instructions leveraging AVX2 and FMA. Since the C/C++ wrappers and Rust code compile with matching CPU targets, a custom \texttt{build.rs} script compiles the Intel MKL FFI C wrapper (\texttt{mkl.c}) using \texttt{gcc} with \texttt{-O3 -march=znver3 -mtune=znver3}. During linking, \texttt{build.rs} ensures that the Intel MKL dynamic libraries are correctly loaded. To eliminate the need for manual \texttt{LD\_LIBRARY\_PATH} configuration at runtime, the MKL library path is compiled into the executable binaries as a runtime.
 
-\subsection{Technical overview}
-
-The implementation consists in a Rust porting of the c++ project made by Benson and Ballard summarized in
-\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. They
-provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
-multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
-computation, and OpenMP for parallelization.
-Our project differs from their implementation mainly for the language (Rust) and code
-generation---we apply CP matrix multiplication without code generation, which delivers simpler code
-at the cost of speed \todo{is this True?}. Also, our project uses the numerical library Faer (cite)
-with Rust's Rayon parallelization,
-and selectively switches to Faer or MKL Dgemm for matrix multiplication,
-while the other uses Lapack and MKL Dgemm, and OpenMP for parallelization.
-
-
-Following the work \cite{bensonballard2015} we implement a fast multiplication algorithm based on CP
-decomposition given the $ U,V $and $ W $ matrices representing the algorithm.
-
-
-Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
-implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
-former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
 
 \todo{Here comparison with Ballard et Al (used for comparison)}
 
+\subsubsection{FFI bindings}
 
 \subsection{Recursive cutoff strategies}
 
@@ -613,13 +632,53 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 \subsection{Measuring impact of base gemm}
 
 We aim to understand how the choice of the base matrix multiplication impacts performance of fast
-algorithms. To so so, we compare Faer
+algorithms. In our experiments, we use random square matrices with real entries of sizes $ N \in
+\{2,4,\ldots,2^k\} $. We are interested in finding the $ N $ such that using a fast matrix algorithm
+is faster than doing standard matrix multiplication.
 
 \subsection{Comparison of MKL dgemm FFI and Faer matmul}
 
-Though we choose mkl-dgemm for a better comparison, our ffi bindings easily extend to any other gemm, such as OpenBlas, which we leave to further work.
+In the project we have two different matrix multiplication routines: MKL dgemm and faer base matmul. 
+\begin{itemize}
+  \item \textbf{\href{https://docs.rs/faer-core/latest/faer_core/mul/fn.matmul.html}{Faer matmul:}}
+    The method is entirely written in Rust and is part of the faer library.
+  \item \textbf{MKL dgemm:} is a routine in the Intel Math Kernel Library (MKL) for multiplying
+    double precision matrices. In Rust, this routine runs via a Foreign Function Interface (FFI)
+    calling the C wrapper \texttt{cblas\_dgemm}. In the C++ project, the function is called
+    directly. Both projects use the same library version on the architecture.
+\end{itemize}
+
+From Figure~\ref{fig:gemm_comparison}, we see that all functions have a ramp-up phase and then
+flatten for larger sizes. Also, dgemm performs better than faer for larger sizes, and we believe
+this is due the many low-level optimizations in dgemm. Further, there is a discrepancy between
+Rust FFI dgemm and the C++ code which tends to decrease for larger size. We think that this might be
+due the type conversion which is performed during the binding.
+
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.6\textwidth, keepaspectratio]{figures/mkl_faer_seq_comparison.pdf}
+  \caption{Comparison between MKL and faer in sequenziale and parallel execution.}
+  \label{fig:gemm_comparison}
+\end{figure}
 
 \subsection{Numerical comparison with Benson\&Ballard Strassen}
+
+\section{Further work}
+
+\begin{itemize}
+  \item \textbf{Further code optimization:} We believe that code can be made more efficient by doing
+    a more fine refactory with profiling result.
+  \item \textbf{Gemm comparison:} Though we choose mkl-dgemm for a better comparison, our ffi bindings easily extend to any other gemm, such as OpenBlas, which we leave to further work. 
+  \item \textbf{Gpu/distributed version:} We would like to port the project to GPU or distributed
+    computing to extend results with higher parallelism and test larger sizes.
+\end{itemize}
+
+\section{Acknowledgments}
+
+We acknowledge the authors of~\cite{lombardo2026evaluatingrustsparsematrix} for providing
+instructions for linking MKL with Rust, and the department of Mathematics of the University of Pisa
+for offering access to their HPC cluster.
 
 
 \clearpage
