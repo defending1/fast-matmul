@@ -1,26 +1,9 @@
-## Rust fork
+# Rust fork
 
 My project contributions can be found in the directories `./rust` and
 `./report`.
 
-### Installation (rust project)
-
-To run the automated installation:
-
-```bash
-cd rust
-./setup.sh
-```
-
-Then run
-
-```bash
-cargo bench
-```
-
-to run benchmarks and generate plots.
-
-### Dependencies
+## Dependencies
 
 - **Rust nightly compiler:** Get [rustup](https://rustup.rs/) and switch to
   nightly:
@@ -31,35 +14,15 @@ to run benchmarks and generate plots.
   comparison with Intel's
   [MKL dgemm](https://www.intel.com/content/www/us/en/docs/onemkl/tutorial-c/2021-4/multiplying-matrices-using-dgemm.html)
   library.
+- **python 2.7** and **uv** with **python 3.14**
 
-### Running
+## Installation and usage
 
-Benchmark algorithms and generate plots:
-
-```bash
-cargo bench --bench bench
-
-Options:
-  --full 
-    When this argument is passed, full benchmark runs up to machine's physical limit for matrix
-    storage.
-  -- SIZE
-    Benchmarks only a specific size
-```
-
-## Instructions for running on Toeplitz cluster
-
-To run benchmarks on the Mathematics Department's Toeplitz cluster:
-
-### 1. Pre-compilation
+### Pre-compilation
 
 To avoid slow compilation times and network request latency during batch jobs
-(on compute nodes), you should compile the project **once** on the login node or
-an interactive node for your target microarchitecture.
-
-We provide a pre-setup wrapper script that sources Spack, loads the appropriate
-Environment Modules (compilers/MKL), activates the Python 2.7 Conda environment
-(for C++ codegen), and compiles both C/C++ and Rust targets.
+(on compute nodes), compile the project **once** on the login node or an
+interactive node for your target microarchitecture.
 
 Run the pre-setup script from the project root:
 
@@ -75,56 +38,46 @@ Where `[architecture]` is the target CPU microarchitecture of the compute nodes:
 
 This script will output:
 
-- Highly optimized Rust benchmark binaries to
+- Optimized Rust benchmark binaries to
   `rust/generated/bin/bench_${architecture}` and
   `rust/generated/bin/base_matmul_curves_${architecture}`.
 - C++ binaries to `build/strassen` and `build/matmul_benchmarks`.
 
-### 2. Running Spawned Batch Jobs via SLURM
+### Running Spawned Batch Jobs via SLURM (on cluster)
 
 Rather than running all matrix sizes sequentially in a single monolithic job
 (which risks timeout or memory exhaustion), we spawn a separate batch job for
 each matrix size.
 
-We provide two scripts to manage job submission for Rust and C++ benchmarks:
-
-#### A. Spawning Rust Benchmark Jobs
-
-To spawn benchmark jobs for all matrix sizes ($2^1, 2^2, \dots, 2^{15}$) for the
-Rust project:
+We provide a unified script
+[submit_jobs.sh](file:///home/alberto/Data/pisa/fast-matmul/scripts/submit_jobs.sh)
+to manage sequential and parallel job submissions for both Rust and C++
+benchmarks:
 
 ```bash
-./scripts/submit_rust_jobs.sh
+./scripts/submit_jobs.sh [options]
 ```
 
 - **Options**:
-  - Pass `--no-compile` to skip the compilation step if the project is already
-    compiled (e.g., if you ran `pre-setup.sh` beforehand):
-    ```bash
-    ./scripts/submit_gpu_jobs.sh --no-compile
-    ```
+  - `--seq` / `--sequential` (default): Launch sequential benchmark jobs.
+    Allocates 1 CPU core per task (`--cpus-per-task=1`).
+  - `--par` / `--parallel`: Launch parallel benchmark jobs. Allocates
+    `CPUS_PER_TASK` CPU cores per task (defaults to 6 cores, can be configured
+    via environment variables).
+  - `--no-compile`: Skip the compilation step if the project is already compiled
+    (e.g., if you ran `pre-setup.sh` beforehand).
 
-#### B. Spawning C/C++ Benchmark Jobs
-
-To spawn benchmark jobs for all matrix sizes ($2^1, 2^2, \dots, 2^{15}$) for the
-C/C++ project:
+For example, to run parallel benchmarks without recompiling:
 
 ```bash
-./scripts/submit_c_jobs.sh
+./scripts/submit_jobs.sh --par --no-compile
 ```
 
-- **Options**:
-  - Pass `--no-compile` to skip the compilation step:
-    ```bash
-    ./scripts/submit_c_jobs.sh --no-compile
-    ```
+The jobs are submitted to the SLURM `gpu` partition, allocating memory and CPU
+tasks per matrix size. Log files are saved to `generated/logs/` (e.g.,
+`generated/logs/rust_matmul_%j.log` and `generated/logs/c_matmul_%j.log`).
 
-The jobs are submitted to the SLURM `gpu` partition, allocating 16 CPU cores per
-task (`cpus-per-task=16`), a GPU node, and up to 64GB of RAM per matrix size.
-Log files are saved to `generated/logs/` (e.g.,
-`generated/logs/gpu_matmul_%j.log` and `generated/logs/c_matmul_%j.log`).
-
-#### C. Merging C++ Benchmark Results
+### Merging C++ Benchmark Results
 
 After all C++ benchmark jobs are complete, you can merge and convert the results
 into CSV format by running:
@@ -140,7 +93,7 @@ and output:
 - `benchmarks/generated/benchmarks_merged_wide.csv` (Wide format with algorithms
   and modes as columns)
 
-## Fast matrix multiplication
+# Fast matrix multiplication
 
 Austin R. Benson and Grey Ballard
 
