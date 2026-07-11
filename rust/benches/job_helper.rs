@@ -7,8 +7,7 @@ pub fn handle_job_dependent_execution() {
         .or_else(|_| std::env::var("RUN_ID"))
         .ok();
 
-    if let Some(job_id) = job_id {
-        if let Ok(current_exe) = std::env::current_exe() {
+    if let (Some(job_id), Ok(current_exe)) = (job_id, std::env::current_exe()) {
             let suffix = format!("_{}", job_id);
             let current_exe_str = current_exe.to_string_lossy().into_owned();
             if !current_exe_str.ends_with(&suffix) {
@@ -35,7 +34,6 @@ pub fn handle_job_dependent_execution() {
             }
         }
     }
-}
 
 /// Clean up job-dependent clone on exit if we are running the clone
 pub fn cleanup_job_dependent_execution() {

@@ -93,10 +93,8 @@ fn read_existing_csv(filename: &str) -> HashMap<ConfigKey, HashMap<String, f64>>
             if i == size_idx || i == base_choice_idx || i == recursion_level_idx || i == size_cutoff_idx {
                 continue;
             }
-            if let Some(ob_idx) = only_base_idx {
-                if i == ob_idx {
-                    continue;
-                }
+            if only_base_idx == Some(i) {
+                continue;
             }
             if i < headers.len() {
                 let cleaned = part.trim();

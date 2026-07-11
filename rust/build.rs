@@ -60,8 +60,8 @@ fn main() {
         .include(mkl_include)
         .compiler("gcc")
         .flag("-O3")
-        .flag(&format!("-march={}", target_cpu))
-        .flag(&format!("-mtune={}", target_cpu))
+        .flag(format!("-march={}", target_cpu))
+        .flag(format!("-mtune={}", target_cpu))
         .compile("mkl_wrapper");
 
     // Recompilation triggers

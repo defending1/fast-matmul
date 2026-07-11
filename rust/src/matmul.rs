@@ -444,11 +444,7 @@ impl<'a> MatMul<'a> {
                 let k = r_pow_l - (r_pow_l % p_threads);
                 let r_pow_l_minus_1 = r.pow(level.saturating_sub(1) as u32);
 
-                let c = if r_pow_l_minus_1 > 0 {
-                    k / r_pow_l_minus_1
-                } else {
-                    0
-                };
+                let c = k.checked_div(r_pow_l_minus_1).unwrap_or(0);
 
                 use rayon::prelude::*;
                 (0..r)

@@ -81,6 +81,7 @@ impl Benchmark {
     }
 
     /// Registers the base sequential and parallel benchmarks for one matrix size.
+    #[allow(clippy::too_many_arguments)]
     fn bench_base(
         &self,
         new_timings: &mut HashMap<String, HashMap<usize, f64>>,
@@ -118,6 +119,7 @@ impl Benchmark {
     }
 
     /// Registers sequential and parallel CP benchmarks for one algorithm, matrix size, and base matrix multiplication choice.
+    #[allow(clippy::too_many_arguments)]
     fn bench_cp(
         &self,
         new_timings: &mut HashMap<String, HashMap<usize, f64>>,
