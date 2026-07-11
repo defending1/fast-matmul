@@ -4,7 +4,6 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=1
 #SBATCH --mem=120G
 #SBATCH --time=3-02:00:00
 #SBATCH --output=generated/logs/c_matmul_%j.log
@@ -27,21 +26,34 @@ export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$SCRATCH/fast-matmul}"
 cd "${PROJECT_ROOT}"
 
-MATRIX_SIZE=$1
+MODE=$1         # "seq", "dfs", "bfs", or "hybrid"
+MATRIX_SIZE=$2  # matrix size
 
 # Create logs directory if it doesn't exist
 mkdir -p "${PROJECT_ROOT}/generated/logs"
 
+if [ "${MODE}" = "seq" ] || [ "${MODE}" = "sequential" ]; then
 echo "Running sequential benchmark for size ${MATRIX_SIZE}"
 ./build/matmul_benchmarks -square_test 1 -size "${MATRIX_SIZE}" -full
-
-# echo "Running DFS parallel benchmark for size ${MATRIX_SIZE}"
-# ./build/matmul_bench_dfs -square_test_par 1 -size "${MATRIX_SIZE}" -full
-
-# echo "Running BFS parallel benchmark for size ${MATRIX_SIZE}"
-# ./build/matmul_bench_bfs -square_test_par 1 -size "${MATRIX_SIZE}" -full
-
-# echo "Running HYBRID parallel benchmark for size ${MATRIX_SIZE}"
-# ./build/matmul_bench_hybrid -square_test_par 1 -size "${MATRIX_SIZE}" -full
+elif [ "${MODE}" = "dfs" ]; then
+echo "Running DFS parallel benchmark for size ${MATRIX_SIZE}"
+./build/matmul_bench_dfs -square_test_par 1 -size "${MATRIX_SIZE}" -full
+elif [ "${MODE}" = "bfs" ]; then
+echo "Running BFS parallel benchmark for size ${MATRIX_SIZE}"
+./build/matmul_bench_bfs -square_test_par 1 -size "${MATRIX_SIZE}" -full
+elif [ "${MODE}" = "hybrid" ]; then
+echo "Running HYBRID parallel benchmark for size ${MATRIX_SIZE}"
+./build/matmul_bench_hybrid -square_test_par 1 -size "${MATRIX_SIZE}" -full
+else
+# Fallback to original behavior if only one argument is provided (for backward compatibility)
+if [ -z "$MATRIX_SIZE" ]; then
+MATRIX_SIZE=$MODE
+echo "Running sequential benchmark for size ${MATRIX_SIZE} (fallback)"
+./build/matmul_benchmarks -square_test 1 -size "${MATRIX_SIZE}" -full
+else
+echo "Error: Unknown mode ${MODE}"
+exit 1
+fi
+fi
 
 echo "Job completed successfully!"

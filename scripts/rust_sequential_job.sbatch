@@ -4,7 +4,6 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=1
 #SBATCH --mem=120G
 #SBATCH --time=3-02:00:00
 #SBATCH --output=generated/logs/rust_matmul_%j.log
@@ -31,9 +30,8 @@ cd "${PROJECT_ROOT}/rust"
 PARAM_TYPE=$1  # "base", "cutoff", or "level"
 PARAM_VAL=$2   # e.g., 256 or 1 (ignored for "base")
 MATRIX_SIZE=$3 # e.g., 1024
-
 ARCH="znver3"
-MODE_FLAG="--seq"
+MODE_FLAG=${4:-"--par"}
 
 # Execute the specific benchmark
 if [ "${PARAM_TYPE}" = "base" ]; then
