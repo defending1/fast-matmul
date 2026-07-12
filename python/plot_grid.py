@@ -963,28 +963,27 @@ def plot_compare_ballard(project_root):
                     markersize=4.0,
                 )
 
-            # Set ticks on all x axes
             ax_seq.set_xticks(df_base_seq["size"])
             ax_seq.tick_params(
-                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
             )
             ax_seq.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_dfs.set_xticks(df_base_par["size"])
             ax_dfs.tick_params(
-                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
             )
             ax_dfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_bfs.set_xticks(df_base_par["size"])
             ax_bfs.tick_params(
-                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
             )
             ax_bfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_hybrid.set_xticks(df_base_par["size"])
             ax_hybrid.tick_params(
-                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
             )
             ax_hybrid.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
