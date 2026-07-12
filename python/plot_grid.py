@@ -107,434 +107,483 @@ def plot_mode_grid(project_root, mode, backend_filter=None):
     if not is_seq:
         print(f"Normalizing parallel results using {num_cores} cores.")
 
-    # Legend font size
-    legend_fontsize = 9.5 if is_seq else 8.5
-    plt.rcParams.update({"legend.fontsize": legend_fontsize})
+    custom_rc = {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Times"],
+        "axes.labelsize": 8,
+        "font.size": 8,
+        "legend.fontsize": 6,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "figure.titlesize": 9.5,
+        "axes.titlesize": 8,
+    }
 
-    # Create figure with shared y-axis per row
-    fig, axs = plt.subplots(2, 4, figsize=(18, 10), sharex=True, sharey="row", dpi=300)
+    with plt.rc_context(custom_rc):
+        # Create figure with shared y-axis per row, adapted for A4 page width
+        fig, axs = plt.subplots(
+            2, 4, figsize=(5.8, 3.8), sharex=True, sharey="row", dpi=300
+        )
 
-    configs = [
-        # (row, col, title, is_cutoff, value)
-        (0, 0, "Cutoff = 256", True, 256),
-        (0, 1, "Cutoff = 512", True, 512),
-        (0, 2, "Cutoff = 1024", True, 1024),
-        (0, 3, "Cutoff = 2048", True, 2048),
-        (1, 0, "Level = 1", False, 1),
-        (1, 1, "Level = 2", False, 2),
-        (1, 2, "Level = 3", False, 3),
-    ]
+        configs = [
+            # (row, col, title, is_cutoff, value)
+            (0, 0, "Cutoff = 256", True, 256),
+            (0, 1, "Cutoff = 512", True, 512),
+            (0, 2, "Cutoff = 1024", True, 1024),
+            (0, 3, "Cutoff = 2048", True, 2048),
+            (1, 0, "Level = 1", False, 1),
+            (1, 1, "Level = 2", False, 2),
+            (1, 2, "Level = 3", False, 3),
+        ]
 
-    legend_handles = {}
-    max_gflops_row = [0.0, 0.0]
+        legend_handles = {}
+        max_gflops_row = [0.0, 0.0]
 
-    for row, col, title, is_cutoff, value in configs:
-        ax = axs[row, col]
-        ax.set_facecolor("none")
-        ax.set_xscale("log", base=2)
-        ax.set_xlim(left=2)
-        ax.set_yscale("linear")
-        ax.set_title(title, pad=10)
+        for row, col, title, is_cutoff, value in configs:
+            ax = axs[row, col]
+            ax.set_facecolor("none")
+            ax.set_xscale("log", base=2)
+            ax.set_xlim(left=2)
+            ax.set_yscale("linear")
+            ax.set_title(title, pad=4)
 
-        n_base = df_base["size"]
-        mkl_flops = 2 * n_base**3 - n_base**2
+            n_base = df_base["size"]
+            mkl_flops = 2 * n_base**3 - n_base**2
 
-        if is_seq:
-            # 1. Plot MKL Base (Sequential)
-            if backend_filter not in ("faer", "strassen_only"):
-                gflops_mkl = mkl_flops / (df_base["mkl_seq"] * 1e9)
-                if not gflops_mkl.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_mkl.max()))
-                (l_mkl,) = ax.plot(
-                    n_base,
-                    gflops_mkl,
-                    label="MKL dgemm",
-                    color="#9467bd",
-                    marker="o",
-                    linestyle="--",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["MKL dgemm"] = l_mkl
-
-            # 2. Plot faer Base (Sequential)
-            if backend_filter not in ("dgemm", "strassen_only"):
-                gflops_faer = mkl_flops / (df_base["faer_seq"] * 1e9)
-                if not gflops_faer.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_faer.max()))
-                (l_faer,) = ax.plot(
-                    n_base,
-                    gflops_faer,
-                    label="faer (Sequential)",
-                    color="#17becf",
-                    marker="^",
-                    linestyle="--",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["faer (Sequential)"] = l_faer
-        else:
-            # 1. Plot MKL Base (Parallel, normalized)
-            if backend_filter not in ("faer", "strassen_only") and "mkl_par" in df_base.columns and not df_base["mkl_par"].isna().all():
-                gflops_mkl = mkl_flops / (df_base["mkl_par"] * 1e9) / norm_factor
-                if not gflops_mkl.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_mkl.max()))
-                (l_mkl,) = ax.plot(
-                    n_base,
-                    gflops_mkl,
-                    label="MKL dgemm",
-                    color="#9467bd",
-                    marker="o",
-                    linestyle="--",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["MKL dgemm"] = l_mkl
-
-            # 2. Plot faer Base (Parallel, normalized)
-            if backend_filter not in ("dgemm", "strassen_only") and "faer_par" in df_base.columns and not df_base["faer_par"].isna().all():
-                gflops_faer = mkl_flops / (df_base["faer_par"] * 1e9) / norm_factor
-                if not gflops_faer.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_faer.max()))
-                (l_faer,) = ax.plot(
-                    n_base,
-                    gflops_faer,
-                    label="faer (Parallel)",
-                    color="#17becf",
-                    marker="^",
-                    linestyle="--",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["faer (Parallel)"] = l_faer
-
-        # 3. Filter Strassen results
-        if is_cutoff:
-            df_config = df[
-                (df["size_cutoff"] == value) & (df["recursion_level"].isna())
-            ]
-        else:
-            df_config = df[
-                (df["recursion_level"] == value) & (df["size_cutoff"].isna())
-            ]
-
-        df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
-        df_faer_strassen = df_config[df_config["base_choice"] == "faer"]
-
-        if is_seq:
-            # Strassen dgemm base sequential - uses circle marker
-            if backend_filter != "faer" and not df_dgemm.empty:
-                flops_dg = 2 * df_dgemm["size"] ** 3 - df_dgemm["size"] ** 2
-                gflops_dg = flops_dg / (df_dgemm["strassen_seq"] * 1e9)
-                if not gflops_dg.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_dg.max()))
-                (l_strassen_dg,) = ax.plot(
-                    df_dgemm["size"],
-                    gflops_dg,
-                    label="Strassen (dgemm base)",
-                    color="#ff7f0e",
-                    marker="o",
-                    linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["Strassen (dgemm base)"] = l_strassen_dg
-
-            # Strassen faer base sequential - uses upward triangle marker
-            if backend_filter != "dgemm" and not df_faer_strassen.empty:
-                flops_fs = (
-                    2 * df_faer_strassen["size"] ** 3 - df_faer_strassen["size"] ** 2
-                )
-                gflops_fs = flops_fs / (df_faer_strassen["strassen_seq"] * 1e9)
-                if not gflops_fs.empty:
-                    max_gflops_row[row] = max(max_gflops_row[row], float(gflops_fs.max()))
-                (l_strassen_fs,) = ax.plot(
-                    df_faer_strassen["size"],
-                    gflops_fs,
-                    label="Strassen (faer base)",
-                    color="#e34a33",
-                    marker="^",
-                    linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
-                legend_handles["Strassen (faer base)"] = l_strassen_fs
-        else:
-            # Plot Rust dgemm base Strassen curves (DFS, BFS, Hybrid) - use circle markers
-            if backend_filter != "faer" and not df_dgemm.empty:
-                flops_dg = 2 * df_dgemm["size"] ** 3 - df_dgemm["size"] ** 2
-
-                if (
-                    "strassen_dfs" in df_dgemm.columns
-                    and not df_dgemm["strassen_dfs"].isna().all()
-                ):
-                    gflops_dfs = (
-                        flops_dg / (df_dgemm["strassen_dfs"] * 1e9) / norm_factor
+            if is_seq:
+                # 1. Plot MKL Base (Sequential)
+                if backend_filter not in ("faer", "strassen_only"):
+                    gflops_mkl = mkl_flops / (df_base["mkl_seq"] * 1e9)
+                    if not gflops_mkl.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_mkl.max())
+                        )
+                    (l_mkl,) = ax.plot(
+                        n_base,
+                        gflops_mkl,
+                        label="MKL dgemm",
+                        color="#9467bd",
+                        marker="o",
+                        linestyle="--",
+                        linewidth=0.8,
+                        markersize=3.0,
                     )
-                    if not gflops_dfs.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_dfs.max()))
-                    (l_dfs_dg,) = ax.plot(
+                    legend_handles["MKL dgemm"] = l_mkl
+
+                # 2. Plot faer Base (Sequential)
+                if backend_filter not in ("dgemm", "strassen_only"):
+                    gflops_faer = mkl_flops / (df_base["faer_seq"] * 1e9)
+                    if not gflops_faer.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_faer.max())
+                        )
+                    (l_faer,) = ax.plot(
+                        n_base,
+                        gflops_faer,
+                        label="faer (Sequential)",
+                        color="#17becf",
+                        marker="^",
+                        linestyle="--",
+                        linewidth=0.8,
+                        markersize=3.0,
+                    )
+                    legend_handles["faer (Sequential)"] = l_faer
+            else:
+                # 1. Plot MKL Base (Parallel, normalized)
+                if (
+                    backend_filter not in ("faer", "strassen_only")
+                    and "mkl_par" in df_base.columns
+                    and not df_base["mkl_par"].isna().all()
+                ):
+                    gflops_mkl = mkl_flops / (df_base["mkl_par"] * 1e9) / norm_factor
+                    if not gflops_mkl.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_mkl.max())
+                        )
+                    (l_mkl,) = ax.plot(
+                        n_base,
+                        gflops_mkl,
+                        label="MKL dgemm",
+                        color="#9467bd",
+                        marker="o",
+                        linestyle="--",
+                        linewidth=0.8,
+                        markersize=3.0,
+                    )
+                    legend_handles["MKL dgemm"] = l_mkl
+
+                # 2. Plot faer Base (Parallel, normalized)
+                if (
+                    backend_filter not in ("dgemm", "strassen_only")
+                    and "faer_par" in df_base.columns
+                    and not df_base["faer_par"].isna().all()
+                ):
+                    gflops_faer = mkl_flops / (df_base["faer_par"] * 1e9) / norm_factor
+                    if not gflops_faer.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_faer.max())
+                        )
+                    (l_faer,) = ax.plot(
+                        n_base,
+                        gflops_faer,
+                        label="faer (Parallel)",
+                        color="#17becf",
+                        marker="^",
+                        linestyle="--",
+                        linewidth=0.8,
+                        markersize=3.0,
+                    )
+                    legend_handles["faer (Parallel)"] = l_faer
+
+            # 3. Filter Strassen results
+            if is_cutoff:
+                df_config = df[
+                    (df["size_cutoff"] == value) & (df["recursion_level"].isna())
+                ]
+            else:
+                df_config = df[
+                    (df["recursion_level"] == value) & (df["size_cutoff"].isna())
+                ]
+
+            df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
+            df_faer_strassen = df_config[df_config["base_choice"] == "faer"]
+
+            if is_seq:
+                # Strassen dgemm base sequential - uses circle marker
+                if backend_filter != "faer" and not df_dgemm.empty:
+                    flops_dg = 2 * df_dgemm["size"] ** 3 - df_dgemm["size"] ** 2
+                    gflops_dg = flops_dg / (df_dgemm["strassen_seq"] * 1e9)
+                    if not gflops_dg.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_dg.max())
+                        )
+                    (l_strassen_dg,) = ax.plot(
                         df_dgemm["size"],
-                        gflops_dfs,
-                        label="Strassen DFS (dgemm base)",
+                        gflops_dg,
+                        label="Strassen (dgemm base)",
                         color="#ff7f0e",
                         marker="o",
                         linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
+                        linewidth=0.8,
+                        markersize=3.0,
                     )
-                    legend_handles["Strassen DFS (dgemm base)"] = l_dfs_dg
+                    legend_handles["Strassen (dgemm base)"] = l_strassen_dg
 
-                if (
-                    "strassen_bfs" in df_dgemm.columns
-                    and not df_dgemm["strassen_bfs"].isna().all()
-                ):
-                    gflops_bfs = (
-                        flops_dg / (df_dgemm["strassen_bfs"] * 1e9) / norm_factor
+                # Strassen faer base sequential - uses upward triangle marker
+                if backend_filter != "dgemm" and not df_faer_strassen.empty:
+                    flops_fs = (
+                        2 * df_faer_strassen["size"] ** 3
+                        - df_faer_strassen["size"] ** 2
                     )
-                    if not gflops_bfs.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_bfs.max()))
-                    (l_bfs_dg,) = ax.plot(
-                        df_dgemm["size"],
-                        gflops_bfs,
-                        label="Strassen BFS (dgemm base)",
-                        color="#8c564b",
-                        marker="o",
-                        linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
-                    )
-                    legend_handles["Strassen BFS (dgemm base)"] = l_bfs_dg
-
-                if (
-                    "strassen_hybrid" in df_dgemm.columns
-                    and not df_dgemm["strassen_hybrid"].isna().all()
-                ):
-                    gflops_hybrid = (
-                        flops_dg / (df_dgemm["strassen_hybrid"] * 1e9) / norm_factor
-                    )
-                    if not gflops_hybrid.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_hybrid.max()))
-                    (l_hybrid_dg,) = ax.plot(
-                        df_dgemm["size"],
-                        gflops_hybrid,
-                        label="Strassen Hybrid (dgemm base)",
-                        color="#2ca02c",
-                        marker="o",
-                        linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
-                    )
-                    legend_handles["Strassen Hybrid (dgemm base)"] = l_hybrid_dg
-
-            # Plot Rust faer base Strassen curves (DFS, BFS, Hybrid) - use triangle markers (up, down, left)
-            if backend_filter != "dgemm" and not df_faer_strassen.empty:
-                flops_fs = (
-                    2 * df_faer_strassen["size"] ** 3 - df_faer_strassen["size"] ** 2
-                )
-
-                if (
-                    "strassen_dfs" in df_faer_strassen.columns
-                    and not df_faer_strassen["strassen_dfs"].isna().all()
-                ):
-                    gflops_dfs_fs = (
-                        flops_fs
-                        / (df_faer_strassen["strassen_dfs"] * 1e9)
-                        / norm_factor
-                    )
-                    if not gflops_dfs_fs.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_dfs_fs.max()))
-                    (l_dfs_fs,) = ax.plot(
+                    gflops_fs = flops_fs / (df_faer_strassen["strassen_seq"] * 1e9)
+                    if not gflops_fs.empty:
+                        max_gflops_row[row] = max(
+                            max_gflops_row[row], float(gflops_fs.max())
+                        )
+                    (l_strassen_fs,) = ax.plot(
                         df_faer_strassen["size"],
-                        gflops_dfs_fs,
-                        label="Strassen DFS (faer base)",
+                        gflops_fs,
+                        label="Strassen (faer base)",
                         color="#e34a33",
                         marker="^",
                         linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
+                        linewidth=0.8,
+                        markersize=3.0,
                     )
-                    legend_handles["Strassen DFS (faer base)"] = l_dfs_fs
+                    legend_handles["Strassen (faer base)"] = l_strassen_fs
+            else:
+                # Plot Rust dgemm base Strassen curves (DFS, BFS, Hybrid) - use circle markers
+                if backend_filter != "faer" and not df_dgemm.empty:
+                    flops_dg = 2 * df_dgemm["size"] ** 3 - df_dgemm["size"] ** 2
 
-                if (
-                    "strassen_bfs" in df_faer_strassen.columns
-                    and not df_faer_strassen["strassen_bfs"].isna().all()
-                ):
-                    gflops_bfs_fs = (
-                        flops_fs
-                        / (df_faer_strassen["strassen_bfs"] * 1e9)
-                        / norm_factor
+                    if (
+                        "strassen_dfs" in df_dgemm.columns
+                        and not df_dgemm["strassen_dfs"].isna().all()
+                    ):
+                        gflops_dfs = (
+                            flops_dg / (df_dgemm["strassen_dfs"] * 1e9) / norm_factor
+                        )
+                        if not gflops_dfs.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_dfs.max())
+                            )
+                        (l_dfs_dg,) = ax.plot(
+                            df_dgemm["size"],
+                            gflops_dfs,
+                            label="Strassen DFS (dgemm base)",
+                            color="#ff7f0e",
+                            marker="o",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen DFS (dgemm base)"] = l_dfs_dg
+
+                    if (
+                        "strassen_bfs" in df_dgemm.columns
+                        and not df_dgemm["strassen_bfs"].isna().all()
+                    ):
+                        gflops_bfs = (
+                            flops_dg / (df_dgemm["strassen_bfs"] * 1e9) / norm_factor
+                        )
+                        if not gflops_bfs.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_bfs.max())
+                            )
+                        (l_bfs_dg,) = ax.plot(
+                            df_dgemm["size"],
+                            gflops_bfs,
+                            label="Strassen BFS (dgemm base)",
+                            color="#8c564b",
+                            marker="o",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen BFS (dgemm base)"] = l_bfs_dg
+
+                    if (
+                        "strassen_hybrid" in df_dgemm.columns
+                        and not df_dgemm["strassen_hybrid"].isna().all()
+                    ):
+                        gflops_hybrid = (
+                            flops_dg / (df_dgemm["strassen_hybrid"] * 1e9) / norm_factor
+                        )
+                        if not gflops_hybrid.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_hybrid.max())
+                            )
+                        (l_hybrid_dg,) = ax.plot(
+                            df_dgemm["size"],
+                            gflops_hybrid,
+                            label="Strassen Hybrid (dgemm base)",
+                            color="#2ca02c",
+                            marker="o",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen Hybrid (dgemm base)"] = l_hybrid_dg
+
+                # Plot Rust faer base Strassen curves (DFS, BFS, Hybrid) - use triangle markers (up, down, left)
+                if backend_filter != "dgemm" and not df_faer_strassen.empty:
+                    flops_fs = (
+                        2 * df_faer_strassen["size"] ** 3
+                        - df_faer_strassen["size"] ** 2
                     )
-                    if not gflops_bfs_fs.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_bfs_fs.max()))
-                    (l_bfs_fs,) = ax.plot(
-                        df_faer_strassen["size"],
-                        gflops_bfs_fs,
-                        label="Strassen BFS (faer base)",
-                        color="#02818a",
-                        marker="v",
-                        linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
-                    )
-                    legend_handles["Strassen BFS (faer base)"] = l_bfs_fs
 
-                if (
-                    "strassen_hybrid" in df_faer_strassen.columns
-                    and not df_faer_strassen["strassen_hybrid"].isna().all()
-                ):
-                    gflops_hybrid_fs = (
-                        flops_fs
-                        / (df_faer_strassen["strassen_hybrid"] * 1e9)
-                        / norm_factor
-                    )
-                    if not gflops_hybrid_fs.empty:
-                        max_gflops_row[row] = max(max_gflops_row[row], float(gflops_hybrid_fs.max()))
-                    (l_hybrid_fs,) = ax.plot(
-                        df_faer_strassen["size"],
-                        gflops_hybrid_fs,
-                        label="Strassen Hybrid (faer base)",
-                        color="#bcbd22",
-                        marker="<",
-                        linestyle="-",
-                        linewidth=1.2,
-                        markersize=4.5,
-                    )
-                    legend_handles["Strassen Hybrid (faer base)"] = l_hybrid_fs
+                    if (
+                        "strassen_dfs" in df_faer_strassen.columns
+                        and not df_faer_strassen["strassen_dfs"].isna().all()
+                    ):
+                        gflops_dfs_fs = (
+                            flops_fs
+                            / (df_faer_strassen["strassen_dfs"] * 1e9)
+                            / norm_factor
+                        )
+                        if not gflops_dfs_fs.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_dfs_fs.max())
+                            )
+                        (l_dfs_fs,) = ax.plot(
+                            df_faer_strassen["size"],
+                            gflops_dfs_fs,
+                            label="Strassen DFS (faer base)",
+                            color="#e34a33",
+                            marker="^",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen DFS (faer base)"] = l_dfs_fs
 
-        ax.set_xticks(df_base["size"])
-        ax.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
-        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+                    if (
+                        "strassen_bfs" in df_faer_strassen.columns
+                        and not df_faer_strassen["strassen_bfs"].isna().all()
+                    ):
+                        gflops_bfs_fs = (
+                            flops_fs
+                            / (df_faer_strassen["strassen_bfs"] * 1e9)
+                            / norm_factor
+                        )
+                        if not gflops_bfs_fs.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_bfs_fs.max())
+                            )
+                        (l_bfs_fs,) = ax.plot(
+                            df_faer_strassen["size"],
+                            gflops_bfs_fs,
+                            label="Strassen BFS (faer base)",
+                            color="#02818a",
+                            marker="v",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen BFS (faer base)"] = l_bfs_fs
 
-    # Set dynamic tight y-limits across subplots per row to reduce blank space
-    for r in range(2):
-        if max_gflops_row[r] > 0:
-            for c in range(4):
-                axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
+                    if (
+                        "strassen_hybrid" in df_faer_strassen.columns
+                        and not df_faer_strassen["strassen_hybrid"].isna().all()
+                    ):
+                        gflops_hybrid_fs = (
+                            flops_fs
+                            / (df_faer_strassen["strassen_hybrid"] * 1e9)
+                            / norm_factor
+                        )
+                        if not gflops_hybrid_fs.empty:
+                            max_gflops_row[row] = max(
+                                max_gflops_row[row], float(gflops_hybrid_fs.max())
+                            )
+                        (l_hybrid_fs,) = ax.plot(
+                            df_faer_strassen["size"],
+                            gflops_hybrid_fs,
+                            label="Strassen Hybrid (faer base)",
+                            color="#bcbd22",
+                            marker="<",
+                            linestyle="-",
+                            linewidth=0.8,
+                            markersize=3.0,
+                        )
+                        legend_handles["Strassen Hybrid (faer base)"] = l_hybrid_fs
 
-    # Add labels on outer plots
-    for col in range(4):
-        axs[1, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    axs[1, 3].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
+            ax.set_xticks(df_base["size"])
+            ax.tick_params(
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5
+            )
+            ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-    for row in range(2):
-        ylabel = "Effective GFLOPS" if is_seq else "Effective GFLOPS / core"
-        axs[row, 0].set_ylabel(ylabel, labelpad=10)
+        # Set dynamic tight y-limits across subplots per row to reduce blank space
+        for r in range(2):
+            if max_gflops_row[r] > 0:
+                for c in range(4):
+                    axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
 
-    # Legend axis configuration
-    legend_ax = axs[1, 3]
-    legend_ax.axis("off")
+        # Add labels on outer plots
+        for col in range(4):
+            axs[1, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
+        axs[1, 3].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
 
-    if is_seq:
-        if backend_filter == "faer":
-            sorted_labels = ["faer (Sequential)", "Strassen (faer base)"]
-            ncol = 1
-        elif backend_filter == "dgemm":
-            sorted_labels = ["MKL dgemm", "Strassen (dgemm base)"]
-            ncol = 1
-        elif backend_filter == "strassen_only":
-            sorted_labels = ["Strassen (dgemm base)", "Strassen (faer base)"]
-            ncol = 1
+        for row in range(2):
+            ylabel = "Effective GFLOPS" if is_seq else "Effective GFLOPS / core"
+            axs[row, 0].set_ylabel(ylabel, labelpad=4)
+
+        # Legend axis configuration
+        legend_ax = axs[1, 3]
+        legend_ax.axis("off")
+
+        if is_seq:
+            if backend_filter == "faer":
+                sorted_labels = ["faer (Sequential)", "Strassen (faer base)"]
+                ncol = 1
+            elif backend_filter == "dgemm":
+                sorted_labels = ["MKL dgemm", "Strassen (dgemm base)"]
+                ncol = 1
+            elif backend_filter == "strassen_only":
+                sorted_labels = ["Strassen (dgemm base)", "Strassen (faer base)"]
+                ncol = 1
+            else:
+                sorted_labels = [
+                    "MKL dgemm",
+                    "faer (Sequential)",
+                    "Strassen (dgemm base)",
+                    "Strassen (faer base)",
+                ]
+                ncol = 1
         else:
-            sorted_labels = [
-                "MKL dgemm",
-                "faer (Sequential)",
-                "Strassen (dgemm base)",
-                "Strassen (faer base)",
-            ]
-            ncol = 1
-    else:
-        if backend_filter == "faer":
-            sorted_labels = [
-                "faer (Parallel)",
-                "Strassen DFS (faer base)",
-                "Strassen BFS (faer base)",
-                "Strassen Hybrid (faer base)",
-            ]
-            ncol = 1
-        elif backend_filter == "dgemm":
-            sorted_labels = [
-                "MKL dgemm",
-                "Strassen DFS (dgemm base)",
-                "Strassen BFS (dgemm base)",
-                "Strassen Hybrid (dgemm base)",
-            ]
-            ncol = 1
-        elif backend_filter == "strassen_only":
-            sorted_labels = [
-                "Strassen DFS (dgemm base)",
-                "Strassen BFS (dgemm base)",
-                "Strassen Hybrid (dgemm base)",
-                "Strassen DFS (faer base)",
-                "Strassen BFS (faer base)",
-                "Strassen Hybrid (faer base)",
-            ]
-            ncol = 2
-        else:
-            sorted_labels = [
-                "MKL dgemm",
-                "faer (Parallel)",
-                "Strassen DFS (dgemm base)",
-                "Strassen BFS (dgemm base)",
-                "Strassen Hybrid (dgemm base)",
-                "Strassen DFS (faer base)",
-                "Strassen BFS (faer base)",
-                "Strassen Hybrid (faer base)",
-            ]
-            ncol = 2
+            if backend_filter == "faer":
+                sorted_labels = [
+                    "faer (Parallel)",
+                    "Strassen DFS (faer base)",
+                    "Strassen BFS (faer base)",
+                    "Strassen Hybrid (faer base)",
+                ]
+                ncol = 1
+            elif backend_filter == "dgemm":
+                sorted_labels = [
+                    "MKL dgemm",
+                    "Strassen DFS (dgemm base)",
+                    "Strassen BFS (dgemm base)",
+                    "Strassen Hybrid (dgemm base)",
+                ]
+                ncol = 1
+            elif backend_filter == "strassen_only":
+                sorted_labels = [
+                    "Strassen DFS (dgemm base)",
+                    "Strassen BFS (dgemm base)",
+                    "Strassen Hybrid (dgemm base)",
+                    "Strassen DFS (faer base)",
+                    "Strassen BFS (faer base)",
+                    "Strassen Hybrid (faer base)",
+                ]
+                ncol = 1
+            else:
+                sorted_labels = [
+                    "MKL dgemm",
+                    "faer (Parallel)",
+                    "Strassen DFS (dgemm base)",
+                    "Strassen BFS (dgemm base)",
+                    "Strassen Hybrid (dgemm base)",
+                    "Strassen DFS (faer base)",
+                    "Strassen BFS (faer base)",
+                    "Strassen Hybrid (faer base)",
+                ]
+                ncol = 2
 
-    handles = [legend_handles[lbl] for lbl in sorted_labels if lbl in legend_handles]
-    labels = [lbl for lbl in sorted_labels if lbl in legend_handles]
+        handles = [
+            legend_handles[lbl] for lbl in sorted_labels if lbl in legend_handles
+        ]
+        labels = [lbl for lbl in sorted_labels if lbl in legend_handles]
 
-    legend_ax.legend(
-        handles,
-        labels,
-        loc="center",
-        frameon=True,
-        framealpha=0.9,
-        edgecolor="#cbd5e1",
-        ncol=ncol,
-    )
+        legend_ax.legend(
+            handles,
+            labels,
+            loc="center left",
+            frameon=True,
+            framealpha=0.9,
+            edgecolor="#cbd5e1",
+            ncol=ncol,
+            bbox_to_anchor=(-0.15, 0.5) if ncol == 2 else (0.05, 0.5),
+        )
 
-    title_text = (
-        f"Sequential Matrix Multiplication Performance Comparison"
-        if is_seq
-        else f"Parallel Matrix Multiplication Performance Comparison (Normalized per Core)"
-    )
-    if backend_filter == "strassen_only":
-        title_text = f"{title_text} (Strassen Variants Comparison)"
-    elif backend_filter:
-        title_text = f"{title_text} ({backend_filter.upper()} Backend)"
+        title_text = (
+            f"Sequential Matrix Multiplication Performance Comparison"
+            if is_seq
+            else f"Parallel Matrix Multiplication Performance Comparison (Normalized per Core)"
+        )
+        if backend_filter == "strassen_only":
+            title_text = f"{title_text} (Strassen Variants)"
+        elif backend_filter:
+            title_text = f"{title_text} ({backend_filter.upper()} Backend)"
 
-    plt.suptitle(
-        title_text,
-        fontsize=15,
-        y=0.98,
-    )
+        plt.suptitle(
+            title_text,
+            y=0.98,
+        )
 
-    plt.tight_layout()
-    fig.subplots_adjust(
-        hspace=0.25, wspace=0.15, top=0.90, bottom=0.08, left=0.06, right=0.96
-    )
+        fig.subplots_adjust(
+            hspace=0.42, wspace=0.28, top=0.88, bottom=0.15, left=0.09, right=0.97
+        )
 
-    # Save outputs
-    out_dir_plots = os.path.join(project_root, "generated", "plots")
-    out_name = "sequential_grid_plot" if is_seq else "parallel_grid_plot"
-    if backend_filter:
-        out_name = f"{out_name}_{backend_filter}"
-    pdf_path_plots = os.path.join(out_dir_plots, f"{out_name}.pdf")
+        # Save outputs
+        out_dir_plots = os.path.join(project_root, "generated", "plots")
+        out_name = "sequential_grid_plot" if is_seq else "parallel_grid_plot"
+        if backend_filter:
+            out_name = f"{out_name}_{backend_filter}"
+        pdf_path_plots = os.path.join(out_dir_plots, f"{out_name}.pdf")
 
-    os.makedirs(out_dir_plots, exist_ok=True)
-    plt.savefig(pdf_path_plots, bbox_inches="tight")
-    print(f"{mode.capitalize()} grid plot ({backend_filter or 'combined'}) saved successfully:")
-    print(f"  - {pdf_path_plots}")
+        os.makedirs(out_dir_plots, exist_ok=True)
+        plt.savefig(pdf_path_plots, bbox_inches="tight")
+        print(
+            f"{mode.capitalize()} grid plot ({backend_filter or 'combined'}) saved successfully:"
+        )
+        print(f"  - {pdf_path_plots}")
 
-    if backend_filter != "strassen_only":
-        png_path_plots = os.path.join(out_dir_plots, f"{out_name}.png")
-        plt.savefig(png_path_plots, bbox_inches="tight")
-        print(f"  - {png_path_plots}")
-
-    plt.close(fig)
+        if backend_filter != "strassen_only":
+            png_path_plots = os.path.join(out_dir_plots, f"{out_name}.png")
+            plt.savefig(png_path_plots, bbox_inches="tight")
+            print(f"  - {png_path_plots}")
 
 
 def plot_compare_ballard(project_root):
@@ -968,25 +1017,25 @@ def plot_compare_ballard(project_root):
 
             ax_seq.set_xticks(df_base_seq["size"])
             ax_seq.tick_params(
-                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5
             )
             ax_seq.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_dfs.set_xticks(df_base_par["size"])
             ax_dfs.tick_params(
-                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5
             )
             ax_dfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_bfs.set_xticks(df_base_par["size"])
             ax_bfs.tick_params(
-                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5
             )
             ax_bfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
             ax_hybrid.set_xticks(df_base_par["size"])
             ax_hybrid.tick_params(
-                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5.5
+                "x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5
             )
             ax_hybrid.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
@@ -1071,22 +1120,23 @@ def main():
             "sequential",
             "parallel",
             "both",
+            "all",
             "seq",
             "par",
             "compare_ballard",
             "ballard",
         ],
-        default="both",
-        help="Plotting mode: 'sequential' ('seq'), 'parallel' ('par'), 'compare_ballard' ('ballard'), or 'both' (default).",
+        default="all",
+        help="Plotting mode: 'sequential' ('seq'), 'parallel' ('par'), 'compare_ballard' ('ballard'), 'both', or 'all' (default).",
     )
     args = parser.parse_args()
 
     modes_to_run = []
-    if args.mode in ("sequential", "seq", "both"):
+    if args.mode in ("sequential", "seq", "both", "all"):
         modes_to_run.append("sequential")
-    if args.mode in ("parallel", "par", "both"):
+    if args.mode in ("parallel", "par", "both", "all"):
         modes_to_run.append("parallel")
-    if args.mode in ("compare_ballard", "ballard", "both"):
+    if args.mode in ("compare_ballard", "ballard", "both", "all"):
         modes_to_run.append("compare_ballard")
 
     for mode in modes_to_run:

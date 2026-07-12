@@ -32,12 +32,15 @@ else:
 
 plt.rcParams.update(
     {
-        "font.size": 11,
-        "axes.titlesize": 13,
-        "axes.labelsize": 11,
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "Liberation Serif", "DejaVu Serif", "serif"],
+        "text.usetex": latex_installed,
+        "font.size": 10,
+        "axes.titlesize": 11,
+        "axes.labelsize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        "legend.fontsize": 9.5,
+        "legend.fontsize": 8.5,
     }
 )
 
@@ -100,8 +103,8 @@ def main():
     ballard_mkl_seq = parse_matlab_vector(seq_ballard_path, "MKL_0")
     ballard_mkl_par = parse_matlab_vector(par_c_path, "MKL_0")
 
-    # Create figure (side-by-side subplots)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), dpi=300)
+    # Create figure (side-by-side subplots) adapted for LaTeX text width
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8.5, 3.4), dpi=300)
 
     # ==================== SUBPLOT 1: SEQUENTIAL ====================
     ax1.set_facecolor("none")
@@ -117,12 +120,12 @@ def main():
         ax1.plot(
             n_base_seq,
             gflops_mkl,
-            label="MKL (Sequential)",
+            label="Rust MKL dgemm (sequential)",
             color="#9467bd",
-            marker="p",
+            marker="o",
             linestyle="--",
-            linewidth=1.2,
-            markersize=4.5,
+            linewidth=1.5,
+            markersize=5.5,
         )
 
     # Rust faer Sequential
@@ -131,12 +134,12 @@ def main():
         ax1.plot(
             n_base_seq,
             gflops_faer,
-            label="faer (Sequential)",
+            label="Rust faer (sequential)",
             color="#17becf",
-            marker="d",
-            linestyle="-",
-            linewidth=1.2,
-            markersize=4.5,
+            marker="^",
+            linestyle="--",
+            linewidth=1.5,
+            markersize=5.5,
         )
 
     # C MKL Sequential (Ballard)
@@ -147,21 +150,24 @@ def main():
         ax1.plot(
             n_b,
             gflops_b,
-            label="MKL (C Sequential)",
+            label="Ballard MKL dgemm (sequential)",
             color="#e41a1c",
             marker="X",
             linestyle="--",
             linewidth=1.5,
-            markersize=5.0,
+            markersize=5.5,
         )
 
-    ax1.set_xticks(df_base_seq["size"])
-    ax1.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
+    # Use a clean subset of power-of-two ticks to avoid overlapping text
+    ticks_to_show = [4, 16, 64, 256, 1024, 4096, 16384, 65536]
+    
+    ax1.set_xticks(ticks_to_show)
     ax1.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-    ax1.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    ax1.set_ylabel("Effective GFLOPS", labelpad=10)
-    ax1.set_title("Sequential Execution", pad=10)
-    ax1.legend(loc="upper left", frameon=True, framealpha=0.9, edgecolor="#cbd5e1")
+    ax1.tick_params(axis="x", labelbottom=True, rotation=0)
+    ax1.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=6)
+    ax1.set_ylabel("Effective GFLOPS", labelpad=6)
+    ax1.set_title("Sequential Execution", pad=8)
+    ax1.legend(loc="upper left", frameon=True, framealpha=0.5, edgecolor="none")
 
     # ==================== SUBPLOT 2: PARALLEL ====================
     ax2.set_facecolor("none")
@@ -177,12 +183,12 @@ def main():
         ax2.plot(
             n_base_par,
             gflops_mkl_par,
-            label="MKL (Parallel)",
+            label="Rust MKL dgemm (parallel)",
             color="#9467bd",
-            marker="p",
+            marker="o",
             linestyle="--",
-            linewidth=1.2,
-            markersize=4.5,
+            linewidth=1.5,
+            markersize=5.5,
         )
 
     # Rust faer Parallel
@@ -191,15 +197,15 @@ def main():
         ax2.plot(
             n_base_par,
             gflops_faer_par,
-            label="faer (Parallel)",
+            label="Rust faer (parallel)",
             color="#17becf",
-            marker="d",
-            linestyle="-",
-            linewidth=1.2,
-            markersize=4.5,
+            marker="^",
+            linestyle="--",
+            linewidth=1.5,
+            markersize=5.5,
         )
 
-    # C MKL Parallel
+    # C MKL Parallel (Ballard)
     if ballard_mkl_par is not None:
         time_s = ballard_mkl_par["time_ms"] / 1000.0
         n_b = ballard_mkl_par["size"]
@@ -207,24 +213,23 @@ def main():
         ax2.plot(
             n_b,
             gflops_b_par,
-            label="MKL (C Parallel)",
+            label="Ballard MKL dgemm (parallel)",
             color="#e41a1c",
             marker="X",
             linestyle="--",
             linewidth=1.5,
-            markersize=5.0,
+            markersize=5.5,
         )
 
-    ax2.set_xticks(df_base_par["size"])
-    ax2.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
+    ax2.set_xticks(ticks_to_show)
     ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-    ax2.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    ax2.set_ylabel("Effective GFLOPS / core", labelpad=10)
-    ax2.set_title("Parallel Execution (Normalized per Core)", pad=10)
-    ax2.legend(loc="upper left", frameon=True, framealpha=0.9, edgecolor="#cbd5e1")
+    ax2.tick_params(axis="x", labelbottom=True, rotation=0)
+    ax2.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=6)
+    ax2.set_ylabel("Effective GFLOPS / core", labelpad=6)
+    ax2.set_title("Parallel Execution (Normalized per Core)", pad=8)
+    ax2.legend(loc="upper left", frameon=True, framealpha=0.5, edgecolor="none")
 
-    # Re-adjust title and layout
-    plt.suptitle("MKL & faer Performance Comparison: Sequential vs Parallel", fontsize=15, y=0.98)
+    # In LaTeX documents, titles belong in the caption. No suptitle is added.
     plt.tight_layout()
 
     # Save to multiple targets
