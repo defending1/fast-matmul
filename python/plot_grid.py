@@ -573,451 +573,490 @@ def plot_compare_ballard(project_root):
     ]
 
     # Create 4x3 figure with row-specific shared y-axis (sharey='row')
-    fig, axs = plt.subplots(4, 3, figsize=(15, 15), sharex=True, sharey="row", dpi=300)
-
-    max_gflops_seq = 0.0
-    max_gflops_dfs = 0.0
-    max_gflops_bfs = 0.0
-    max_gflops_hybrid = 0.0
-
-    # Define colors, markers and styles matching cohesive palette
-    # Rust lines
-    rust_colors = {
-        "seq_dgemm": "#ff7f0e",
-        "seq_faer": "#e34a33",
-        "par_dfs_dgemm": "#ff7f0e",
-        "par_bfs_dgemm": "#8c564b",
-        "par_hybrid_dgemm": "#2ca02c",
-        "par_dfs_faer": "#e34a33",
-        "par_bfs_faer": "#02818a",
-        "par_hybrid_faer": "#bcbd22",
+    # Use standard LaTeX font sizes (8pt base) and size for A4 width (5.8 inches with 1.2-inch margins)
+    custom_rc = {
+        "font.size": 8.0,
+        "axes.titlesize": 8.0,
+        "axes.labelsize": 8.0,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "legend.title_fontsize": 7.5,
     }
-    # Ballard lines
-    ballard_colors = {
-        "seq": "#e41a1c",
-        "dfs": "#4daf4a",
-        "bfs": "#377eb8",
-        "hybrid": "#984ea3",
-    }
+    with plt.rc_context(custom_rc):
+        fig, axs = plt.subplots(
+            4, 3, figsize=(5.8, 8.0), sharex=True, sharey="row", dpi=300
+        )
 
-    # Loop over Level = 1, 2, 3 (cols 0, 1, 2)
-    for col in range(3):
-        level = col + 1
+        max_gflops_seq = 0.0
+        max_gflops_dfs = 0.0
+        max_gflops_bfs = 0.0
+        max_gflops_hybrid = 0.0
 
-        # ==========================================
-        # --- Row 0: Sequential ---
-        # ==========================================
-        ax_seq = axs[0, col]
-        ax_seq.set_facecolor("none")
-        ax_seq.set_xscale("log", base=2)
-        ax_seq.set_xlim(left=2)
-        ax_seq.set_yscale("linear")
-        ax_seq.set_title(f"Level = {level}", fontsize=11.0, fontweight="normal", pad=6)
-        if col == 1:
-            ax_seq.annotate(
-                "Sequential",
-                xy=(0.5, 1.0),
-                xycoords="axes fraction",
-                xytext=(0, 28),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=12.0,
+        # Define colors, markers and styles matching cohesive palette
+        # Rust lines
+        rust_colors = {
+            "seq_dgemm": "#ff7f0e",
+            "seq_faer": "#e34a33",
+            "par_dfs_dgemm": "#ff7f0e",
+            "par_bfs_dgemm": "#8c564b",
+            "par_hybrid_dgemm": "#2ca02c",
+            "par_dfs_faer": "#e34a33",
+            "par_bfs_faer": "#02818a",
+            "par_hybrid_faer": "#bcbd22",
+        }
+        # Ballard lines
+        ballard_colors = {
+            "seq": "#e41a1c",
+            "dfs": "#4daf4a",
+            "bfs": "#377eb8",
+            "hybrid": "#984ea3",
+        }
+
+        # Loop over Level = 1, 2, 3 (cols 0, 1, 2)
+        for col in range(3):
+            level = col + 1
+
+            # ==========================================
+            # --- Row 0: Sequential ---
+            # ==========================================
+            ax_seq = axs[0, col]
+            ax_seq.set_facecolor("none")
+            ax_seq.set_xscale("log", base=2)
+            ax_seq.set_xlim(left=2)
+            ax_seq.set_yscale("linear")
+            ax_seq.set_title(
+                f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
-
-        df_config_seq = df_seq[
-            (df_seq["recursion_level"] == float(level)) & (df_seq["size_cutoff"].isna())
-        ]
-        df_dg_seq = df_config_seq[df_config_seq["base_choice"] == "dgemm"]
-        df_fs_seq = df_config_seq[df_config_seq["base_choice"] == "faer"]
-
-        # Rust Sequential dgemm base - solid line
-        if not df_dg_seq.empty:
-            flops = 2 * df_dg_seq["size"] ** 3 - df_dg_seq["size"] ** 2
-            gflops = flops / (df_dg_seq["strassen_seq"] * 1e9)
-            if not gflops.empty:
-                max_gflops_seq = max(max_gflops_seq, float(gflops.max()))
-            ax_seq.plot(
-                df_dg_seq["size"],
-                gflops,
-                label="Rust Strassen (dgemm)",
-                color=rust_colors["seq_dgemm"],
-                marker="o",
-                linestyle="-",
-                linewidth=1.2,
-                markersize=4.5,
-            )
-
-        # Rust Sequential faer base - solid line
-        if not df_fs_seq.empty:
-            flops = 2 * df_fs_seq["size"] ** 3 - df_fs_seq["size"] ** 2
-            gflops = flops / (df_fs_seq["strassen_seq"] * 1e9)
-            if not gflops.empty:
-                max_gflops_seq = max(max_gflops_seq, float(gflops.max()))
-            ax_seq.plot(
-                df_fs_seq["size"],
-                gflops,
-                label="Rust Strassen (faer)",
-                color=rust_colors["seq_faer"],
-                marker="^",
-                linestyle="-",
-                linewidth=1.2,
-                markersize=4.5,
-            )
-
-        # Ballard Sequential Reference - dotted line
-        b_seq = ballard_seq_levels[col]
-        if b_seq is not None:
-            time_s = b_seq["time_ms"] / 1000.0
-            n_b = b_seq["size"]
-            gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9)
-            if not gflops_b.empty:
-                max_gflops_seq = max(max_gflops_seq, float(gflops_b.max()))
-            ax_seq.plot(
-                n_b,
-                gflops_b,
-                label="Ballard Strassen",
-                color=ballard_colors["seq"],
-                marker="X",
-                linestyle=":",
-                linewidth=1.5,
-                markersize=5.0,
-            )
-
-        # ==========================================
-        # --- Row 1: DFS ---
-        # ==========================================
-        ax_dfs = axs[1, col]
-        ax_dfs.set_facecolor("none")
-        ax_dfs.set_xscale("log", base=2)
-        ax_dfs.set_xlim(left=2)
-        ax_dfs.set_yscale("linear")
-        ax_dfs.set_title(f"Level = {level}", fontsize=11.0, fontweight="normal", pad=6)
-        if col == 1:
-            ax_dfs.annotate(
-                "Parallel DFS",
-                xy=(0.5, 1.0),
-                xycoords="axes fraction",
-                xytext=(0, 28),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=12.0,
-            )
-
-        df_config_par = df_par[
-            (df_par["recursion_level"] == float(level)) & (df_par["size_cutoff"].isna())
-        ]
-        df_dg_par = df_config_par[df_config_par["base_choice"] == "dgemm"]
-        df_fs_par = df_config_par[df_config_par["base_choice"] == "faer"]
-
-        # Rust DFS dgemm base - solid line
-        if not df_dg_par.empty:
-            flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
-            if (
-                "strassen_dfs" in df_dg_par.columns
-                and not df_dg_par["strassen_dfs"].isna().all()
-            ):
-                gflops = flops / (df_dg_par["strassen_dfs"] * 1e9) / num_cores
-                if not gflops.empty:
-                    max_gflops_dfs = max(max_gflops_dfs, float(gflops.max()))
-                ax_dfs.plot(
-                    df_dg_par["size"],
-                    gflops,
-                    label="Rust Strassen DFS (dgemm)",
-                    color=rust_colors["par_dfs_dgemm"],
-                    marker="o",
-                    linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
+            if col == 1:
+                ax_seq.annotate(
+                    "Sequential",
+                    xy=(0.5, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(0, 16),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9.0,
+                    fontweight="bold",
                 )
 
-        # Rust DFS faer base - solid line
-        if not df_fs_par.empty:
-            flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
-            if (
-                "strassen_dfs" in df_fs_par.columns
-                and not df_fs_par["strassen_dfs"].isna().all()
-            ):
-                gflops = flops / (df_fs_par["strassen_dfs"] * 1e9) / num_cores
+            df_config_seq = df_seq[
+                (df_seq["recursion_level"] == float(level))
+                & (df_seq["size_cutoff"].isna())
+            ]
+            df_dg_seq = df_config_seq[df_config_seq["base_choice"] == "dgemm"]
+            df_fs_seq = df_config_seq[df_config_seq["base_choice"] == "faer"]
+
+            # Rust Sequential dgemm base - solid line
+            if not df_dg_seq.empty:
+                flops = 2 * df_dg_seq["size"] ** 3 - df_dg_seq["size"] ** 2
+                gflops = flops / (df_dg_seq["strassen_seq"] * 1e9)
                 if not gflops.empty:
-                    max_gflops_dfs = max(max_gflops_dfs, float(gflops.max()))
-                ax_dfs.plot(
-                    df_fs_par["size"],
+                    max_gflops_seq = max(max_gflops_seq, float(gflops.max()))
+                ax_seq.plot(
+                    df_dg_seq["size"],
                     gflops,
-                    label="Rust Strassen DFS (faer)",
-                    color=rust_colors["par_dfs_faer"],
+                    label="Rust Strassen (dgemm)",
+                    color=rust_colors["seq_dgemm"],
+                    marker="o",
+                    linestyle="-",
+                    linewidth=1.0,
+                    markersize=3.5,
+                )
+
+            # Rust Sequential faer base - solid line
+            if not df_fs_seq.empty:
+                flops = 2 * df_fs_seq["size"] ** 3 - df_fs_seq["size"] ** 2
+                gflops = flops / (df_fs_seq["strassen_seq"] * 1e9)
+                if not gflops.empty:
+                    max_gflops_seq = max(max_gflops_seq, float(gflops.max()))
+                ax_seq.plot(
+                    df_fs_seq["size"],
+                    gflops,
+                    label="Rust Strassen (faer)",
+                    color=rust_colors["seq_faer"],
                     marker="^",
                     linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
+                    linewidth=1.0,
+                    markersize=3.5,
                 )
 
-        # Ballard DFS reference - dotted line
-        b_dfs = ballard_dfs_levels[col]
-        if b_dfs is not None:
-            time_s = b_dfs["time_ms"] / 1000.0
-            n_b = b_dfs["size"]
-            gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
-            if not gflops_b.empty:
-                max_gflops_dfs = max(max_gflops_dfs, float(gflops_b.max()))
-            ax_dfs.plot(
-                n_b,
-                gflops_b,
-                label="Ballard DFS",
-                color=ballard_colors["dfs"],
-                marker="X",
-                linestyle=":",
-                linewidth=1.5,
-                markersize=5.0,
-            )
+            # Ballard Sequential Reference - dotted line
+            b_seq = ballard_seq_levels[col]
+            if b_seq is not None:
+                time_s = b_seq["time_ms"] / 1000.0
+                n_b = b_seq["size"]
+                gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9)
+                if not gflops_b.empty:
+                    max_gflops_seq = max(max_gflops_seq, float(gflops_b.max()))
+                ax_seq.plot(
+                    n_b,
+                    gflops_b,
+                    label="Ballard Strassen",
+                    color=ballard_colors["seq"],
+                    marker="X",
+                    linestyle=":",
+                    linewidth=1.2,
+                    markersize=4.0,
+                )
 
-        # ==========================================
-        # --- Row 2: BFS ---
-        # ==========================================
-        ax_bfs = axs[2, col]
-        ax_bfs.set_facecolor("none")
-        ax_bfs.set_xscale("log", base=2)
-        ax_bfs.set_xlim(left=2)
-        ax_bfs.set_yscale("linear")
-        ax_bfs.set_title(f"Level = {level}", fontsize=11.0, fontweight="normal", pad=6)
-        if col == 1:
-            ax_bfs.annotate(
-                "Parallel BFS",
-                xy=(0.5, 1.0),
-                xycoords="axes fraction",
-                xytext=(0, 28),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=12.0,
+            # ==========================================
+            # --- Row 1: DFS ---
+            # ==========================================
+            ax_dfs = axs[1, col]
+            ax_dfs.set_facecolor("none")
+            ax_dfs.set_xscale("log", base=2)
+            ax_dfs.set_xlim(left=2)
+            ax_dfs.set_yscale("linear")
+            ax_dfs.set_title(
+                f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
+            if col == 1:
+                ax_dfs.annotate(
+                    "Parallel DFS",
+                    xy=(0.5, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(0, 16),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9.0,
+                    fontweight="bold",
+                )
 
-        # Rust BFS dgemm base - solid line
-        if not df_dg_par.empty:
-            flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
-            if (
-                "strassen_bfs" in df_dg_par.columns
-                and not df_dg_par["strassen_bfs"].isna().all()
-            ):
-                gflops = flops / (df_dg_par["strassen_bfs"] * 1e9) / num_cores
-                if not gflops.empty:
-                    max_gflops_bfs = max(max_gflops_bfs, float(gflops.max()))
+            df_config_par = df_par[
+                (df_par["recursion_level"] == float(level))
+                & (df_par["size_cutoff"].isna())
+            ]
+            df_dg_par = df_config_par[df_config_par["base_choice"] == "dgemm"]
+            df_fs_par = df_config_par[df_config_par["base_choice"] == "faer"]
+
+            # Rust DFS dgemm base - solid line
+            if not df_dg_par.empty:
+                flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
+                if (
+                    "strassen_dfs" in df_dg_par.columns
+                    and not df_dg_par["strassen_dfs"].isna().all()
+                ):
+                    gflops = flops / (df_dg_par["strassen_dfs"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_dfs = max(max_gflops_dfs, float(gflops.max()))
+                    ax_dfs.plot(
+                        df_dg_par["size"],
+                        gflops,
+                        label="Rust Strassen DFS (dgemm)",
+                        color=rust_colors["par_dfs_dgemm"],
+                        marker="o",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
+
+            # Rust DFS faer base - solid line
+            if not df_fs_par.empty:
+                flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
+                if (
+                    "strassen_dfs" in df_fs_par.columns
+                    and not df_fs_par["strassen_dfs"].isna().all()
+                ):
+                    gflops = flops / (df_fs_par["strassen_dfs"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_dfs = max(max_gflops_dfs, float(gflops.max()))
+                    ax_dfs.plot(
+                        df_fs_par["size"],
+                        gflops,
+                        label="Rust Strassen DFS (faer)",
+                        color=rust_colors["par_dfs_faer"],
+                        marker="^",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
+
+            # Ballard DFS reference - dotted line
+            b_dfs = ballard_dfs_levels[col]
+            if b_dfs is not None:
+                time_s = b_dfs["time_ms"] / 1000.0
+                n_b = b_dfs["size"]
+                gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
+                if not gflops_b.empty:
+                    max_gflops_dfs = max(max_gflops_dfs, float(gflops_b.max()))
+                ax_dfs.plot(
+                    n_b,
+                    gflops_b,
+                    label="Ballard DFS",
+                    color=ballard_colors["dfs"],
+                    marker="X",
+                    linestyle=":",
+                    linewidth=1.2,
+                    markersize=4.0,
+                )
+
+            # ==========================================
+            # --- Row 2: BFS ---
+            # ==========================================
+            ax_bfs = axs[2, col]
+            ax_bfs.set_facecolor("none")
+            ax_bfs.set_xscale("log", base=2)
+            ax_bfs.set_xlim(left=2)
+            ax_bfs.set_yscale("linear")
+            ax_bfs.set_title(
+                f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
+            )
+            if col == 1:
+                ax_bfs.annotate(
+                    "Parallel BFS",
+                    xy=(0.5, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(0, 16),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9.0,
+                    fontweight="bold",
+                )
+
+            # Rust BFS dgemm base - solid line
+            if not df_dg_par.empty:
+                flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
+                if (
+                    "strassen_bfs" in df_dg_par.columns
+                    and not df_dg_par["strassen_bfs"].isna().all()
+                ):
+                    gflops = flops / (df_dg_par["strassen_bfs"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_bfs = max(max_gflops_bfs, float(gflops.max()))
+                    ax_bfs.plot(
+                        df_dg_par["size"],
+                        gflops,
+                        label="Rust Strassen BFS (dgemm)",
+                        color=rust_colors["par_bfs_dgemm"],
+                        marker="o",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
+
+            # Rust BFS faer base - solid line
+            if not df_fs_par.empty:
+                flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
+                if (
+                    "strassen_bfs" in df_fs_par.columns
+                    and not df_fs_par["strassen_bfs"].isna().all()
+                ):
+                    gflops = flops / (df_fs_par["strassen_bfs"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_bfs = max(max_gflops_bfs, float(gflops.max()))
+                    ax_bfs.plot(
+                        df_fs_par["size"],
+                        gflops,
+                        label="Rust Strassen BFS (faer)",
+                        color=rust_colors["par_bfs_faer"],
+                        marker="v",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
+
+            # Ballard BFS reference - dotted line
+            b_bfs = ballard_bfs_levels[col]
+            if b_bfs is not None:
+                time_s = b_bfs["time_ms"] / 1000.0
+                n_b = b_bfs["size"]
+                gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
+                if not gflops_b.empty:
+                    max_gflops_bfs = max(max_gflops_bfs, float(gflops_b.max()))
                 ax_bfs.plot(
-                    df_dg_par["size"],
-                    gflops,
-                    label="Rust Strassen BFS (dgemm)",
-                    color=rust_colors["par_bfs_dgemm"],
-                    marker="o",
-                    linestyle="-",
+                    n_b,
+                    gflops_b,
+                    label="Ballard BFS",
+                    color=ballard_colors["bfs"],
+                    marker="s",
+                    linestyle=":",
                     linewidth=1.2,
-                    markersize=4.5,
+                    markersize=4.0,
                 )
 
-        # Rust BFS faer base - solid line
-        if not df_fs_par.empty:
-            flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
-            if (
-                "strassen_bfs" in df_fs_par.columns
-                and not df_fs_par["strassen_bfs"].isna().all()
-            ):
-                gflops = flops / (df_fs_par["strassen_bfs"] * 1e9) / num_cores
-                if not gflops.empty:
-                    max_gflops_bfs = max(max_gflops_bfs, float(gflops.max()))
-                ax_bfs.plot(
-                    df_fs_par["size"],
-                    gflops,
-                    label="Rust Strassen BFS (faer)",
-                    color=rust_colors["par_bfs_faer"],
-                    marker="v",
-                    linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
+            # ==========================================
+            # --- Row 3: Hybrid ---
+            # ==========================================
+            ax_hybrid = axs[3, col]
+            ax_hybrid.set_facecolor("none")
+            ax_hybrid.set_xscale("log", base=2)
+            ax_hybrid.set_xlim(left=2)
+            ax_hybrid.set_yscale("linear")
+            ax_hybrid.set_title(
+                f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
+            )
+            if col == 1:
+                ax_hybrid.annotate(
+                    "Parallel Hybrid",
+                    xy=(0.5, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(0, 16),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9.0,
+                    fontweight="bold",
                 )
 
-        # Ballard BFS reference - dotted line
-        b_bfs = ballard_bfs_levels[col]
-        if b_bfs is not None:
-            time_s = b_bfs["time_ms"] / 1000.0
-            n_b = b_bfs["size"]
-            gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
-            if not gflops_b.empty:
-                max_gflops_bfs = max(max_gflops_bfs, float(gflops_b.max()))
-            ax_bfs.plot(
-                n_b,
-                gflops_b,
-                label="Ballard BFS",
-                color=ballard_colors["bfs"],
-                marker="s",
-                linestyle=":",
-                linewidth=1.5,
-                markersize=5.0,
-            )
+            # Rust Hybrid dgemm base - solid line
+            if not df_dg_par.empty:
+                flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
+                if (
+                    "strassen_hybrid" in df_dg_par.columns
+                    and not df_dg_par["strassen_hybrid"].isna().all()
+                ):
+                    gflops = flops / (df_dg_par["strassen_hybrid"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_hybrid = max(max_gflops_hybrid, float(gflops.max()))
+                    ax_hybrid.plot(
+                        df_dg_par["size"],
+                        gflops,
+                        label="Rust Strassen Hybrid (dgemm)",
+                        color=rust_colors["par_hybrid_dgemm"],
+                        marker="o",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
 
-        # ==========================================
-        # --- Row 3: Hybrid ---
-        # ==========================================
-        ax_hybrid = axs[3, col]
-        ax_hybrid.set_facecolor("none")
-        ax_hybrid.set_xscale("log", base=2)
-        ax_hybrid.set_xlim(left=2)
-        ax_hybrid.set_yscale("linear")
-        ax_hybrid.set_title(
-            f"Level = {level}", fontsize=11.0, fontweight="normal", pad=6
-        )
-        if col == 1:
-            ax_hybrid.annotate(
-                "Parallel Hybrid",
-                xy=(0.5, 1.0),
-                xycoords="axes fraction",
-                xytext=(0, 28),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=12.0,
-            )
+            # Rust Hybrid faer base - solid line
+            if not df_fs_par.empty:
+                flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
+                if (
+                    "strassen_hybrid" in df_fs_par.columns
+                    and not df_fs_par["strassen_hybrid"].isna().all()
+                ):
+                    gflops = flops / (df_fs_par["strassen_hybrid"] * 1e9) / num_cores
+                    if not gflops.empty:
+                        max_gflops_hybrid = max(max_gflops_hybrid, float(gflops.max()))
+                    ax_hybrid.plot(
+                        df_fs_par["size"],
+                        gflops,
+                        label="Rust Strassen Hybrid (faer)",
+                        color=rust_colors["par_hybrid_faer"],
+                        marker="<",
+                        linestyle="-",
+                        linewidth=1.0,
+                        markersize=3.5,
+                    )
 
-        # Rust Hybrid dgemm base - solid line
-        if not df_dg_par.empty:
-            flops = 2 * df_dg_par["size"] ** 3 - df_dg_par["size"] ** 2
-            if (
-                "strassen_hybrid" in df_dg_par.columns
-                and not df_dg_par["strassen_hybrid"].isna().all()
-            ):
-                gflops = flops / (df_dg_par["strassen_hybrid"] * 1e9) / num_cores
-                if not gflops.empty:
-                    max_gflops_hybrid = max(max_gflops_hybrid, float(gflops.max()))
+            # Ballard Hybrid reference - dotted line
+            b_hybrid = ballard_hybrid_levels[col]
+            if b_hybrid is not None:
+                time_s = b_hybrid["time_ms"] / 1000.0
+                n_b = b_hybrid["size"]
+                gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
+                if not gflops_b.empty:
+                    max_gflops_hybrid = max(max_gflops_hybrid, float(gflops_b.max()))
                 ax_hybrid.plot(
-                    df_dg_par["size"],
-                    gflops,
-                    label="Rust Strassen Hybrid (dgemm)",
-                    color=rust_colors["par_hybrid_dgemm"],
-                    marker="o",
-                    linestyle="-",
+                    n_b,
+                    gflops_b,
+                    label="Ballard Hybrid",
+                    color=ballard_colors["hybrid"],
+                    marker="D",
+                    linestyle=":",
                     linewidth=1.2,
-                    markersize=4.5,
+                    markersize=4.0,
                 )
 
-        # Rust Hybrid faer base - solid line
-        if not df_fs_par.empty:
-            flops = 2 * df_fs_par["size"] ** 3 - df_fs_par["size"] ** 2
-            if (
-                "strassen_hybrid" in df_fs_par.columns
-                and not df_fs_par["strassen_hybrid"].isna().all()
-            ):
-                gflops = flops / (df_fs_par["strassen_hybrid"] * 1e9) / num_cores
-                if not gflops.empty:
-                    max_gflops_hybrid = max(max_gflops_hybrid, float(gflops.max()))
-                ax_hybrid.plot(
-                    df_fs_par["size"],
-                    gflops,
-                    label="Rust Strassen Hybrid (faer)",
-                    color=rust_colors["par_hybrid_faer"],
-                    marker="<",
-                    linestyle="-",
-                    linewidth=1.2,
-                    markersize=4.5,
-                )
+            # Set ticks on all x axes
+            ax_seq.set_xticks(df_base_seq["size"])
+            ax_seq.tick_params(
+                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+            )
+            ax_seq.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-        # Ballard Hybrid reference - dotted line
-        b_hybrid = ballard_hybrid_levels[col]
-        if b_hybrid is not None:
-            time_s = b_hybrid["time_ms"] / 1000.0
-            n_b = b_hybrid["size"]
-            gflops_b = (2 * n_b**3 - 2 * n_b**2) / (time_s * 1e9) / num_cores
-            if not gflops_b.empty:
-                max_gflops_hybrid = max(max_gflops_hybrid, float(gflops_b.max()))
-            ax_hybrid.plot(
-                n_b,
-                gflops_b,
-                label="Ballard Hybrid",
-                color=ballard_colors["hybrid"],
-                marker="D",
-                linestyle=":",
-                linewidth=1.5,
-                markersize=5.0,
+            ax_dfs.set_xticks(df_base_par["size"])
+            ax_dfs.tick_params(
+                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+            )
+            ax_dfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+            ax_bfs.set_xticks(df_base_par["size"])
+            ax_bfs.tick_params(
+                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+            )
+            ax_bfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+            ax_hybrid.set_xticks(df_base_par["size"])
+            ax_hybrid.tick_params(
+                "x", labelbottom=True, rotation=30, rotation_mode="xtick"
+            )
+            ax_hybrid.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+        # Set dynamic row-specific tight y-limits across subplots to reduce blank space
+        if max_gflops_seq > 0:
+            for c in range(3):
+                axs[0, c].set_ylim(0, max_gflops_seq * 1.05)
+        if max_gflops_dfs > 0:
+            for c in range(3):
+                axs[1, c].set_ylim(0, max_gflops_dfs * 1.05)
+        if max_gflops_bfs > 0:
+            for c in range(3):
+                axs[2, c].set_ylim(0, max_gflops_bfs * 1.05)
+        if max_gflops_hybrid > 0:
+            for c in range(3):
+                axs[3, c].set_ylim(0, max_gflops_hybrid * 1.05)
+
+        # Place a common legend centered horizontally below the subplots for each row
+        for r in range(4):
+            handles, labels = axs[r, 1].get_legend_handles_labels()
+            # For the last row (r=3), we push the legend further down to accommodate the x-axis labels
+            anchor_y = -0.44 if r == 3 else -0.28
+            axs[r, 1].legend(
+                handles,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, anchor_y),
+                ncol=3,
+                frameon=True,
+                framealpha=0.9,
+                edgecolor="#cbd5e1",
             )
 
-        # Set ticks on all x axes
-        ax_seq.set_xticks(df_base_seq["size"])
-        ax_seq.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
-        ax_seq.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        # Labels on outer plots
+        for col in range(3):
+            axs[3, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
 
-        ax_dfs.set_xticks(df_base_par["size"])
-        ax_dfs.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
-        ax_dfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        axs[0, 0].set_ylabel("Effective GFLOPS", labelpad=10)
+        axs[1, 0].set_ylabel("Effective GFLOPS / core (DFS)", labelpad=10)
+        axs[2, 0].set_ylabel("Effective GFLOPS / core (BFS)", labelpad=10)
+        axs[3, 0].set_ylabel("Effective GFLOPS / core (Hybrid)", labelpad=10)
 
-        ax_bfs.set_xticks(df_base_par["size"])
-        ax_bfs.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
-        ax_bfs.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-
-        ax_hybrid.set_xticks(df_base_par["size"])
-        ax_hybrid.tick_params("x", labelbottom=True, rotation=30, rotation_mode="xtick")
-        ax_hybrid.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-
-    # Set dynamic row-specific tight y-limits across subplots to reduce blank space
-    if max_gflops_seq > 0:
-        for c in range(3):
-            axs[0, c].set_ylim(0, max_gflops_seq * 1.05)
-    if max_gflops_dfs > 0:
-        for c in range(3):
-            axs[1, c].set_ylim(0, max_gflops_dfs * 1.05)
-    if max_gflops_bfs > 0:
-        for c in range(3):
-            axs[2, c].set_ylim(0, max_gflops_bfs * 1.05)
-    if max_gflops_hybrid > 0:
-        for c in range(3):
-            axs[3, c].set_ylim(0, max_gflops_hybrid * 1.05)
-
-    # Place a common legend centered horizontally below the subplots for each row
-    for r in range(4):
-        handles, labels = axs[r, 1].get_legend_handles_labels()
-        # For the last row (r=3), we push the legend further down to accommodate the x-axis labels
-        anchor_y = -0.36 if r == 3 else -0.24
-        axs[r, 1].legend(
-            handles,
-            labels,
-            loc="upper center",
-            bbox_to_anchor=(0.5, anchor_y),
-            ncol=3,
-            frameon=True,
-            framealpha=0.9,
-            edgecolor="#cbd5e1",
-            fontsize=8.5,
+        plt.suptitle(
+            "Strassen Matrix Multiplication: Rust vs Ballard Reference Comparison",
+            fontsize=10.0,
+            fontweight="bold",
+            y=0.98,
         )
 
-    # Labels on outer plots
-    for col in range(3):
-        axs[3, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
+        plt.tight_layout()
+        fig.subplots_adjust(
+            hspace=0.85, wspace=0.22, top=0.94, bottom=0.07, left=0.13, right=0.96
+        )
 
-    axs[0, 0].set_ylabel("Effective GFLOPS", labelpad=10)
-    axs[1, 0].set_ylabel("Effective GFLOPS / core (DFS)", labelpad=10)
-    axs[2, 0].set_ylabel("Effective GFLOPS / core (BFS)", labelpad=10)
-    axs[3, 0].set_ylabel("Effective GFLOPS / core (Hybrid)", labelpad=10)
+        # Save outputs
+        out_dir_plots = os.path.join(project_root, "generated", "plots")
+        report_figures_dir = os.path.join(project_root, "report", "figures")
+        os.makedirs(out_dir_plots, exist_ok=True)
+        os.makedirs(report_figures_dir, exist_ok=True)
 
-    plt.suptitle(
-        "Strassen Matrix Multiplication: Rust vs Ballard Reference Comparison",
-        fontsize=14,
-        y=0.98,
-    )
+        paths_to_save = [
+            os.path.join(out_dir_plots, "compare_ballard.pdf"),
+            os.path.join(out_dir_plots, "compare_ballard.png"),
+            os.path.join(report_figures_dir, "compare_ballard.pdf"),
+            os.path.join(report_figures_dir, "compare_ballard.png"),
+        ]
 
-    plt.tight_layout()
-    # Adjust spacing for layout with subplot legends (no global bottom legend)
-    fig.subplots_adjust(
-        hspace=0.72, wspace=0.15, top=0.91, bottom=0.10, left=0.08, right=0.95
-    )
+        for path in paths_to_save:
+            plt.savefig(path, bbox_inches="tight")
+            print(f"Saved Ballard plot: {path}")
 
-    # Save outputs
-    out_dir_plots = os.path.join(project_root, "generated", "plots")
-    out_name = "compare_ballard"
-    pdf_path_plots = os.path.join(out_dir_plots, f"{out_name}.pdf")
-
-    os.makedirs(out_dir_plots, exist_ok=True)
-    plt.savefig(pdf_path_plots, bbox_inches="tight")
-
-    print(f"Compare Ballard grid plot saved successfully:")
-    print(f"  - {pdf_path_plots}")
-    plt.close(fig)
+        plt.close(fig)
 
 
 def main():
