@@ -628,18 +628,6 @@ def plot_compare_ballard(project_root):
             ax_seq.set_title(
                 f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
-            if col == 1:
-                ax_seq.annotate(
-                    "Sequential",
-                    xy=(0.5, 1.0),
-                    xycoords="axes fraction",
-                    xytext=(0, 16),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9.0,
-                    fontweight="bold",
-                )
 
             df_config_seq = df_seq[
                 (df_seq["recursion_level"] == float(level))
@@ -712,18 +700,6 @@ def plot_compare_ballard(project_root):
             ax_dfs.set_title(
                 f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
-            if col == 1:
-                ax_dfs.annotate(
-                    "Parallel DFS",
-                    xy=(0.5, 1.0),
-                    xycoords="axes fraction",
-                    xytext=(0, 16),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9.0,
-                    fontweight="bold",
-                )
 
             df_config_par = df_par[
                 (df_par["recursion_level"] == float(level))
@@ -804,18 +780,6 @@ def plot_compare_ballard(project_root):
             ax_bfs.set_title(
                 f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
-            if col == 1:
-                ax_bfs.annotate(
-                    "Parallel BFS",
-                    xy=(0.5, 1.0),
-                    xycoords="axes fraction",
-                    xytext=(0, 16),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9.0,
-                    fontweight="bold",
-                )
 
             # Rust BFS dgemm base - solid line
             if not df_dg_par.empty:
@@ -889,18 +853,6 @@ def plot_compare_ballard(project_root):
             ax_hybrid.set_title(
                 f"Level = {level}", fontsize=8.0, fontweight="normal", pad=4
             )
-            if col == 1:
-                ax_hybrid.annotate(
-                    "Parallel Hybrid",
-                    xy=(0.5, 1.0),
-                    xycoords="axes fraction",
-                    xytext=(0, 16),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9.0,
-                    fontweight="bold",
-                )
 
             # Rust Hybrid dgemm base - solid line
             if not df_dg_par.empty:
@@ -1017,14 +969,10 @@ def plot_compare_ballard(project_root):
                 edgecolor="#cbd5e1",
             )
 
-        # Labels on outer plots
-        for col in range(3):
-            axs[3, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-
-        axs[0, 0].set_ylabel("Effective GFLOPS", labelpad=10)
-        axs[1, 0].set_ylabel("Effective GFLOPS / core (DFS)", labelpad=10)
-        axs[2, 0].set_ylabel("Effective GFLOPS / core (BFS)", labelpad=10)
-        axs[3, 0].set_ylabel("Effective GFLOPS / core (Hybrid)", labelpad=10)
+        axs[0, 0].set_ylabel("[SEQ] Effective GFLOPS", labelpad=10)
+        axs[1, 0].set_ylabel("[DFS] Effective GFLOPS / core", labelpad=10)
+        axs[2, 0].set_ylabel("[BFS] Effective GFLOPS / core", labelpad=10)
+        axs[3, 0].set_ylabel("[HYBRID] Effective GFLOPS / core", labelpad=10)
 
         plt.suptitle(
             "Strassen Matrix Multiplication: Rust vs Ballard Reference Comparison",
@@ -1035,7 +983,7 @@ def plot_compare_ballard(project_root):
 
         plt.tight_layout()
         fig.subplots_adjust(
-            hspace=0.85, wspace=0.22, top=0.94, bottom=0.07, left=0.13, right=0.96
+            hspace=0.85, wspace=0.22, top=0.92, bottom=0.07, left=0.13, right=0.96
         )
 
         # Save outputs
