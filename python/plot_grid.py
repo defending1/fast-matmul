@@ -957,7 +957,7 @@ def plot_compare_ballard(project_root):
         for r in range(4):
             handles, labels = axs[r, 1].get_legend_handles_labels()
             # For the last row (r=3), we push the legend further down to accommodate the x-axis labels
-            anchor_y = -0.44 if r == 3 else -0.28
+            anchor_y = -0.32 if r == 3 else -0.22
             axs[r, 1].legend(
                 handles,
                 labels,
@@ -983,7 +983,7 @@ def plot_compare_ballard(project_root):
 
         plt.tight_layout()
         fig.subplots_adjust(
-            hspace=0.85, wspace=0.22, top=0.92, bottom=0.07, left=0.13, right=0.96
+            hspace=0.58, wspace=0.22, top=0.92, bottom=0.08, left=0.13, right=0.96
         )
 
         # Save outputs
