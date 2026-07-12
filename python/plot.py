@@ -13,274 +13,22 @@ and plots the performance (Effective GFLOPS vs Matrix Size) using matplotlib
 and scienceplots. It supports plotting sequential and parallel execution modes,
 generating grid plots for comparisons (e.g. between faer and dgemm bases), and
 incorporating reference curves from literature (e.g. Ballard reference lines).
-
-When adding new algorithms to the benchmark suite, remember to update the
-`styles` dictionary in `plot_df_core` and `generate_grid_plot_core` with custom
-colors, markers, and line styles to maintain visual cohesion.
 """
 
 import argparse
 import os
-import re
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
-import scienceplots  # noqa: F401
+from matplotlib.patches import FancyBboxPatch
 
-
-def format_label(col: str) -> str:
-    """Format column names into clean, publication-ready LaTeX labels.
-
-    Args:
-        col: The column name from the benchmark CSV.
-
-    Returns:
-        A formatted string suitable for LaTeX legend display.
-    """
-    label_mappings = {
-        "mkl_seq": "MKL (Sequential)",
-        "mkl_par": "MKL (Parallel)",
-        "faer_seq": "faer (Sequential)",
-        "faer_par": "faer (Parallel)",
-        "strassen_single": "Strassen (Single-threaded)",
-        "strassen_seq": "Strassen (Sequential)",
-        "strassen_dfs": "Strassen (DFS)",
-        "strassen_bfs": "Strassen (BFS)",
-        "strassen_hybrid": "Strassen (Hybrid)",
-        "strassen_par": "Strassen (Parallel)",
-        "grey_strassen_single": "Grey-Strassen (Single-threaded)",
-        "grey_strassen_seq": "Grey-Strassen (Sequential)",
-        "grey_strassen_dfs": "Grey-Strassen (DFS)",
-        "grey_strassen_bfs": "Grey-Strassen (BFS)",
-        "grey_strassen_hybrid": "Grey-Strassen (Hybrid)",
-        "grey_strassen_par": "Grey-Strassen (Parallel)",
-    }
-    if col in label_mappings:
-        return label_mappings[col]
-
-    # Dynamic parsing fallback for algorithms like hk323_15_94 or smirnov333_23_139
-    parts = col.split("_")
-    if len(parts) >= 4 and parts[1].isdigit() and parts[2].isdigit():
-        name = (
-            parts[0].upper() if parts[0].lower().startswith("hk") else parts[0].title()
-        )
-        rank = parts[1]
-        mults = parts[2]
-        suffix = parts[3:]
-        suffix_str = " ".join(suffix).lower()
-        if suffix_str in ("single", "seq"):
-            suffix_str = "Sequential"
-        elif suffix_str in ("par", "parallel", "hybrid"):
-            suffix_str = "Parallel"
-        elif suffix_str in ("dfs", "bfs"):
-            suffix_str = suffix_str.upper()
-        else:
-            suffix_str = suffix_str.title()
-        return f"{name} {rank}/{mults} ({suffix_str})"
-
-    return col.replace("_", " ").title()
-
-
-BALLARD_DATA_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "benchmarks", "generated", "benchmarks.txt"
-)
-
-# Style for Ballard reference lines
-BALLARD_STYLES = {
-    "mkl_ballard": {
-        "color": "#e41a1c",
-        "marker": "X",
-        "linestyle": "--",
-        "linewidth": 1.5,
-    },
-    "strassen_ballard_1": {
-        "color": "#4daf4a",
-        "marker": "X",
-        "linestyle": ":",
-        "linewidth": 1.5,
-    },
-    "strassen_ballard_2": {
-        "color": "#377eb8",
-        "marker": "s",
-        "linestyle": ":",
-        "linewidth": 1.5,
-    },
-    "strassen_ballard_3": {
-        "color": "#984ea3",
-        "marker": "D",
-        "linestyle": ":",
-        "linewidth": 1.5,
-    },
-}
-
-
-def parse_matlab_vector(filepath: str, vec_name: str) -> pd.DataFrame:
-    """Parse a MATLAB-style vector definition from a text file.
-
-    Expected format:  NAME = [ P Q R steps time_ms ; ... ; ];
-
-    Args:
-        filepath: Path to the data file.
-        vec_name: Name of the vector (e.g. "MKL_0").
-
-    Returns:
-        DataFrame with integer size and time_ms columns, sorted by size.
-    """
-    with open(filepath) as f:
-        text = f.read()
-
-    pattern = re.compile(rf"{re.escape(vec_name)}\s*=\s*\[(.*?)\];", re.DOTALL)
-    match = pattern.search(text)
-    if not match:
-        raise ValueError(f"Vector '{vec_name}' not found in {filepath}")
-
-    rows = []
-    for entry in match.group(1).split(";"):
-        entry = entry.strip()
-        if not entry:
-            continue
-        parts = entry.split()
-        if len(parts) >= 5:
-            p = float(parts[0])
-            time_ms = float(parts[4])
-            rows.append({"size": p, "time_ms": time_ms})
-
-    df = pd.DataFrame(rows)
-    return df.sort_values("size").reset_index(drop=True)
-
-
-def load_ballard_data(mode_suffix: str) -> dict:
-    """Loads Ballard reference data for a specific mode suffix (e.g. 'seq', 'dfs', 'bfs', 'hybrid').
-
-    Args:
-        mode_suffix: The suffix indicating parallelization mode.
-
-    Returns:
-        A dictionary containing 'mkl' (DataFrame) and 'strassen' (list of DataFrames),
-        or None if parsing fails or file doesn't exist.
-    """
-    path = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "benchmarks",
-        "generated",
-        f"benchmarks_{mode_suffix}.txt",
-    )
-    if not os.path.exists(path):
-        # Fallback to the old benchmarks.txt if it exists and mode is seq
-        if mode_suffix == "seq":
-            old_path = os.path.join(
-                os.path.dirname(__file__),
-                "..",
-                "benchmarks",
-                "generated",
-                "benchmarks.txt",
-            )
-            if os.path.exists(old_path):
-                path = old_path
-            else:
-                return None
-        else:
-            return None
-
-    try:
-        try:
-            df_mkl = parse_matlab_vector(path, "MKL_0")
-        except ValueError:
-            df_mkl = None
-        df_strassen_1 = parse_matlab_vector(path, "STRASSEN_1")
-        df_strassen_2 = parse_matlab_vector(path, "STRASSEN_2")
-        df_strassen_3 = parse_matlab_vector(path, "STRASSEN_3")
-        return {
-            "mkl": df_mkl,
-            "strassen": [df_strassen_1, df_strassen_2, df_strassen_3],
-        }
-    except Exception as e:
-        print(
-            f"Warning: Could not parse Ballard data for '{mode_suffix}' from {path} ({e})"
-        )
-        return None
-
-
-def plot_ballard_lines(
-    ax: plt.Axes,
-    df_ballard_mkl: pd.DataFrame,
-    strassen_dataframes: list,
-    mode_label: str = "",
-    num_cores: int = 1,
-) -> None:
-    """Plot Ballard reference lines on a given axis.
-
-    Args:
-        ax: Matplotlib axis to plot on.
-        df_ballard_mkl: MKL Ballard data with size and time_ms columns.
-        strassen_dataframes: List of (level, df) tuples for Strassen Ballard data.
-        mode_label: Optional label suffix to append to the legend (e.g. 'DFS', 'BFS', 'Hybrid').
-        num_cores: Number of CPU cores to divide by in the parallel case.
-    """
-    suffix = f" {mode_label}" if mode_label else ""
-    entries = []
-
-    # Check if MKL (Ballard) was already plotted on this axis to avoid duplicates
-    mkl_already_plotted = False
-    for line in ax.get_lines():
-        lbl = line.get_label()
-        if lbl and "MKL" in lbl and "Ballard" in lbl:
-            mkl_already_plotted = True
-            break
-
-    if df_ballard_mkl is not None and not mkl_already_plotted:
-        entries.append(("mkl_ballard", df_ballard_mkl, f"MKL{suffix} (Ballard)"))
-
-    for level, df in strassen_dataframes:
-        entries.append(
-            (f"strassen_ballard_{level}", df, f"Strassen {level}{suffix} (Ballard)")
-        )
-
-    for name, df, label in entries:
-        style = dict(BALLARD_STYLES.get(name, BALLARD_STYLES.get("strassen_ballard_1")))
-
-        # Customize style based on parallel mode label to distinguish BFS, DFS, Hybrid
-        if name != "mkl_ballard":
-            if mode_label == "DFS":
-                style["linestyle"] = "-."
-                style["marker"] = "^"
-            elif mode_label == "BFS":
-                style["linestyle"] = ":"
-                style["marker"] = "v"
-            elif mode_label == "Hybrid":
-                style["linestyle"] = "-"
-                style["marker"] = "D"
-
-        time_s = df["time_ms"] / 1000.0
-        n = df["size"]
-        gflops = (2 * n**3 - 2 * n**2) / (time_s * 1e9)
-        if num_cores > 1:
-            gflops = gflops / num_cores
-        ax.plot(n, gflops, label=label, markersize=5.0, **style)
-
-
-def is_parallel(col: str) -> bool:
-    """Check if a benchmark column corresponds to a parallel algorithm.
-
-    Args:
-        col: The column name from the benchmark CSV.
-
-    Returns:
-        True if the column is a parallel execution case, False otherwise.
-    """
-    return (
-        col.endswith("_par")
-        or col.endswith("_dfs")
-        or col.endswith("_bfs")
-        or col.endswith("_hybrid")
-    )
+import plot_utils
 
 
 def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
     """Generates performance plots from a benchmark CSV file.
 
-    If the CSV contains the new config columns, it splits and generates plots for all configs.
+    If the CSV contains config columns, it splits and generates plots for all configs.
     Otherwise, it falls back to generating a single plot.
 
     Args:
@@ -293,7 +41,6 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
         return
 
     df = pd.read_csv(csv_path, skipinitialspace=True)
-
     new_format_cols = {"base_choice", "recursion_level", "size_cutoff"}
 
     # Extract baseline timings from the corresponding base CSV if it exists
@@ -314,9 +61,8 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
 
     df_runs = df
 
-    if {"base_choice", "recursion_level", "size_cutoff"}.issubset(df.columns):
+    if new_format_cols.issubset(df.columns):
         out_dir = os.path.dirname(output_path)
-        # Drop duplicates to find unique recursion configs (keeping NaNs intact)
         df_configs_data = df_runs[["recursion_level", "size_cutoff"]].dropna(how="all").drop_duplicates()
         if df_configs_data.empty:
             df_configs_data = df_runs[["recursion_level", "size_cutoff"]].drop_duplicates()
@@ -325,7 +71,6 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
             r_level = row["recursion_level"]
             s_cutoff = row["size_cutoff"]
 
-            # Safe comparison representing NaN or the numeric level/cutoff
             if pd.isna(r_level):
                 cond_r = df_runs["recursion_level"].isna()
                 r_str = ""
@@ -344,12 +89,10 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
             prefix = r_str if r_str else c_str
             mode_suffix = f"_{mode}" if mode != "both" else ""
 
-            # Plot grid comparison for this config if both base variants exist
             df_faer = df_config[df_config["base_choice"] == "faer"]
             df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
 
             if not df_faer.empty and not df_dgemm.empty:
-                # Merge baseline timings into df_faer and df_dgemm
                 if not df_base.empty:
                     df_faer = df_faer.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
                     df_dgemm = df_dgemm.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
@@ -392,97 +135,21 @@ def plot_df_core(
 ) -> None:
     """Core logic to generate a performance plot from a dataframe in both PDF and PNG formats.
 
-    This function converts raw benchmark timings (in seconds) to Effective GFLOPS
-    and plots them against the matrix sizes. For parallel algorithms, it normalizes
-    the GFLOPS by the number of CPU cores. It also overlays reference lines from
-    the Ballard benchmark suite if applicable.
+    Converts benchmark timings to Effective GFLOPS and normalizes parallel results.
+    Overlays reference lines from the Ballard benchmark suite.
 
     Args:
-        df: A pandas DataFrame containing matrix multiplication benchmark results,
-            with a column 'size' and other columns representing algorithm execution times.
-        output_path: The target filepath to save the generated plot (typically a .pdf).
-        mode: The plotting mode to filter by. Can be 'sequential', 'parallel', or 'both'.
+        df: A pandas DataFrame containing benchmark timings.
+        output_path: The target filepath to save the plot (.pdf).
+        mode: The plotting mode to filter by ('sequential', 'parallel', or 'both').
+        recursion_level: Optional recursive level fallback parameter.
+        size_cutoff: Optional cutoff fallback size parameter.
     """
-    import shutil
+    plot_utils.setup_matplotlib_style()
 
-    latex_installed = (
-        shutil.which("latex") is not None or shutil.which("pdflatex") is not None
-    )
-    if latex_installed:
-        plt.style.use(["ieee", "grid"])
-    else:
-        plt.style.use(["ieee", "no-latex", "grid"])
-    plt.rcParams.update(
-        {
-            "font.size": 11,
-            "axes.titlesize": 13,
-            "axes.labelsize": 11,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 8.5,
-        }
-    )
     fig, ax = plt.subplots(figsize=(8, 5.5), dpi=300)
-
-    # Line styles, markers, and colors
-    styles = {
-        "system": {"color": "#1f77b4", "marker": "o", "linestyle": "-"},
-        "mkl_seq": {"color": "#9467bd", "marker": "p", "linestyle": "--"},
-        "mkl_par": {"color": "#9467bd", "marker": "p", "linestyle": "--"},
-        "faer_seq": {"color": "#17becf", "marker": "d", "linestyle": "-"},
-        "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
-        # Strassen
-        "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
-        "strassen_seq": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
-        "strassen_dfs": {"color": "#d95f02", "marker": "s", "linestyle": "-."},
-        "strassen_bfs": {"color": "#fdbb84", "marker": "s", "linestyle": ":"},
-        "strassen_hybrid": {"color": "#e34a33", "marker": "s", "linestyle": "-"},
-        "strassen_par": {"color": "#e34a33", "marker": "s", "linestyle": "-"},
-        # Grey-Strassen
-        "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
-        "grey_strassen_seq": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
-        "grey_strassen_dfs": {"color": "#a6761d", "marker": "h", "linestyle": "-."},
-        "grey_strassen_bfs": {"color": "#dfc27d", "marker": "h", "linestyle": ":"},
-        "grey_strassen_hybrid": {"color": "#543005", "marker": "h", "linestyle": "-"},
-        "grey_strassen_par": {"color": "#543005", "marker": "h", "linestyle": "-"},
-        # HK323_15_94
-        "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
-        "hk323_15_94_seq": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
-        "hk323_15_94_dfs": {"color": "#1b9e77", "marker": "^", "linestyle": "-."},
-        "hk323_15_94_bfs": {"color": "#a1d99b", "marker": "^", "linestyle": ":"},
-        "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "^", "linestyle": "-"},
-        "hk323_15_94_par": {"color": "#006d2c", "marker": "^", "linestyle": "-"},
-        # Smirnov333_23_139
-        "smirnov333_23_139_single": {
-            "color": "#d62728",
-            "marker": "v",
-            "linestyle": "--",
-        },
-        "smirnov333_23_139_seq": {
-            "color": "#d62728",
-            "marker": "v",
-            "linestyle": "--",
-        },
-        "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "v", "linestyle": "-."},
-        "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "v", "linestyle": ":"},
-        "smirnov333_23_139_hybrid": {
-            "color": "#980043",
-            "marker": "v",
-            "linestyle": "-",
-        },
-        "smirnov333_23_139_par": {
-            "color": "#980043",
-            "marker": "v",
-            "linestyle": "-",
-        },
-        "mkl_ballard": BALLARD_STYLES["mkl_ballard"],
-        "strassen_ballard_1": BALLARD_STYLES["strassen_ballard_1"],
-        "strassen_ballard_2": BALLARD_STYLES["strassen_ballard_2"],
-        "strassen_ballard_3": BALLARD_STYLES["strassen_ballard_3"],
-    }
-
-    # Plot each column except size (converting time to Effective GFLOPS)
     num_cores = os.cpu_count() or 1
+
     for col in df.columns:
         if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"]:
             continue
@@ -490,50 +157,46 @@ def plot_df_core(
         if df[col].isna().all():
             continue
 
-        is_col_parallel = is_parallel(col)
-        # Skip depending on the chosen mode
+        is_col_parallel = plot_utils.is_parallel(col)
         if mode == "sequential" and is_col_parallel:
             continue
         if mode == "parallel" and not is_col_parallel:
             continue
 
-        style = styles.get(col, {"marker": "x", "linestyle": ":"})
-        flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
-        gflops = flops / (df[col] * 1e9)
-        if is_col_parallel:
-            gflops = gflops / num_cores
+        style = plot_utils.ALGORITHM_STYLES.get(col, {"marker": "x", "linestyle": ":"})
+        gflops = plot_utils.calculate_gflops_rust(df["size"], df[col], is_parallel=is_col_parallel, num_cores=num_cores)
+
         ax.plot(
             df["size"],
             gflops,
-            label=format_label(col),
+            label=plot_utils.format_label(col),
             linewidth=1.2,
             markersize=4.5,
             **style,
         )
 
-    # Determine which Ballard modes to plot based on the plotted columns
+    # Determine which Ballard modes to plot based on the active columns
     active_modes = set()
     for col in df.columns:
-        if col == "size":
-            continue
-        if df[col].isna().all():
+        if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"] or df[col].isna().all():
             continue
 
-        is_col_parallel = is_parallel(col)
-        # Skip depending on the chosen mode
+        is_col_parallel = plot_utils.is_parallel(col)
         if mode == "sequential" and is_col_parallel:
             continue
         if mode == "parallel" and not is_col_parallel:
             continue
 
-        # Map column name to Ballard mode suffix
         if is_col_parallel:
             active_modes.update(["dfs", "bfs", "hybrid"])
         else:
             active_modes.add("seq")
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+
     for m in sorted(active_modes):
-        data = load_ballard_data(m)
+        data = plot_utils.load_ballard_data(project_root, m)
         if data:
             mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
             strassen_dfs = []
@@ -542,7 +205,7 @@ def plot_df_core(
                 if 1 <= level <= len(data["strassen"]):
                     strassen_dfs.append((level, data["strassen"][level - 1]))
 
-            plot_ballard_lines(
+            plot_utils.plot_ballard_lines(
                 ax,
                 data["mkl"],
                 strassen_dfs,
@@ -550,19 +213,17 @@ def plot_df_core(
                 num_cores=num_cores if m != "seq" else 1,
             )
 
-    # Configure axes
     ax.set_xscale("log", base=2)
     ax.set_yscale("linear")
     ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=10)
-    if mode == "parallel":
-        ax.set_ylabel(r"Effective GFLOPS / core", labelpad=10)
-    else:
-        ax.set_ylabel(r"Effective GFLOPS", labelpad=10)
+    ax.set_ylabel(
+        r"Effective GFLOPS / core" if mode == "parallel" else r"Effective GFLOPS",
+        labelpad=10,
+    )
+
     subtitle = ""
     if recursion_level is not None and not pd.isna(recursion_level):
-        subtitle = (
-            f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
-        )
+        subtitle = f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
     elif size_cutoff is not None and not pd.isna(size_cutoff):
         subtitle = f"Fallback to vendor matmul when N $\\le$ {int(size_cutoff)}"
 
@@ -571,34 +232,12 @@ def plot_df_core(
         title += f"\n{subtitle}"
     ax.set_title(title, pad=15)
 
-    # Set x-ticks explicitly to size values
     ax.set_xticks(df["size"])
     ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-
-    # Legend placement and formatting
-    ax.legend(
-        loc="upper left",
-        frameon=True,
-        framealpha=0.9,
-    )
+    ax.legend(loc="upper left", frameon=True, framealpha=0.9)
 
     plt.tight_layout()
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, bbox_inches="tight")
-    print(f"Plot successfully saved to: {output_path}")
-
-    # Save in both PDF and PNG formats
-    base, ext = os.path.splitext(output_path)
-    if ext.lower() == ".pdf":
-        alt_path = base + ".png"
-    elif ext.lower() == ".png":
-        alt_path = base + ".pdf"
-    else:
-        alt_path = output_path + ".png"
-
-    plt.savefig(alt_path, bbox_inches="tight")
-    print(f"Plot successfully saved to: {alt_path}")
+    plot_utils.save_plot(fig, output_path)
     plt.close(fig)
 
 
@@ -612,119 +251,32 @@ def generate_grid_plot_core(
 ) -> None:
     """Generates a grid performance plot comparing faer and dgemm bases.
 
-    Creates a grid visualization showing comparative performance for sequential
-    and parallel algorithms. It formats the axes, draws visual bounding boxes
-    around groups (sequential vs parallel), and saves the resulting plots in both
-    PDF and PNG formats.
+    Creates a grid visualization showing comparative performance.
 
     Args:
         df_faer: A pandas DataFrame containing benchmark results for the faer base.
         df_dgemm: A pandas DataFrame containing benchmark results for the dgemm base.
         output_path: The target filepath to save the grid plot.
         mode: The plotting mode to filter by. Can be 'sequential', 'parallel', or 'both'.
+        recursion_level: Optional recursive level fallback parameter.
+        size_cutoff: Optional cutoff fallback size parameter.
     """
     subtitle = ""
     if recursion_level is not None and not pd.isna(recursion_level):
-        subtitle = (
-            f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
-        )
+        subtitle = f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
     elif size_cutoff is not None and not pd.isna(size_cutoff):
         subtitle = f"Fallback to vendor matmul when N <= {int(size_cutoff)}"
 
-    import shutil
-
-    latex_installed = (
-        shutil.which("latex") is not None or shutil.which("pdflatex") is not None
-    )
-    if latex_installed:
-        plt.style.use(["ieee", "grid"])
-    else:
-        plt.style.use(["ieee", "no-latex", "grid"])
-
-    plt.rcParams.update(
-        {
-            "font.size": 11,
-            "axes.titlesize": 12,
-            "axes.labelsize": 11,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 8,
-        }
-    )
+    plot_utils.setup_matplotlib_style()
 
     if mode == "both":
         fig, axs = plt.subplots(2, 2, figsize=(14, 11), sharex=True, dpi=300)
     else:
         fig, axs = plt.subplots(2, 1, figsize=(8, 11), sharex=True, dpi=300)
 
-    # Styles mapping (line styles, markers, and colors)
-    styles = {
-        "system": {"color": "#1f77b4", "marker": "o", "linestyle": "-"},
-        "mkl_seq": {"color": "#9467bd", "marker": "p", "linestyle": "--"},
-        "mkl_par": {"color": "#9467bd", "marker": "p", "linestyle": "--"},
-        "faer_seq": {"color": "#17becf", "marker": "d", "linestyle": "-"},
-        "faer_par": {"color": "#17becf", "marker": "d", "linestyle": "-"},
-        # Strassen
-        "strassen_single": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
-        "strassen_seq": {"color": "#ff7f0e", "marker": "s", "linestyle": "--"},
-        "strassen_dfs": {"color": "#d95f02", "marker": "s", "linestyle": "-."},
-        "strassen_bfs": {"color": "#fdbb84", "marker": "s", "linestyle": ":"},
-        "strassen_hybrid": {"color": "#e34a33", "marker": "s", "linestyle": "-"},
-        "strassen_par": {"color": "#e34a33", "marker": "s", "linestyle": "-"},
-        # Grey-Strassen
-        "grey_strassen_single": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
-        "grey_strassen_seq": {"color": "#8c564b", "marker": "h", "linestyle": "--"},
-        "grey_strassen_dfs": {"color": "#a6761d", "marker": "h", "linestyle": "-."},
-        "grey_strassen_bfs": {"color": "#dfc27d", "marker": "h", "linestyle": ":"},
-        "grey_strassen_hybrid": {"color": "#543005", "marker": "h", "linestyle": "-"},
-        "grey_strassen_par": {"color": "#543005", "marker": "h", "linestyle": "-"},
-        # HK323_15_94
-        "hk323_15_94_single": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
-        "hk323_15_94_seq": {"color": "#2ca02c", "marker": "^", "linestyle": "--"},
-        "hk323_15_94_dfs": {"color": "#1b9e77", "marker": "^", "linestyle": "-."},
-        "hk323_15_94_bfs": {"color": "#a1d99b", "marker": "^", "linestyle": ":"},
-        "hk323_15_94_hybrid": {"color": "#006d2c", "marker": "^", "linestyle": "-"},
-        "hk323_15_94_par": {"color": "#006d2c", "marker": "^", "linestyle": "-"},
-        # Smirnov333_23_139
-        "smirnov333_23_139_single": {
-            "color": "#d62728",
-            "marker": "v",
-            "linestyle": "--",
-        },
-        "smirnov333_23_139_seq": {
-            "color": "#d62728",
-            "marker": "v",
-            "linestyle": "--",
-        },
-        "smirnov333_23_139_dfs": {"color": "#e7298a", "marker": "v", "linestyle": "-."},
-        "smirnov333_23_139_bfs": {"color": "#fbb4ae", "marker": "v", "linestyle": ":"},
-        "smirnov333_23_139_hybrid": {
-            "color": "#980043",
-            "marker": "v",
-            "linestyle": "-",
-        },
-        "smirnov333_23_139_par": {
-            "color": "#980043",
-            "marker": "v",
-            "linestyle": "-",
-        },
-        "mkl_ballard": BALLARD_STYLES["mkl_ballard"],
-        "strassen_ballard_1": BALLARD_STYLES["strassen_ballard_1"],
-        "strassen_ballard_2": BALLARD_STYLES["strassen_ballard_2"],
-        "strassen_ballard_3": BALLARD_STYLES["strassen_ballard_3"],
-    }
-
-    # (Ballard reference data is parsed dynamically per axis based on active modes)
-
-    # Helpers to filter columns
-    def is_seq(col: str) -> bool:
-        return col.endswith("_seq") or col.endswith("_single")
-
-    def is_par(col: str) -> bool:
-        return is_parallel(col)
-
-    # Helper to plot on a specific axis
     num_cores = os.cpu_count() or 1
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
 
     def plot_on_ax(ax, df, filter_fn):
         ax.set_facecolor("none")
@@ -736,19 +288,16 @@ def generate_grid_plot_core(
             if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"] or not filter_fn(col):
                 continue
 
-            # Skip columns if they are entirely empty or NaN
             if df[col].isna().all():
                 continue
 
-            style = styles.get(col, {"marker": "x", "linestyle": ":"})
-            flops = 2 * (df["size"] ** 3) - (df["size"] ** 2)
-            gflops = flops / (df[col] * 1e9)
-            if is_par(col):
-                gflops = gflops / num_cores
+            style = plot_utils.ALGORITHM_STYLES.get(col, {"marker": "x", "linestyle": ":"})
+            gflops = plot_utils.calculate_gflops_rust(df["size"], df[col], is_parallel=plot_utils.is_parallel(col), num_cores=num_cores)
+
             ax.plot(
                 df["size"],
                 gflops,
-                label=format_label(col),
+                label=plot_utils.format_label(col),
                 linewidth=1.2,
                 markersize=4.5,
                 **style,
@@ -758,35 +307,27 @@ def generate_grid_plot_core(
         ax.set_xticks(df["size"])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-        # Determine which Ballard modes to plot based on the plotted columns for this axis
+        # Determine which Ballard modes to plot on this axis
         active_modes = set()
         for col in df.columns:
-            if col == "size" or not filter_fn(col):
+            if col == "size" or not filter_fn(col) or df[col].isna().all():
                 continue
-            if df[col].isna().all():
-                continue
-
-            if is_par(col):
+            if plot_utils.is_parallel(col):
                 active_modes.update(["dfs", "bfs", "hybrid"])
             else:
                 active_modes.add("seq")
 
         for m in sorted(active_modes):
-            data = load_ballard_data(m)
+            data = plot_utils.load_ballard_data(project_root, m)
             if data:
-                mode_labels = {
-                    "seq": "Seq",
-                    "dfs": "DFS",
-                    "bfs": "BFS",
-                    "hybrid": "Hybrid",
-                }
+                mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
                 strassen_dfs = []
                 if recursion_level is not None and not pd.isna(recursion_level):
                     level = int(recursion_level)
                     if 1 <= level <= len(data["strassen"]):
                         strassen_dfs.append((level, data["strassen"][level - 1]))
 
-                plot_ballard_lines(
+                plot_utils.plot_ballard_lines(
                     ax,
                     data["mkl"],
                     strassen_dfs,
@@ -797,17 +338,15 @@ def generate_grid_plot_core(
         if has_lines:
             ax.legend(loc="upper left", frameon=True, framealpha=0.9)
 
-    # Plot Row 1 & Row 2 based on layout mode
+    is_seq = lambda c: not plot_utils.is_parallel(c)
+    is_par = plot_utils.is_parallel
+
     if mode == "both":
-        # Plot Row 1: Faer Base
         plot_on_ax(axs[0, 0], df_faer, is_seq)
         plot_on_ax(axs[0, 1], df_faer, is_par)
-
-        # Plot Row 2: MKL Base
         plot_on_ax(axs[1, 0], df_dgemm, is_seq)
         plot_on_ax(axs[1, 1], df_dgemm, is_par)
 
-        # Shared labels
         for ax in axs[1, :]:
             ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
         for ax in axs[:, 0]:
@@ -821,25 +360,15 @@ def generate_grid_plot_core(
         plt.suptitle(suptitle, fontsize=14, y=0.98)
         plt.tight_layout()
         top_val = 0.84 if subtitle else 0.88
-        fig.subplots_adjust(
-            hspace=0.12, wspace=0.48, top=top_val, bottom=0.08, left=0.08, right=0.92
-        )
+        fig.subplots_adjust(hspace=0.12, wspace=0.48, top=top_val, bottom=0.08, left=0.08, right=0.92)
     else:
         filter_fn = is_seq if mode == "sequential" else is_par
-
-        # Plot Row 1: Faer Base
         plot_on_ax(axs[0], df_faer, filter_fn)
-
-        # Plot Row 2: MKL Base
         plot_on_ax(axs[1], df_dgemm, filter_fn)
 
-        # Shared labels
         axs[1].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
         for ax in axs:
-            if mode == "parallel":
-                ax.set_ylabel(r"Effective GFLOPS / core", labelpad=8)
-            else:
-                ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
+            ax.set_ylabel(r"Effective GFLOPS / core" if mode == "parallel" else r"Effective GFLOPS", labelpad=8)
 
         suptitle = "Matrix Multiplication Performance Grid Comparison"
         if subtitle:
@@ -847,49 +376,39 @@ def generate_grid_plot_core(
         plt.suptitle(suptitle, fontsize=14, y=0.98)
         plt.tight_layout()
         top_val = 0.84 if subtitle else 0.88
-        fig.subplots_adjust(
-            hspace=0.15, top=top_val, bottom=0.08, left=0.12, right=0.84
-        )
+        fig.subplots_adjust(hspace=0.15, top=top_val, bottom=0.08, left=0.12, right=0.84)
 
-    # Force a draw to resolve final positions of all labels and layout bounds
     fig.canvas.draw()
 
-    # Helper to get tight bounding box in figure fraction coordinates
     def get_tight_pos(ax):
         bbox = ax.get_tightbbox(fig.canvas.get_renderer())
         return bbox.transformed(fig.transFigure.inverted())
 
-    from matplotlib.patches import FancyBboxPatch
-
     pad_val = 0.015
 
     if mode == "both":
-        # Get tight positions (which include axis ticks, xlabel, and ylabel)
         box00 = get_tight_pos(axs[0, 0])
         box10 = get_tight_pos(axs[1, 0])
         box01 = get_tight_pos(axs[0, 1])
         box11 = get_tight_pos(axs[1, 1])
 
-        # Column 0: Sequential Algorithms bounding box
         x0_seq = min(box00.x0, box10.x0)
         x1_seq = max(box00.x1, box10.x1)
         y0_seq = min(box00.y0, box10.y0)
         y1_seq = max(box00.y1, box10.y1)
 
-        # Column 1: Parallel Algorithms bounding box
         x0_par = min(box01.x0, box11.x0)
         x1_par = max(box01.x1, box11.x1)
         y0_par = min(box01.y0, box11.y0)
         y1_par = max(box01.y1, box11.y1)
 
-        # Draw borders for the two columns in different light colors (border only, no fill)
         rect_seq = FancyBboxPatch(
             (x0_seq - pad_val, y0_seq - pad_val),
             (x1_seq - x0_seq) + 2 * pad_val,
             (y1_seq - y0_seq) + 2 * pad_val,
             boxstyle="square,pad=0.0",
-            edgecolor="#64748b",  # Light slate border
-            facecolor="none",  # No inner background fill
+            edgecolor="#64748b",
+            facecolor="none",
             linewidth=1.5,
             transform=fig.transFigure,
             zorder=1,
@@ -901,79 +420,33 @@ def generate_grid_plot_core(
             (x1_par - x0_par) + 2 * pad_val,
             (y1_par - y0_par) + 2 * pad_val,
             boxstyle="square,pad=0.0",
-            edgecolor="#a78bfa",  # Light purple border
-            facecolor="none",  # No inner background fill
+            edgecolor="#a78bfa",
+            facecolor="none",
             linewidth=1.5,
             transform=fig.transFigure,
             zorder=1,
         )
         fig.patches.append(rect_par)
 
-        # Sequential and parallel algorithms on the top, centered above the column bounding border
         y_col_title = max(y1_seq, y1_par) + pad_val + 0.01
-        center_x_seq = (x0_seq + x1_seq) / 2.0
-        center_x_par = (x0_par + x1_par) / 2.0
+        fig.text((x0_seq + x1_seq) / 2.0, y_col_title, "Sequential Algorithms", ha="center", va="bottom", fontsize=12, color="#1e293b")
+        fig.text((x0_par + x1_par) / 2.0, y_col_title, "Parallel Algorithms", ha="center", va="bottom", fontsize=12, color="#1e293b")
 
-        fig.text(
-            center_x_seq,
-            y_col_title,
-            "Sequential Algorithms",
-            ha="center",
-            va="bottom",
-            fontsize=12,
-            color="#1e293b",
-        )
-        fig.text(
-            center_x_par,
-            y_col_title,
-            "Parallel Algorithms",
-            ha="center",
-            va="bottom",
-            fontsize=12,
-            color="#1e293b",
-        )
-
-        # Centered titles for each row, positioned in the horizontal gap between column borders
         pos00 = axs[0, 0].get_position()
         pos10 = axs[1, 0].get_position()
-
         center_x_row = ((x1_seq + pad_val) + (x0_par - pad_val)) / 2.0
 
-        y_faer_center = (pos00.y0 + pos00.y1) / 2.0
-        fig.text(
-            center_x_row,
-            y_faer_center,
-            "Faer Base",
-            ha="center",
-            va="center",
-            fontsize=12,
-            color="#1e293b",
-            zorder=10,
-        )
-
-        y_mkl_center = (pos10.y0 + pos10.y1) / 2.0
-        fig.text(
-            center_x_row,
-            y_mkl_center,
-            "MKL Base",
-            ha="center",
-            va="center",
-            fontsize=12,
-            color="#1e293b",
-            zorder=10,
-        )
+        fig.text(center_x_row, (pos00.y0 + pos00.y1) / 2.0, "Faer Base", ha="center", va="center", fontsize=12, color="#1e293b", zorder=10)
+        fig.text(center_x_row, (pos10.y0 + pos10.y1) / 2.0, "MKL Base", ha="center", va="center", fontsize=12, color="#1e293b", zorder=10)
     else:
-        # Get tight positions for 2x1 grid
         box0 = get_tight_pos(axs[0])
         box1 = get_tight_pos(axs[1])
 
-        # Single column bounding box
         x0_col = min(box0.x0, box1.x0)
         x1_col = max(box0.x1, box1.x1)
         y0_col = min(box0.y0, box1.y0)
         y1_col = max(box0.y1, box1.y1)
 
-        # Draw border around the single column
         edge_color = "#64748b" if mode == "sequential" else "#a78bfa"
         rect_col = FancyBboxPatch(
             (x0_col - pad_val, y0_col - pad_val),
@@ -988,62 +461,17 @@ def generate_grid_plot_core(
         )
         fig.patches.append(rect_col)
 
-        # Title centered above the single column
         y_col_title = y1_col + pad_val + 0.01
-        col_title = (
-            "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
-        )
-        fig.text(
-            (x0_col + x1_col) / 2.0,
-            y_col_title,
-            col_title,
-            ha="center",
-            va="bottom",
-            fontsize=12,
-            color="#1e293b",
-        )
+        col_title = "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
+        fig.text((x0_col + x1_col) / 2.0, y_col_title, col_title, ha="center", va="bottom", fontsize=12, color="#1e293b")
 
-        # Row labels centered on the right side of the border
         pos0 = axs[0].get_position()
         pos1 = axs[1].get_position()
 
-        fig.text(
-            x1_col + pad_val + 0.02,
-            (pos0.y0 + pos0.y1) / 2.0,
-            "Faer Base",
-            ha="left",
-            va="center",
-            fontsize=12,
-            color="#1e293b",
-            zorder=10,
-        )
+        fig.text(x1_col + pad_val + 0.02, (pos0.y0 + pos0.y1) / 2.0, "Faer Base", ha="left", va="center", fontsize=12, color="#1e293b", zorder=10)
+        fig.text(x1_col + pad_val + 0.02, (pos1.y0 + pos1.y1) / 2.0, "MKL Base", ha="left", va="center", fontsize=12, color="#1e293b", zorder=10)
 
-        fig.text(
-            x1_col + pad_val + 0.02,
-            (pos1.y0 + pos1.y1) / 2.0,
-            "MKL Base",
-            ha="left",
-            va="center",
-            fontsize=12,
-            color="#1e293b",
-            zorder=10,
-        )
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, bbox_inches="tight")
-    print(f"Grid plot successfully saved to: {output_path}")
-
-    # Save in both PDF and PNG formats
-    base, ext = os.path.splitext(output_path)
-    if ext.lower() == ".pdf":
-        alt_path = base + ".png"
-    elif ext.lower() == ".png":
-        alt_path = base + ".pdf"
-    else:
-        alt_path = output_path + ".png"
-
-    plt.savefig(alt_path, bbox_inches="tight")
-    print(f"Grid plot successfully saved to: {alt_path}")
+    plot_utils.save_plot(fig, output_path)
     plt.close(fig)
 
 
@@ -1076,12 +504,8 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, ".."))
 
-    parser = argparse.ArgumentParser(
-        description="Plot matrix multiplication benchmarks."
-    )
-    parser.add_argument(
-        "csv_path", nargs="?", default=None, help="Path to the input CSV file."
-    )
+    parser = argparse.ArgumentParser(description="Plot matrix multiplication benchmarks.")
+    parser.add_argument("csv_path", nargs="?", default=None, help="Path to the input CSV file.")
     parser.add_argument(
         "--mode",
         "-m",
@@ -1093,31 +517,20 @@ def main() -> None:
         "--clean",
         "-c",
         action="store_true",
-        help="Clean the output plots directory (deletes all PDF and PNG files) before/instead of plotting.",
+        help="Clean the output plots directory before/instead of plotting.",
     )
     args = parser.parse_args()
 
     csv_path = args.csv_path
     if csv_path is None:
         csv_dir = os.path.join(project_root, "generated", "csv")
-        job_id = (
-            os.environ.get("SLURM_JOB_ID")
-            or os.environ.get("PBS_JOBID")
-            or os.environ.get("RUN_ID")
-        )
-        if job_id:
-            csv_path = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv")
-        else:
-            csv_path = os.path.join(csv_dir, "benchmark_results.csv")
+        job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or os.environ.get("RUN_ID")
+        csv_path = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv" if job_id else "benchmark_results.csv")
     else:
         csv_path = os.path.abspath(csv_path)
 
-    # Determine fallback output path name and plots output directory based on the CSV path
     csv_dir = os.path.abspath(os.path.dirname(csv_path))
-    if (
-        os.path.basename(csv_dir) == "csv"
-        and os.path.basename(os.path.dirname(csv_dir)) == "generated"
-    ):
+    if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
         out_dir = os.path.join(os.path.dirname(csv_dir), "plots")
     else:
         out_dir = csv_dir
