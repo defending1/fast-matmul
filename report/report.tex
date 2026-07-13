@@ -430,7 +430,8 @@ decomposition is cached at runtime} and then applies the pseudocode in
 Algorithm~\ref{alg:strassen}. The advantage of the first is
 speed, at the cost of more complex code and parallelism. The advantage of the second is simplicity
 of code, at the cost of speed.
-- C++ project 
+- C++ project can handle multiplications between rectangular matrices, as well as APA algorithms, while our doesn't. Also,
+while it could work, we didn't tested subexpression eliminated algorithms. 
 
 \todo{fix}
 
@@ -650,8 +651,8 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 \subsection{Measuring impact of base gemm}
 
 We aim to understand how the choice of the base matrix multiplication impacts performance of fast
-algorithms. In our experiments, we use random square matrices with real entries of sizes $ N \in
-\{2,4,\ldots,2^k\} $. We are interested in finding the $ N $ such that using a fast matrix algorithm
+algorithms. In our experiments, we use random square matrices with $ 64bit $ floating point entries 
+in $ (-1,1) $ of sizes $ N \in \{2,4,\ldots,2^k\} $. We are interested in finding the $ N $ such that using a fast matrix algorithm
 is faster than doing standard matrix multiplication.
 
 \subsection{Comparison of MKL dgemm FFI and Faer matmul}
