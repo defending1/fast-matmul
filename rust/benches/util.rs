@@ -54,6 +54,7 @@ pub fn base_matmul(
     multithreaded: bool,
     base_choice: BaseMatMul,
 ) -> Mat<f64> {
+    fast_matmul::matmul::init_rayon_threads();
     match base_choice {
         BaseMatMul::Faer => {
             let mut c = Mat::zeros(a.nrows(), b.ncols());

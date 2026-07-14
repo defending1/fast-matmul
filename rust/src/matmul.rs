@@ -5,6 +5,38 @@ use std::ops::{Index, IndexMut};
 
 pub use crate::parallelism_mode::{BaseMatMul, ParallelismMode};
 
+/// Configures Rayon's global thread pool to match standard concurrency environment variables
+/// (RAYON_NUM_THREADS, OMP_NUM_THREADS, MKL_NUM_THREADS, or SLURM_CPUS_PER_TASK).
+/// This prevents oversubscription on multi-socket high-core scientific cluster nodes.
+pub fn init_rayon_threads() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let threads = std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .or_else(|| {
+                std::env::var("OMP_NUM_THREADS")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+            })
+            .or_else(|| {
+                std::env::var("MKL_NUM_THREADS")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+            })
+            .or_else(|| {
+                std::env::var("SLURM_CPUS_PER_TASK")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+            });
+        if let Some(t) = threads {
+            let _ = rayon::ThreadPoolBuilder::new()
+                .num_threads(t)
+                .build_global();
+        }
+    });
+}
+
 /// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
 pub struct Tensor3 {
@@ -75,6 +107,7 @@ impl Default for MatMul<'static> {
 impl<'a> MatMul<'a> {
     /// Creates a new `MatMul` operator instance.
     pub fn new() -> MatMul<'static> {
+        init_rayon_threads();
         MatMul {
             cp: CP::get_strassen(),
         }
@@ -85,6 +118,7 @@ impl<'a> MatMul<'a> {
     /// # Arguments
     /// * `cp` - Reference to the custom CP decomposition.
     pub fn with_cp(cp: &'a CP) -> Self {
+        init_rayon_threads();
         Self { cp }
     }
 
@@ -178,6 +212,7 @@ impl<'a> MatMul<'a> {
         multithreaded: bool,
         base_choice: BaseMatMul,
     ) {
+        init_rayon_threads();
         match base_choice {
             BaseMatMul::Faer => {
                 let par =
