@@ -357,6 +357,7 @@ dependencies = [
  "cc",
  "faer",
  "minstant",
+ "pulp",
  "rand 0.8.6",
  "rayon",
  "serde",

@@ -37,6 +37,38 @@ pub fn init_rayon_threads() {
     });
 }
 
+struct DotProduct<'a> {
+    a: &'a [f64],
+    b: &'a [f64],
+}
+
+impl<'a> pulp::WithSimd for DotProduct<'a> {
+    type Output = f64;
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let (a_head, a_tail) = S::as_simd_f64s(self.a);
+        let (b_head, b_tail) = S::as_simd_f64s(self.b);
+
+        let mut acc = simd.splat_f64s(0.0);
+        for (a, b) in a_head.iter().zip(b_head.iter()) {
+            acc = simd.mul_add_f64s(*a, *b, acc);
+        }
+
+        let mut sum = simd.reduce_sum_f64s(acc);
+        for (a, b) in a_tail.iter().zip(b_tail.iter()) {
+            sum += a * b;
+        }
+
+        sum
+    }
+}
+
+pub fn dot_product_pulp(a: &[f64], b: &[f64]) -> f64 {
+    let arch = pulp::Arch::new();
+    arch.dispatch(DotProduct { a, b })
+}
+
 /// A 3D tensor representation in row-major layout used in matrix multiplication.
 #[derive(Clone, Debug)]
 pub struct Tensor3 {
@@ -146,6 +178,32 @@ impl<'a> MatMul<'a> {
         sum
     }
 
+    /// Computes the dot product of a column vector and a matrix flattened in row-major order,
+    /// leveraging pulp SIMD vectorization.
+    fn dot_product_flattened_simd(vec: ColRef<'_, f64>, mat: MatRef<'_, f64>) -> f64 {
+        assert_eq!(vec.nrows(), mat.nrows() * mat.ncols());
+        let n_elements = mat.nrows() * mat.ncols();
+
+        if n_elements <= 64 {
+            let mut mat_buf = [0.0; 64];
+            let mut idx = 0;
+            for r in 0..mat.nrows() {
+                for c in 0..mat.ncols() {
+                    mat_buf[idx] = mat[(r, c)];
+                    idx += 1;
+                }
+            }
+
+            if vec.row_stride() == 1 {
+                let vec_slice = unsafe { std::slice::from_raw_parts(vec.as_ptr(), n_elements) };
+                let mat_slice = &mat_buf[..n_elements];
+                return dot_product_pulp(vec_slice, mat_slice);
+            }
+        }
+
+        Self::dot_product_flattened(vec, mat)
+    }
+
     /// Computes C = A * B using the CP decomposition formula.
     /// Internal implementation using `MatRef` to avoid allocations.
     ///
@@ -158,6 +216,7 @@ impl<'a> MatMul<'a> {
         mut dst: faer::MatMut<'_, f64>,
         a: MatRef<'_, f64>,
         b: MatRef<'_, f64>,
+        use_simd: bool,
     ) {
         assert_eq!((a.nrows(), a.ncols()), (self.cp.m, self.cp.n));
         assert_eq!((b.nrows(), b.ncols()), (self.cp.n, self.cp.p));
@@ -165,8 +224,16 @@ impl<'a> MatMul<'a> {
         dst.fill(0.0);
 
         for l in 0..self.cp.rank {
-            let s_l = Self::dot_product_flattened(self.cp.u.col(l), a);
-            let t_l = Self::dot_product_flattened(self.cp.v.col(l), b);
+            let s_l = if use_simd {
+                Self::dot_product_flattened_simd(self.cp.u.col(l), a)
+            } else {
+                Self::dot_product_flattened(self.cp.u.col(l), a)
+            };
+            let t_l = if use_simd {
+                Self::dot_product_flattened_simd(self.cp.v.col(l), b)
+            } else {
+                Self::dot_product_flattened(self.cp.v.col(l), b)
+            };
 
             let m_l = s_l * t_l;
 
@@ -189,7 +256,7 @@ impl<'a> MatMul<'a> {
     /// * `b` - The right matrix operand.
     pub fn matmul_cp(&self, a: &Mat<f64>, b: &Mat<f64>) -> Mat<f64> {
         let mut c = Mat::zeros(self.cp.m, self.cp.p);
-        self.matmul_cp_impl(c.as_mut(), a.as_ref(), b.as_ref());
+        self.matmul_cp_impl(c.as_mut(), a.as_ref(), b.as_ref(), false);
         c
     }
 
@@ -645,7 +712,8 @@ impl<'a> MatMul<'a> {
         }
 
         if m == self.cp.m && n == self.cp.n && p == self.cp.p {
-            self.matmul_cp_impl(dst, a, b);
+            let use_simd = mode != ParallelismMode::Sequential;
+            self.matmul_cp_impl(dst, a, b, use_simd);
             return;
         }
 
