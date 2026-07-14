@@ -260,6 +260,39 @@ def merge_parallel(project_root):
             print(f"Generating parallel grid plots using '{grid_plot_script}'...")
             subprocess.run(["uv", "run", grid_plot_script, "--mode", "parallel"], check=False)
 
+def merge_parallel2(project_root):
+    """Consolidate parallel Rust benchmark results from the run_par2 folder.
+
+    Note that there are no C benchmarks inside run_par2, only Rust parallel benchmarks.
+
+    Args:
+        project_root: The root directory of the project.
+    """
+    print("\n=== Merging Parallel Results (run_par2) ===")
+    rust_input_dir = os.path.join(project_root, "generated", "csv", "run_par2")
+    
+    rust_output_results_run_par2 = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results.csv")
+    rust_output_base_run_par2 = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_base.csv")
+    
+    rust_output_results_std = os.path.join(project_root, "generated", "csv", "benchmark_results.csv")
+    rust_output_base_std = os.path.join(project_root, "generated", "csv", "benchmark_results_base.csv")
+    
+    strassen_merged = merge_rust_results(rust_input_dir, rust_output_results_run_par2, rust_output_base_run_par2)
+    merge_rust_results(rust_input_dir, rust_output_results_std, rust_output_base_std)
+    
+    if strassen_merged:
+        plot_script = os.path.join(project_root, "python", "plot.py")
+        if os.path.exists(plot_script):
+            print(f"Generating plots in generated/plots/ using '{plot_script}' on standard CSV...")
+            subprocess.run(["uv", "run", plot_script, rust_output_results_std, "--mode", "parallel"], check=False)
+            print(f"Generating plots in generated/csv/run_par2/ using '{plot_script}' on run_par2 CSV...")
+            subprocess.run(["uv", "run", plot_script, rust_output_results_run_par2, "--mode", "parallel"], check=False)
+            
+        grid_plot_script = os.path.join(project_root, "python", "plot_grid.py")
+        if os.path.exists(grid_plot_script):
+            print(f"Generating parallel grid plots using '{grid_plot_script}'...")
+            subprocess.run(["uv", "run", grid_plot_script, "--mode", "parallel", "--par-dir", "run_par2"], check=False)
+
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
@@ -267,10 +300,10 @@ def main():
     parser = argparse.ArgumentParser(description="Unified script to merge sequential and parallel benchmark results.")
     parser.add_argument(
         "mode", 
-        choices=["seq", "par", "both"], 
+        choices=["seq", "par", "par2", "both"], 
         nargs="?", 
         default="both",
-        help="Merge mode: 'seq' (sequential), 'par' (parallel), or 'both' (merge both; default)"
+        help="Merge mode: 'seq' (sequential), 'par' (parallel), 'par2' (parallel run 2), or 'both' (merge both; default)"
     )
     args = parser.parse_args()
     
@@ -279,18 +312,27 @@ def main():
         
     if args.mode in ("par", "both"):
         merge_parallel(project_root)
+
+    if args.mode == "par2":
+        merge_parallel2(project_root)
         
     # Always update the base comparison plot if we merged sequential/parallel
     plot_base_comp = os.path.join(project_root, "python", "plot_mkl_faer_only.py")
     if os.path.exists(plot_base_comp):
         print(f"\nUpdating side-by-side base comparison plot using '{plot_base_comp}'...")
-        subprocess.run(["uv", "run", plot_base_comp], check=False)
+        cmd = ["uv", "run", plot_base_comp]
+        if args.mode == "par2":
+            cmd.extend(["--par-dir", "run_par2"])
+        subprocess.run(cmd, check=False)
 
     # Always update the Ballard comparison plot if we merged sequential/parallel
     grid_plot_script = os.path.join(project_root, "python", "plot_grid.py")
     if os.path.exists(grid_plot_script):
         print(f"\nUpdating Ballard comparison plot using '{grid_plot_script}'...")
-        subprocess.run(["uv", "run", grid_plot_script, "--mode", "compare_ballard"], check=False)
+        cmd = ["uv", "run", grid_plot_script, "--mode", "compare_ballard"]
+        if args.mode == "par2":
+            cmd.extend(["--par-dir", "run_par2"])
+        subprocess.run(cmd, check=False)
 
 if __name__ == "__main__":
     main()
