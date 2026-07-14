@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=c-matmul
-#SBATCH --partition=gpu
+#SBATCH --job-name=cl_c-matmul
+#SBATCH --partition=cl2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gres=gpu:1
-#SBATCH --mem=120G
+#SBATCH --gres=cl2:1
+#SBATCH --mem=250G
 #SBATCH --time=3-02:00:00
-#SBATCH --output=generated/logs/c_matmul_%j.log
+#SBATCH --output=generated/logs/cl_c_matmul_%j.log
 
 # Ensure we exit on any error
 set -e
