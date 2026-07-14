@@ -154,8 +154,7 @@ crate (library) that given matrices $ A,B \in \R^n$ computes their product $ C=A
 
 \section{Introduction}
 
-
-\section{Notation and tensor preliminaries}
+\subsection{Notation and tensor preliminaries}
 
 The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
 following the notation in \cite{BK25}.
@@ -194,7 +193,10 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 \end{tabular}
 \end{table}
 
-\subsection{Fast algorithms as low-rank tensor decomposition}
+
+\section{Fast matrix multiplication}
+
+\subsection{Evaluation of bilinear form using low-rank tensor decompositions}
 
 Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A bilinear form is a mapping $ f : X \times Y \to
 Z$ that is linear in each entry, in other words such that $ f(x, \cdot) $ and $ f(\cdot,y) $ are linear for all
@@ -207,13 +209,13 @@ tensor $ \Tn{t} $ of coefficients $ t_{ijk} $ as follows:
 or in more succint tensor notation, 
 \begin{equation}
   \label{eq:bil_tensor}
- f = \Tn{x} \ttm[1] x \ttm[2] y.
+ f = \Tn{t} \ttm[1] x \ttm[2] y.
 \end{equation}
 
-\todo{Extend and move before defining matmul formula}
+\todo{Add from thesis}
 
 
-\section{Fast matrix multiplication}
+\subsection{Recursive matrix multiplication}
 
 Matrix multiplication is a bilinear operation; given two matrices $ A \in \R^{m\times n} $ and $ B
 \in \R^{n\times p} $, their product is
@@ -369,7 +371,7 @@ Equation~\ref{eq:matprod} yelds to
 Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 \begin{equation*}
   s_l = u_l^{\top}\Vec(A) = \sum_{i=1}^4 U_{li}\Vec(A)_i, \quad t_l = V_l^{\top}\Vec(B) =
-  \sum_{i=1}^4 V_{li}\Vec(B)_i
+  \sum_{i=1}^4 V_{li}\Vec(B)_i.
 \end{equation*}
 
 
@@ -395,21 +397,80 @@ C_{21} &= M_2 + M_4 & C_{22} &= M_1 - M_2 + M_3 + M_6
 
 This algorithm uses $ 7 $ matrix multiplications and $ 18 $ matrix additions. The number of flops
 performed by the algorithm is $ T(N) = 7T(\frac{N}{2}) + 18(\frac{N}{2})^2$ for $ N>1 $, solving the
-recursion the complexity is $ T(N) = 7N^{\log_2 7} - 6N^2 = O(N^{\log_2 7}) = O(N^{2.81}) $.
+recursion the complexity is $ T(N) = 7N^{\log_2 7} - 6N^2 = O(N^{\log_2 7}) = O(N^{2.81}) $. This
+algorithm corresponds to a low-rank tensor decomposition represented by the following triplet of
+matrices, each with with 7 columns:
+
+\begin{align*}
+U &= \begin{bmatrix}
+1 & 0 & 1 & 0 & 1 & -1 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 & 1 \\
+0 & 1 & 0 & 0 & 0 & 1 & 0 \\
+1 & 1 & 0 & 1 & 0 & 0 & -1
+\end{bmatrix}, \\
+V &= \begin{bmatrix}
+1 & 1 & 0 & -1 & 0 & 1 & 0 \\
+0 & 0 & 1 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 & 1 \\
+1 & 0 & -1 & 0 & 1 & 0 & 1 \\
+\end{bmatrix}, \\
+W &= \begin{bmatrix}
+1 & 0 & 0 & 1 & -1 & 0 & 1 \\
+0 & 1 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 1 & 0 & 0 \\
+1 & -1 & 1 & 1 & 0 & 0 & 0 \\
+\end{bmatrix}.
+\end{align*}
 
 \todo{complete}
 
 
-There are natural extensions to Strassen algorithm:
+While we can't use less than 7 multiplications for the $ \angb{2,2,2} $ algorithm~\cite{winograd1971},
+there are natural extensions to Strassen algorithm:
 
 \begin{enumerate}
-  \item We can't use less than 7 number of additions for $ \angb{2,2,2} $.
-  \item Reduce the number of addition from 18 down to 15, which leads to Strassen-Winograd algorithm
+  \item We can reduce the number of addition from 18 down to 15, which leads to Strassen-Winograd algorithm
     \todo{cite}.
   \item We can change constant on the leading term by chosing a bigger base case dimension (and
     using the standard algorithm (also called \emph{gemm}) on the base case).
   \item We can use blocking schemes different from $ \angb{2,2,2} $.
 \end{enumerate}
+We implement this extension in practice using the Rust programming language, targeting exact
+algorithms arising from the CP decomposition matrices made freely available by Benson\&Ballard~\cite{bensonballard2015}. Table~\ref{tab:algorithms} shows a summary of fast
+algorithms for different base cases.
+
+
+\begin{table}[tb]
+\centering
+\caption{
+Summary of fast algorithms.
+Algorithms without citation were found by the authors of~\cite{bensonballard2015}.
+The number of multiplications  is equal to the rank $r$ of the corresponding tensor decomposition.
+The multiplication speedup per recursive step is the expected speedup if
+matrix additions were free.
+Note that this speedup does not determine the fastest algorithm because the maximum number
+of recursive steps depend on the size of the subproblems created by the algorithm.
+}
+\begin{tabular}{l c c c c}
+\toprule
+                & Number of  & Number of    & Multiplication \\
+Algorithm              & multiplies    &  multiplies     &  speedup per \\
+base case &   (fast)         & (classical)     & recursive step \\\midrule
+$\angb{2,2,3}$ & 11 & 12 & 9\% \\
+$\angb{2,2,5}$ & 18 & 20 & 11\% \\
+$\angb{2,2,2}$ \cite{strassen1969} & 7 & 8 & 14\% \\
+$\angb{2,2,4}$ & 14 & 16 & 14\% \\
+$\angb{3,3,3}$ & 23 & 26 & 17\% \\
+$\angb{2,3,3}$ & 15 & 18 & 20\% \\
+$\angb{2,3,4}$ & 20 & 24 & 20\% \\
+$\angb{2,4,4}$ & 26 & 32 & 23\% \\
+$\angb{3,3,4}$ & 29 & 36 & 24\% \\
+$\angb{3,4,4}$ & 38 & 48 & 26\% \\
+$\angb{3,3,6}$ \cite{smirnov2013bilinear} & 40 & 54 & 35\% \\
+\bottomrule
+\end{tabular}
+\label{tab:algorithms}
+\end{table}
 
 
 \section{Implementation and practical consideration}
@@ -435,11 +496,11 @@ while it could work, we didn't tested subexpression eliminated algorithms.
 
 \todo{fix}
 
-The implementation consists in a Rust porting of the c++ project made by Benson and Ballard summarized in
-\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. They
+The implementation consists in a Rust porting of the c++ project made by Benson and Ballard
+summarized in~\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. They
 provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
 multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
-computation, and OpenMP for parallelization.
+computation, and OpenMP for parallelization. We develop a Rust project with 
 Our project differs from their implementation mainly for the language (Rust) and code
 generation---we apply CP matrix multiplication without code generation, which delivers simpler code
 at the cost of speed \todo{is this True?}. Also, our project uses the numerical library Faer (cite)
