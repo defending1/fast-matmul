@@ -22,6 +22,16 @@ import plot_utils
 
 def main() -> None:
     """Loads baseline results, generates comparison subplots, and saves plots."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot MKL vs faer comparison.")
+    parser.add_argument(
+        "--par-dir",
+        default="run_par",
+        help="Directory name under generated/csv/ for parallel results (default: 'run_par')."
+    )
+    args = parser.parse_args()
+    par_dir = args.par_dir
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
 
@@ -30,8 +40,10 @@ def main() -> None:
     seq_ballard_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmarks_seq.txt")
 
     # 2. Paths for Parallel Data
-    par_base_csv_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_base.csv")
-    par_c_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmarks_dfs.txt")
+    par_base_csv_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_base.csv")
+    par_c_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmarks_dfs.txt")
+    if not os.path.exists(par_c_path):
+        par_c_path = os.path.join(project_root, "benchmarks", "generated", "benchmarks_dfs.txt")
 
     num_cores = os.cpu_count() or 1
 

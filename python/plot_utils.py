@@ -332,23 +332,20 @@ def calculate_gflops_ballard(size: pd.Series, time_ms: pd.Series, is_parallel: b
 
 
 def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
-    """Save the Matplotlib figure to the filesystem as both PDF and PNG.
+    """Save the Matplotlib figure to the filesystem as PDF only.
 
     Args:
         fig: The Matplotlib Figure instance.
-        output_path: Absolute or relative filepath (typically ending in .pdf or .png).
+        output_path: Absolute or relative filepath (typically ending in .pdf).
         dpi: Dots per inch resolution.
     """
+    base, ext = os.path.splitext(output_path)
+    if ext.lower() != ".pdf":
+        output_path = base + ".pdf"
+
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     fig.savefig(output_path, bbox_inches="tight", dpi=dpi)
     print(f"Plot saved successfully to: {output_path}")
-
-    # Generate alternative format counterpart
-    base, ext = os.path.splitext(output_path)
-    alt_ext = ".png" if ext.lower() == ".pdf" else ".pdf"
-    alt_path = base + alt_ext
-    fig.savefig(alt_path, bbox_inches="tight", dpi=dpi)
-    print(f"Plot saved successfully to: {alt_path}")
 
 
 def is_parallel(col: str) -> bool:

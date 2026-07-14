@@ -28,9 +28,6 @@ import plot_utils
 def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
     """Generates performance plots from a benchmark CSV file.
 
-    If the CSV contains config columns, it splits and generates plots for all configs.
-    Otherwise, it falls back to generating a single plot.
-
     Args:
         csv_path: Path to the input CSV file.
         output_path: Default fallback path to save the output plot.
@@ -41,13 +38,14 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
         return
 
     df = pd.read_csv(csv_path, skipinitialspace=True)
-    new_format_cols = {"base_choice", "recursion_level", "size_cutoff"}
 
     # Extract baseline timings from the corresponding base CSV if it exists
     dir_name = os.path.dirname(csv_path)
     base_name = os.path.basename(csv_path)
     if "benchmark_results" in base_name:
-        base_csv_name = base_name.replace("benchmark_results", "benchmark_results_base")
+        base_csv_name = base_name.replace("benchmark_results_levels", "benchmark_results_base") \
+                                 .replace("benchmark_results_cutoff", "benchmark_results_base") \
+                                 .replace("benchmark_results", "benchmark_results_base")
     else:
         base_csv_name = "base_" + base_name
     base_csv_path = os.path.join(dir_name, base_csv_name)
@@ -59,67 +57,55 @@ def plot_csv(csv_path: str, output_path: str, mode: str = "both") -> None:
         except Exception as e:
             print(f"Warning: Failed to load baseline timings from {base_csv_path}: {e}")
 
-    df_runs = df
+    # Check if there are multiple recursion levels or cutoffs to avoid zigzag lines
+    has_levels = "recursion_level" in df.columns and not df["recursion_level"].dropna().empty
+    has_cutoffs = "size_cutoff" in df.columns and not df["size_cutoff"].dropna().empty
 
-    if new_format_cols.issubset(df.columns):
-        out_dir = os.path.dirname(output_path)
-        df_configs_data = df_runs[["recursion_level", "size_cutoff"]].dropna(how="all").drop_duplicates()
-        if df_configs_data.empty:
-            df_configs_data = df_runs[["recursion_level", "size_cutoff"]].drop_duplicates()
-
-        for _, row in df_configs_data.iterrows():
-            r_level = row["recursion_level"]
-            s_cutoff = row["size_cutoff"]
-
-            if pd.isna(r_level):
-                cond_r = df_runs["recursion_level"].isna()
-                r_str = ""
-            else:
-                cond_r = df_runs["recursion_level"] == r_level
-                r_str = f"level_{int(r_level)}"
-
-            if pd.isna(s_cutoff):
-                cond_c = df_runs["size_cutoff"].isna()
-                c_str = ""
-            else:
-                cond_c = df_runs["size_cutoff"] == s_cutoff
-                c_str = f"cutoff_{int(s_cutoff)}"
-
-            df_config = df_runs[cond_r & cond_c]
-            prefix = r_str if r_str else c_str
-            mode_suffix = f"_{mode}" if mode != "both" else ""
-
-            df_faer = df_config[df_config["base_choice"] == "faer"]
-            df_dgemm = df_config[df_config["base_choice"] == "dgemm"]
-
-            if not df_faer.empty and not df_dgemm.empty:
+    if has_levels:
+        unique_levels = sorted(df["recursion_level"].dropna().unique())
+        if len(unique_levels) == 1:
+            level = unique_levels[0]
+            df_runs = df
+            if not df_base.empty:
+                df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                df_runs = pd.merge(df_runs, df_base, on="size", how="left")
+            plot_df_core(df_runs, output_path, mode=mode, recursion_level=level)
+        else:
+            for level in unique_levels:
+                df_level = df[df["recursion_level"] == level]
+                df_runs = df_level
                 if not df_base.empty:
-                    df_faer = df_faer.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
-                    df_dgemm = df_dgemm.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                    df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                    df_runs = pd.merge(df_runs, df_base, on="size", how="left")
+                
+                base, ext = os.path.splitext(output_path)
+                level_out_path = f"{base}_level_{int(level)}{ext}"
+                print(f"Plotting level {int(level)} -> {level_out_path}")
+                plot_df_core(df_runs, level_out_path, mode=mode, recursion_level=level)
+                
+    elif has_cutoffs:
+        unique_cutoffs = sorted(df["size_cutoff"].dropna().unique())
+        if len(unique_cutoffs) == 1:
+            cutoff = unique_cutoffs[0]
+            df_runs = df
+            if not df_base.empty:
+                df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                df_runs = pd.merge(df_runs, df_base, on="size", how="left")
+            plot_df_core(df_runs, output_path, mode=mode, size_cutoff=cutoff)
+        else:
+            for cutoff in unique_cutoffs:
+                df_cutoff = df[df["size_cutoff"] == cutoff]
+                df_runs = df_cutoff
+                if not df_base.empty:
+                    df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
+                    df_runs = pd.merge(df_runs, df_base, on="size", how="left")
                     
-                    df_faer = pd.merge(df_faer, df_base, on="size", how="left")
-                    df_dgemm = pd.merge(df_dgemm, df_base, on="size", how="left")
-
-                plot_columns = [col for col in df.columns if col not in new_format_cols]
-                for base_col in ["mkl_seq", "mkl_par", "faer_seq", "faer_par"]:
-                    if base_col not in plot_columns:
-                        plot_columns.append(base_col)
-
-                df_faer_to_plot = df_faer[[c for c in plot_columns if c in df_faer.columns]]
-                df_dgemm_to_plot = df_dgemm[[c for c in plot_columns if c in df_dgemm.columns]]
-
-                out_grid_name = f"benchmark_{prefix}_grid{mode_suffix}.pdf"
-                out_grid_path = os.path.join(out_dir, out_grid_name)
-
-                generate_grid_plot_core(
-                    df_faer_to_plot,
-                    df_dgemm_to_plot,
-                    out_grid_path,
-                    mode=mode,
-                    recursion_level=r_level,
-                    size_cutoff=s_cutoff,
-                )
+                base, ext = os.path.splitext(output_path)
+                cutoff_out_path = f"{base}_cutoff_{int(cutoff)}{ext}"
+                print(f"Plotting cutoff {int(cutoff)} -> {cutoff_out_path}")
+                plot_df_core(df_runs, cutoff_out_path, mode=mode, size_cutoff=cutoff)
     else:
+        df_runs = df
         if not df_base.empty:
             df_runs = df_runs.drop(columns=["mkl_seq", "mkl_par", "faer_seq", "faer_par"], errors="ignore")
             df_runs = pd.merge(df_runs, df_base, on="size", how="left")
@@ -241,240 +227,6 @@ def plot_df_core(
     plt.close(fig)
 
 
-def generate_grid_plot_core(
-    df_faer: pd.DataFrame,
-    df_dgemm: pd.DataFrame,
-    output_path: str,
-    mode: str = "both",
-    recursion_level: float = None,
-    size_cutoff: float = None,
-) -> None:
-    """Generates a grid performance plot comparing faer and dgemm bases.
-
-    Creates a grid visualization showing comparative performance.
-
-    Args:
-        df_faer: A pandas DataFrame containing benchmark results for the faer base.
-        df_dgemm: A pandas DataFrame containing benchmark results for the dgemm base.
-        output_path: The target filepath to save the grid plot.
-        mode: The plotting mode to filter by. Can be 'sequential', 'parallel', or 'both'.
-        recursion_level: Optional recursive level fallback parameter.
-        size_cutoff: Optional cutoff fallback size parameter.
-    """
-    subtitle = ""
-    if recursion_level is not None and not pd.isna(recursion_level):
-        subtitle = f"Fallback to vendor matmul after {int(recursion_level)} recursive step"
-    elif size_cutoff is not None and not pd.isna(size_cutoff):
-        subtitle = f"Fallback to vendor matmul when N <= {int(size_cutoff)}"
-
-    plot_utils.setup_matplotlib_style()
-
-    if mode == "both":
-        fig, axs = plt.subplots(2, 2, figsize=(14, 11), sharex=True, dpi=300)
-    else:
-        fig, axs = plt.subplots(2, 1, figsize=(8, 11), sharex=True, dpi=300)
-
-    num_cores = os.cpu_count() or 1
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-
-    def plot_on_ax(ax, df, filter_fn):
-        ax.set_facecolor("none")
-        ax.set_xscale("log", base=2)
-        ax.set_yscale("linear")
-
-        has_lines = False
-        for col in df.columns:
-            if col in ["size", "only_base", "base_choice", "recursion_level", "size_cutoff"] or not filter_fn(col):
-                continue
-
-            if df[col].isna().all():
-                continue
-
-            style = plot_utils.ALGORITHM_STYLES.get(col, {"marker": "x", "linestyle": ":"})
-            gflops = plot_utils.calculate_gflops_rust(df["size"], df[col], is_parallel=plot_utils.is_parallel(col), num_cores=num_cores)
-
-            ax.plot(
-                df["size"],
-                gflops,
-                label=plot_utils.format_label(col),
-                linewidth=1.2,
-                markersize=4.5,
-                **style,
-            )
-            has_lines = True
-
-        ax.set_xticks(df["size"])
-        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-
-        # Determine which Ballard modes to plot on this axis
-        active_modes = set()
-        for col in df.columns:
-            if col == "size" or not filter_fn(col) or df[col].isna().all():
-                continue
-            if plot_utils.is_parallel(col):
-                active_modes.update(["dfs", "bfs", "hybrid"])
-            else:
-                active_modes.add("seq")
-
-        for m in sorted(active_modes):
-            data = plot_utils.load_ballard_data(project_root, m)
-            if data:
-                mode_labels = {"seq": "Seq", "dfs": "DFS", "bfs": "BFS", "hybrid": "Hybrid"}
-                strassen_dfs = []
-                if recursion_level is not None and not pd.isna(recursion_level):
-                    level = int(recursion_level)
-                    if 1 <= level <= len(data["strassen"]):
-                        strassen_dfs.append((level, data["strassen"][level - 1]))
-
-                plot_utils.plot_ballard_lines(
-                    ax,
-                    data["mkl"],
-                    strassen_dfs,
-                    mode_label=mode_labels.get(m, m.upper()),
-                    num_cores=num_cores if m != "seq" else 1,
-                )
-
-        if has_lines:
-            ax.legend(loc="upper left", frameon=True, framealpha=0.9)
-
-    is_seq = lambda c: not plot_utils.is_parallel(c)
-    is_par = plot_utils.is_parallel
-
-    if mode == "both":
-        plot_on_ax(axs[0, 0], df_faer, is_seq)
-        plot_on_ax(axs[0, 1], df_faer, is_par)
-        plot_on_ax(axs[1, 0], df_dgemm, is_seq)
-        plot_on_ax(axs[1, 1], df_dgemm, is_par)
-
-        for ax in axs[1, :]:
-            ax.set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
-        for ax in axs[:, 0]:
-            ax.set_ylabel(r"Effective GFLOPS", labelpad=8)
-        for ax in axs[:, 1]:
-            ax.set_ylabel(r"Effective GFLOPS / core", labelpad=8)
-
-        suptitle = "Matrix Multiplication Performance Grid Comparison"
-        if subtitle:
-            suptitle += f"\n{subtitle}"
-        plt.suptitle(suptitle, fontsize=14, y=0.98)
-        plt.tight_layout()
-        top_val = 0.84 if subtitle else 0.88
-        fig.subplots_adjust(hspace=0.12, wspace=0.48, top=top_val, bottom=0.08, left=0.08, right=0.92)
-    else:
-        filter_fn = is_seq if mode == "sequential" else is_par
-        plot_on_ax(axs[0], df_faer, filter_fn)
-        plot_on_ax(axs[1], df_dgemm, filter_fn)
-
-        axs[1].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=8)
-        for ax in axs:
-            ax.set_ylabel(r"Effective GFLOPS / core" if mode == "parallel" else r"Effective GFLOPS", labelpad=8)
-
-        suptitle = "Matrix Multiplication Performance Grid Comparison"
-        if subtitle:
-            suptitle += f"\n{subtitle}"
-        plt.suptitle(suptitle, fontsize=14, y=0.98)
-        plt.tight_layout()
-        top_val = 0.84 if subtitle else 0.88
-        fig.subplots_adjust(hspace=0.15, top=top_val, bottom=0.08, left=0.12, right=0.84)
-
-    fig.canvas.draw()
-
-    def get_tight_pos(ax):
-        bbox = ax.get_tightbbox(fig.canvas.get_renderer())
-        return bbox.transformed(fig.transFigure.inverted())
-
-    pad_val = 0.015
-
-    if mode == "both":
-        box00 = get_tight_pos(axs[0, 0])
-        box10 = get_tight_pos(axs[1, 0])
-        box01 = get_tight_pos(axs[0, 1])
-        box11 = get_tight_pos(axs[1, 1])
-
-        x0_seq = min(box00.x0, box10.x0)
-        x1_seq = max(box00.x1, box10.x1)
-        y0_seq = min(box00.y0, box10.y0)
-        y1_seq = max(box00.y1, box10.y1)
-
-        x0_par = min(box01.x0, box11.x0)
-        x1_par = max(box01.x1, box11.x1)
-        y0_par = min(box01.y0, box11.y0)
-        y1_par = max(box01.y1, box11.y1)
-
-        rect_seq = FancyBboxPatch(
-            (x0_seq - pad_val, y0_seq - pad_val),
-            (x1_seq - x0_seq) + 2 * pad_val,
-            (y1_seq - y0_seq) + 2 * pad_val,
-            boxstyle="square,pad=0.0",
-            edgecolor="#64748b",
-            facecolor="none",
-            linewidth=1.5,
-            transform=fig.transFigure,
-            zorder=1,
-        )
-        fig.patches.append(rect_seq)
-
-        rect_par = FancyBboxPatch(
-            (x0_par - pad_val, y0_par - pad_val),
-            (x1_par - x0_par) + 2 * pad_val,
-            (y1_par - y0_par) + 2 * pad_val,
-            boxstyle="square,pad=0.0",
-            edgecolor="#a78bfa",
-            facecolor="none",
-            linewidth=1.5,
-            transform=fig.transFigure,
-            zorder=1,
-        )
-        fig.patches.append(rect_par)
-
-        y_col_title = max(y1_seq, y1_par) + pad_val + 0.01
-        fig.text((x0_seq + x1_seq) / 2.0, y_col_title, "Sequential Algorithms", ha="center", va="bottom", fontsize=12, color="#1e293b")
-        fig.text((x0_par + x1_par) / 2.0, y_col_title, "Parallel Algorithms", ha="center", va="bottom", fontsize=12, color="#1e293b")
-
-        pos00 = axs[0, 0].get_position()
-        pos10 = axs[1, 0].get_position()
-        center_x_row = ((x1_seq + pad_val) + (x0_par - pad_val)) / 2.0
-
-        fig.text(center_x_row, (pos00.y0 + pos00.y1) / 2.0, "Faer Base", ha="center", va="center", fontsize=12, color="#1e293b", zorder=10)
-        fig.text(center_x_row, (pos10.y0 + pos10.y1) / 2.0, "MKL Base", ha="center", va="center", fontsize=12, color="#1e293b", zorder=10)
-    else:
-        box0 = get_tight_pos(axs[0])
-        box1 = get_tight_pos(axs[1])
-
-        x0_col = min(box0.x0, box1.x0)
-        x1_col = max(box0.x1, box1.x1)
-        y0_col = min(box0.y0, box1.y0)
-        y1_col = max(box0.y1, box1.y1)
-
-        edge_color = "#64748b" if mode == "sequential" else "#a78bfa"
-        rect_col = FancyBboxPatch(
-            (x0_col - pad_val, y0_col - pad_val),
-            (x1_col - x0_col) + 2 * pad_val,
-            (y1_col - y0_col) + 2 * pad_val,
-            boxstyle="square,pad=0.0",
-            edgecolor=edge_color,
-            facecolor="none",
-            linewidth=1.5,
-            transform=fig.transFigure,
-            zorder=1,
-        )
-        fig.patches.append(rect_col)
-
-        y_col_title = y1_col + pad_val + 0.01
-        col_title = "Sequential Algorithms" if mode == "sequential" else "Parallel Algorithms"
-        fig.text((x0_col + x1_col) / 2.0, y_col_title, col_title, ha="center", va="bottom", fontsize=12, color="#1e293b")
-
-        pos0 = axs[0].get_position()
-        pos1 = axs[1].get_position()
-
-        fig.text(x1_col + pad_val + 0.02, (pos0.y0 + pos0.y1) / 2.0, "Faer Base", ha="left", va="center", fontsize=12, color="#1e293b", zorder=10)
-        fig.text(x1_col + pad_val + 0.02, (pos1.y0 + pos1.y1) / 2.0, "MKL Base", ha="left", va="center", fontsize=12, color="#1e293b", zorder=10)
-
-    plot_utils.save_plot(fig, output_path)
-    plt.close(fig)
-
-
 def clean_plot_dir(plot_dir: str) -> None:
     """Remove generated plot files (PDF and PNG) from the plot directory.
 
@@ -522,40 +274,64 @@ def main() -> None:
     args = parser.parse_args()
 
     csv_path = args.csv_path
+    csv_paths_to_plot = []
     if csv_path is None:
         csv_dir = os.path.join(project_root, "generated", "csv")
         job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or os.environ.get("RUN_ID")
-        csv_path = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv" if job_id else "benchmark_results.csv")
-    else:
-        csv_path = os.path.abspath(csv_path)
-
-    csv_dir = os.path.abspath(os.path.dirname(csv_path))
-    if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
-        out_dir = os.path.join(os.path.dirname(csv_dir), "plots")
-    else:
-        out_dir = csv_dir
-
-    if args.clean:
-        clean_plot_dir(out_dir)
-
-    if os.path.exists(csv_path):
-        base_name = os.path.basename(csv_path)
-        if "results" in base_name:
-            out_name = base_name.replace("results", "plot").replace(".csv", ".pdf")
+        if job_id:
+            levels_file = os.path.join(csv_dir, f"benchmark_results_levels_{job_id}.csv")
+            cutoff_file = os.path.join(csv_dir, f"benchmark_results_cutoff_{job_id}.csv")
+            std_file = os.path.join(csv_dir, f"benchmark_results_{job_id}.csv")
+            if os.path.exists(levels_file):
+                csv_paths_to_plot.append(levels_file)
+            if os.path.exists(cutoff_file):
+                csv_paths_to_plot.append(cutoff_file)
+            if not csv_paths_to_plot and os.path.exists(std_file):
+                csv_paths_to_plot.append(std_file)
         else:
-            out_name = os.path.splitext(base_name)[0] + ".pdf"
-
-        if args.mode == "both":
-            output_path = os.path.join(out_dir, out_name)
-        else:
-            base, ext = os.path.splitext(out_name)
-            output_path = os.path.join(out_dir, f"{base}_{args.mode}{ext}")
-
-        print(f"Plotting {csv_path} (mode={args.mode}) -> {output_path}...")
-        plot_csv(csv_path, output_path, mode=args.mode)
+            levels_file = os.path.join(csv_dir, "benchmark_results_levels.csv")
+            cutoff_file = os.path.join(csv_dir, "benchmark_results_cutoff.csv")
+            std_file = os.path.join(csv_dir, "benchmark_results.csv")
+            if os.path.exists(levels_file):
+                csv_paths_to_plot.append(levels_file)
+            if os.path.exists(cutoff_file):
+                csv_paths_to_plot.append(cutoff_file)
+            if not csv_paths_to_plot and os.path.exists(std_file):
+                csv_paths_to_plot.append(std_file)
+                
+        if not csv_paths_to_plot:
+            csv_paths_to_plot = [std_file]
     else:
-        if not args.clean:
-            print(f"Error: CSV file not found at {csv_path}")
+        csv_paths_to_plot = [os.path.abspath(csv_path)]
+
+    for csv_path in csv_paths_to_plot:
+        csv_dir = os.path.abspath(os.path.dirname(csv_path))
+        if os.path.basename(csv_dir) == "csv" and os.path.basename(os.path.dirname(csv_dir)) == "generated":
+            out_dir = os.path.join(os.path.dirname(csv_dir), "plots")
+        else:
+            out_dir = csv_dir
+
+        if args.clean:
+            clean_plot_dir(out_dir)
+
+        if os.path.exists(csv_path):
+            base_name = os.path.basename(csv_path)
+            if "results" in base_name:
+                out_name = base_name.replace("results", "plot").replace(".csv", ".pdf")
+            else:
+                out_name = os.path.splitext(base_name)[0] + ".pdf"
+
+            if args.mode == "both":
+                output_path = os.path.join(out_dir, out_name)
+            else:
+                base, ext = os.path.splitext(out_name)
+                output_path = os.path.join(out_dir, f"{base}_{args.mode}{ext}")
+
+            print(f"Plotting {csv_path} (mode={args.mode}) -> {output_path}...")
+            plot_csv(csv_path, output_path, mode=args.mode)
+        else:
+            if not args.clean:
+                print(f"Error: CSV file not found at {csv_path}")
 
 
 if __name__ == "__main__":

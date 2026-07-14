@@ -24,7 +24,7 @@ import shutil
 import plot_utils
 
 
-def plot_mode_grid(project_root: str, mode: str, backend_filter: str = None) -> None:
+def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backend_filter: str = None) -> None:
     """Generates a 2-row performance comparison grid plot for the specified mode.
 
     Does not display Ballard reference lines. Enforces tight y-limits starting at 0.
@@ -32,19 +32,56 @@ def plot_mode_grid(project_root: str, mode: str, backend_filter: str = None) -> 
     Args:
         project_root: The root directory of the project.
         mode: The plotting mode, either 'sequential' ('seq') or 'parallel' ('par').
+        par_dir: Directory name under generated/csv/ for parallel results (default: 'run_par').
         backend_filter: Filter for backend: 'faer', 'dgemm', or None (default).
     """
     is_seq = mode in ("sequential", "seq")
-    csv_dir = "run_seq" if is_seq else "run_par"
+    csv_dir = "run_seq" if is_seq else par_dir
 
-    csv_path = os.path.join(project_root, "generated", "csv", csv_dir, "benchmark_results.csv")
-    base_csv_path = os.path.join(project_root, "generated", "csv", csv_dir, "benchmark_results_base.csv")
+    if is_seq:
+        cutoff_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_cutoff.csv")
+        levels_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_levels.csv")
+        base_csv_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_base.csv")
+    else:
+        # Load parallel levels from run_par and parallel cutoffs from run_par2
+        cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
+        levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
+        base_csv_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_base.csv")
 
-    if not os.path.exists(csv_path) or not os.path.exists(base_csv_path):
-        print(f"Error: Missing input CSVs at {csv_path} or {base_csv_path}")
+    if not os.path.exists(base_csv_path):
+        base_csv_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_base.csv")
+        if not os.path.exists(base_csv_path):
+            base_csv_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_base.csv")
+
+    if not os.path.exists(base_csv_path):
+        print(f"Error: Missing input CSV at {base_csv_path}")
         return
 
-    df = pd.read_csv(csv_path)
+    dfs = []
+    if os.path.exists(cutoff_path):
+        try:
+            dfs.append(pd.read_csv(cutoff_path))
+        except Exception as e:
+            print(f"Warning: Failed to load {cutoff_path}: {e}")
+    if os.path.exists(levels_path):
+        try:
+            dfs.append(pd.read_csv(levels_path))
+        except Exception as e:
+            print(f"Warning: Failed to load {levels_path}: {e}")
+
+    if not dfs:
+        std_csv_path = os.path.join(project_root, "generated", "csv", csv_dir, "benchmark_results.csv")
+        if os.path.exists(std_csv_path):
+            try:
+                dfs.append(pd.read_csv(std_csv_path))
+            except Exception as e:
+                print(f"Warning: Failed to load {std_csv_path}: {e}")
+
+    if not dfs:
+        print(f"Error: Missing input Strassen CSVs at {cutoff_path} or {levels_path}")
+        return
+
+    df = pd.concat(dfs, ignore_index=True)
     df_base = pd.read_csv(base_csv_path)
 
     num_cores = os.cpu_count() or 1
@@ -442,7 +479,7 @@ def plot_mode_grid(project_root: str, mode: str, backend_filter: str = None) -> 
         plt.close(fig)
 
 
-def plot_compare_ballard(project_root: str) -> None:
+def plot_compare_ballard(project_root: str, par_dir: str = "run_par") -> None:
     """Generates and saves a 4x3 grid plot comparing Rust Strassen to Ballard references.
 
     Enforces row-specific tight y-limits starting at 0 to minimize blank space.
@@ -451,22 +488,51 @@ def plot_compare_ballard(project_root: str) -> None:
 
     Args:
         project_root: The root directory of the project.
+        par_dir: Directory name under generated/csv/ for parallel results (default: 'run_par').
     """
     csv_seq_dir = "run_seq"
-    csv_par_dir = "run_par"
+    csv_par_dir = par_dir
 
-    csv_seq_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results.csv")
+    seq_cutoff_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results_cutoff.csv")
+    seq_levels_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results_levels.csv")
     base_seq_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results_base.csv")
-    csv_par_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results.csv")
+
+    seq_dfs = []
+    if os.path.exists(seq_cutoff_path):
+        seq_dfs.append(pd.read_csv(seq_cutoff_path))
+    if os.path.exists(seq_levels_path):
+        seq_dfs.append(pd.read_csv(seq_levels_path))
+    if not seq_dfs:
+        seq_std_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results.csv")
+        if os.path.exists(seq_std_path):
+            seq_dfs.append(pd.read_csv(seq_std_path))
+
+    par_cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
+    par_levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
     base_par_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results_base.csv")
 
-    if not all(os.path.exists(p) for p in [csv_seq_path, base_seq_path, csv_par_path, base_par_path]):
+    if not os.path.exists(base_par_path):
+        base_par_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_base.csv")
+        if not os.path.exists(base_par_path):
+            base_par_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_base.csv")
+
+    par_dfs = []
+    if os.path.exists(par_cutoff_path):
+        par_dfs.append(pd.read_csv(par_cutoff_path))
+    if os.path.exists(par_levels_path):
+        par_dfs.append(pd.read_csv(par_levels_path))
+    if not par_dfs:
+        par_std_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results.csv")
+        if os.path.exists(par_std_path):
+            par_dfs.append(pd.read_csv(par_std_path))
+
+    if not seq_dfs or not par_dfs or not os.path.exists(base_seq_path) or not os.path.exists(base_par_path):
         print("Error: Missing input CSVs for Ballard comparison plot.")
         return
 
-    df_seq = pd.read_csv(csv_seq_path)
+    df_seq = pd.concat(seq_dfs, ignore_index=True)
     df_base_seq = pd.read_csv(base_seq_path)
-    df_par = pd.read_csv(csv_par_path)
+    df_par = pd.concat(par_dfs, ignore_index=True)
     df_base_par = pd.read_csv(base_par_path)
 
     num_cores = os.cpu_count() or 1
@@ -853,6 +919,11 @@ def main() -> None:
         default="all",
         help="Plotting mode: 'sequential' ('seq'), 'parallel' ('par'), 'compare_ballard' ('ballard'), 'both', or 'all' (default).",
     )
+    parser.add_argument(
+        "--par-dir",
+        default="run_par",
+        help="Directory name under generated/csv/ for parallel results (default: 'run_par').",
+    )
     args = parser.parse_args()
 
     modes_to_run = []
@@ -865,15 +936,15 @@ def main() -> None:
 
     for mode in modes_to_run:
         if mode == "compare_ballard":
-            plot_compare_ballard(project_root)
+            plot_compare_ballard(project_root, par_dir=args.par_dir)
         elif mode == "parallel":
-            plot_mode_grid(project_root, "parallel", backend_filter="faer")
-            plot_mode_grid(project_root, "parallel", backend_filter="dgemm")
-            plot_mode_grid(project_root, "parallel", backend_filter="strassen_only")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="faer")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="dgemm")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="strassen_only")
         elif mode == "sequential":
             plot_mode_grid(project_root, "sequential")
         else:
-            plot_mode_grid(project_root, mode)
+            plot_mode_grid(project_root, mode, par_dir=args.par_dir)
 
 
 if __name__ == "__main__":
