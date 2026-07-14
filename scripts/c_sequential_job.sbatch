@@ -14,7 +14,7 @@ set -e
 # Source Spack and load Environment Modules (avoiding local environment activation block for MKL)
 source /software/spack/share/spack/setup-env.sh
 
-module load gcc/11.4.0
+module load gcc/13.2.0
 module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0
 module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4
 module load intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4
