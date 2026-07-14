@@ -41,7 +41,7 @@ fi
 # Load required compiler and MKL modules if the module command exists
 if command -v module &> /dev/null || [ -n "$(type -t module)" ]; then
     echo "Loading Environment Modules..."
-    module load gcc/13.2.0 2>/dev/null || true
+    module load gcc/11.4.0 2>/dev/null || true
     module load intel-oneapi-compilers/2025.0.4-gcc-11.4.0 2>/dev/null || true
     module load intel-oneapi-mpi/2021.14.1-oneapi-2025.0.4 2>/dev/null || true
     module load intel-oneapi-mkl/2024.2.2-intel-oneapi-mpi-2021.14.1-oneapi-2025.0.4 2>/dev/null || true
