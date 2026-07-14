@@ -13,7 +13,7 @@ mkdir -p "${PROJECT_ROOT}/generated/logs"
 
 
 
-ARCH="znver3"
+ARCH="broadwell"
 
 # Parse command-line arguments:
 # --no-compile: Skip compiling before submitting jobs (default: compiles znver3)

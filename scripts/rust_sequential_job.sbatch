@@ -30,7 +30,7 @@ cd "${PROJECT_ROOT}/rust"
 PARAM_TYPE=$1  # "base", "cutoff", or "level"
 PARAM_VAL=$2   # e.g., 256 or 1 (ignored for "base")
 MATRIX_SIZE=$3 # e.g., 1024
-ARCH="znver3"
+ARCH="broadwell"
 MODE_FLAG=${4:-"--par"}
 
 # Execute the specific benchmark
