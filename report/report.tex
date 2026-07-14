@@ -573,16 +573,27 @@ runtime, the MKL library path is compiled into the executable binaries as a runt
 
 Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
 implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
-former can solved by \ldots and the latter by dynamic peeling~\ref{sec:dynpeel}.
-
+parallel case, there also scheduling problems to consider.
 
 \subsection{Recursive cutoff strategies}
 
-We implement two strategies for stopping recursion before calling the vendor library, which are by
-recursion depth and by matrices size. The former stops when a fixed number $ L $ of recursion levels
-is reached, and the latter when matrices sizes reaches a given size.
+In divide et impera algorithms such as Strassen, we can't afford taking many recursive stes, as
+spawning many children constitutes a significant recursive overhead.
+Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard gemm.
+We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
+under a certain size, the latter is taking a fixed number $ L $ of recursions.
 
-\todo{Cutoff comparisons in sequential case??}
+
+\subsection*{Optimal cutoff size search}
+
+The authors in~\cite{bensonballard2015} explain an euristical process for finding the optimal cutoff
+size, which can be resumed in looking at the performance plot of the gemm function, where (figure)
+the function exibits a ramp-up and then flatten for large dimensions. They take a
+recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
+manually by the authors. During the experimentation we developed a function to plot this curve, and
+its derivative (using splines) to automatically find this size. In practice, we never use this as we
+believe that our code is not efficient enough to implement this strategy.
+
 
 \subsection{Dynamic Peeling}
 \label{sec:dynpeel}
@@ -649,18 +660,6 @@ scheduling schema suggested by Benson and Ballard in their work~\cite{bensonball
 
 \section{Finding the optimal recursive cutoff}
 
-In divide et impera algorithms such as Strassen, we can't afford taking many recursive stes, as
-spawning many children constitutes a significant recursive overhead.
-Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard gemm.
-We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
-under a certain size, the latter is taking a fixed number $ L $ of recursions.
-The authors in~\cite{bensonballard2015} explain an euristical process for finding the optimal cutoff
-size, which can be resumed in looking at the performance plot of the gemm function, where (figure)
-the function exibits a ramp-up and then flatten for large dimensions. They take a
-recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
-manually by the authors. During the experimentation we developed a function to plot this curve, and
-its derivative (using splines) to automatically find this size. In practice, we never use this as we
-believe that our code is not efficient enough to implement this strategy.
 
 \subsection{Implementation}
 
@@ -713,8 +712,11 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 
 We aim to understand how the choice of the base matrix multiplication impacts performance of fast
 algorithms. In our experiments, we use random square matrices with $ 64bit $ floating point entries 
-in $ (-1,1) $ of sizes $ N \in \{2,4,\ldots,2^k\} $. We are interested in finding the $ N $ such that using a fast matrix algorithm
-is faster than doing standard matrix multiplication.
+in $ (-1,1) $ of sizes $ N \in \{2,4,\ldots,2^k\} $. As the standard matrix multiplication algorithm
+implemented in gemm costs $ O(n^3) $ while Strassen costs $ O(n^{2.81}) $, we expect it to beat gemm
+\footnote{which is in practice more optimized and a linear algorithm} for a large $ N $, that is, we are interested in finding the $ N $ such that using a fast matrix algorithm
+is faster than doing standard matrix multiplication. Such $ N $ cannot be determined a priori, as it
+is dependent by factors such as platform and implementation. In other words, we expect fast algorithms to surpass the curves in Figure~\ref{fig:gemm_comparison}.
 
 \subsection{Comparison of MKL dgemm FFI and Faer matmul}
 
@@ -729,7 +731,8 @@ In the project we have two different matrix multiplication routines: MKL dgemm a
 \end{itemize}
 
 From Figure~\ref{fig:gemm_comparison}, we see that all functions have a ramp-up phase and then
-flatten for larger sizes. Also, dgemm performs better than faer for larger sizes, and we believe
+flatten for larger sizes---even if the parallel case is not flattening yet, we expect it to flatten
+after few more runs. Also, dgemm performs better than faer for larger sizes, and we believe
 this is due the many low-level optimizations in dgemm. Further, there is a discrepancy between
 Rust FFI dgemm and the C++ code which tends to decrease for larger size. We think that this might be
 due the type conversion which is performed during the binding.
@@ -741,6 +744,70 @@ due the type conversion which is performed during the binding.
   \caption{Comparison between MKL and faer in sequential and parallel execution.}
   \label{fig:gemm_comparison}
 \end{figure}
+
+\subsection{Recursion level and cutoff recursive size strategy comparison}
+
+The experimental results for sequential and parallel cutoff strategies are shown in
+Figures~\ref{fig:seq_grid_plot} and~\ref{fig:par_grid_plot}, respectively.
+Figures~\ref{fig:par_grid_plot_dgemm} and~\ref{fig:par_grid_plot_faer} show comparison of Strassen
+and base gemm.
+
+Figure~\ref{fig:seq_grid_plot} shows the performance of sequential Strassen variants across different recursion levels (1, 2, and 3) and cutoff sizes (256, 512, 1024, and 2048). As expected, sequential execution has lower overhead, and selecting a larger size cutoff stops recursion earlier, preventing recursive overhead.
+
+For parallel execution, Figure~\ref{fig:par_grid_plot} shows the performance (normalized per core) across larger cutoff sizes (2048, 4096, 8192, and 16384) in the first row, and recursion levels (1, 2, and 3) in the second row. Because spawning tasks in parallel introduces scheduling overhead, a larger cutoff size is needed in practice to maximize parallel efficiency, as smaller subproblems do not benefit from thread-level parallelism.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/sequential_grid_plot.pdf}
+  \caption{Sequential matrix multiplication performance comparison of Strassen variants across recursion levels (1, 2, 3) and size cutoffs (256, 512, 1024, 2048).}
+  \label{fig:seq_grid_plot}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_strassen_only.pdf}
+  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen variants (DFS, BFS, Hybrid) across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
+  \label{fig:par_grid_plot}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_dgemm.pdf}
+  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
+  variants (DFS, BFS, Hybrid) against parallel \textbf{dgemm} across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
+  \label{fig:par_grid_plot_dgemm}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_faer.pdf}
+  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
+  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
+  \label{fig:par_grid_plot_faer}
+\end{figure}
+
+
+\subsection{Finding the optimal cutoff for the parallel case}
+
+COMMENT
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_dgemm.pdf}
+  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
+  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (256, 512, 1024, 2048, 4096, 8192, 16384).}
+  \label{fig:par_cutoff_grid_plot_dgemm}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_faer.pdf}
+  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
+  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (256, 512, 1024, 2048, 4096, 8192, 16384).}
+  \label{fig:par_cutoff_grid_plot_faer}
+\end{figure}
+
+
 
 \subsection{Numerical comparison with Benson\&Ballard Strassen}
 We perform a numerical performance comparison between our optimized Rust implementation of Strassen's algorithm and the reference C++ implementation by Benson and Ballard~\cite{bensonballard2015}. The results are shown in Figure~\ref{fig:ballard_comparison}. We compare the algorithms across one, two, and three levels of recursion using different thread scheduling paradigms: Sequential, Parallel DFS, Parallel BFS, and Parallel Hybrid.
@@ -756,12 +823,20 @@ We perform a numerical performance comparison between our optimized Rust impleme
 \section{Further work}
 
 \begin{itemize}
-  \item \textbf{Further code optimization:} We believe that code can be made more efficient by doing
-    a more fine refactory with profiling result.
+  \item \textbf{Profiling and SIMD} We believe that code can be made more efficient by doing
+    a more fine refactory with profiling result. Many algorithm steps can be optimizing by
+    introducing more SIMD operations.
   \item \textbf{Gemm comparison:} Though we choose mkl-dgemm for a better comparison, our ffi bindings easily extend to any other gemm, such as OpenBlas, which we leave to further work. 
   \item \textbf{Gpu/distributed version:} We would like to port the project to GPU or distributed
     computing to extend results with higher parallelism and test larger sizes.
+  \item \textbf{Run on Xeon:} The project could be run on high performance Intel Xeon nodes on
+    cluster, which might show impact of Intel MKL dgemm propetary optimizations.
 \end{itemize}
+
+\section{Work reproducibility}
+
+All the code is available at the repository
+\href{https://github.com/defending1/fast-matmul}{fast-matmul}.
 
 \section{Acknowledgments}
 
