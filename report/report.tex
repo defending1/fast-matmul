@@ -158,6 +158,11 @@ crate (library) that given matrices $ A,B \in \R^N$ computes their product $ C=A
 
 \section{Introduction}
 
+Fast matrix multiplication algorithms perform fewer recursive matrix multiplications at the expense
+of more matrix additions, and are faster than classical ones both in theory and in practice.
+
+
+
 \subsection{Notation and tensor preliminaries}
 
 The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
@@ -282,29 +287,29 @@ Equation~\ref{eq:bil_tensor_full} this expression becomes
   t_l}_{m_l})w_l,
 \end{equation}
 
+The expressions above allow us to define fast matrix multiplications algorithms for any base case $ \angb{m,n,p} $.
 
 \subsection{The classic matrix multiplication algorithm tensor formulation}
 
 We present the $ \angb{2,2,2} $ classical matrix multiplication algorithm in the context of tensors.
-When $ m,n,p >2 $ we can always partition them in blocks as:
+When $ M,N,pP>2 $ we can always partition them in blocks as:
 
 \begin{equation}
   \label{eq:blocks}
   \begin{bNiceArray}{cc}[first-row, first-col, margin, xdots/horizontal-labels]
-    & \Hbrace{1}{\lfloor n/2 \rfloor} & \Hbrace{1}{\lceil n/2 \rceil} \\
-    \Vbrace{1}{\lfloor m/2 \rfloor} & A_{11} & A_{12} \\[2ex]
-    \Vbrace{1}{\lceil m/2 \rceil}   & A_{21} & A_{22}
+    & \Hbrace{1}{\lfloor N/2 \rfloor} & \Hbrace{1}{\lceil N/2 \rceil} \\
+    \Vbrace{1}{\lfloor M/2 \rfloor} & A_{11} & A_{12} \\[2ex]
+    \Vbrace{1}{\lceil M/2 \rceil}   & A_{21} & A_{22}
   \end{bNiceArray}, \qquad \qquad
   \begin{bNiceArray}{cc}[first-row, first-col, margin, xdots/horizontal-labels]
-    & \Hbrace{1}{\lfloor p/2 \rfloor} & \Hbrace{1}{\lceil p/2 \rceil} \\
-    \Vbrace{1}{\lfloor n/2 \rfloor} & B_{11} & B_{12} \\[2ex]
-    \Vbrace{1}{\lceil n/2 \rceil}   & B_{21} & B_{22}
+    & \Hbrace{1}{\lfloor P/2 \rfloor} & \Hbrace{1}{\lceil P/2 \rceil} \\
+    \Vbrace{1}{\lfloor N/2 \rfloor} & B_{11} & B_{12} \\[2ex]
+    \Vbrace{1}{\lceil N/2 \rceil}   & B_{21} & B_{22}
   \end{bNiceArray},
 \end{equation}
 
 where the sizes of the subblocks are depicted in the above equation. This algorithmic formulation is
-often called \emph{divide et impera}, as it consists in breaking the problem into larger
-subproblems, and later recombining the results.
+often called \emph{divide et impera}, as it consists in breaking the problem into smaller subproblems, and later recombining the results.
 In particular, we can view the product $ AB $ as the product between $ 2\times 2 $ block matrices 
 \begin{equation}
   \label{eq:matprod}
@@ -412,8 +417,7 @@ Also the factors $ s_l $ and $ t_l $ in Equation~\ref{eq:mulvec:CP} become
 \subsection{Strassen algorithm using CP}
 \label{sec:cpstrassen}
 
-The idea of fast matrix multiplication algorithms is to perform fewer recursive matrix
-multiplications at the expense of more matrix additions. The most well known fast algorithm is due to Strassen, and follows the same block structure:
+The most well known fast algorithm is due to Strassen, and follows the same $ \angb{2,2,2} $ block structure:
 
 \begin{align*}
 S_1 &= A_{11} + A_{22} & S_2 &= A_{21} + A_{22} & S_3 &= A_{11} \\
@@ -479,7 +483,7 @@ algorithms for different base cases.
 \caption{
 Summary of fast algorithms.
 Algorithms without citation were found by the authors of~\cite{bensonballard2015}.
-The number of multiplications  is equal to the rank $r$ of the corresponding tensor decomposition.
+The number of multiplications  is equal to the rank $R$ of the corresponding tensor decomposition.
 The multiplication speedup per recursive step is the expected speedup if
 matrix additions were free.
 Note that this speedup does not determine the fastest algorithm because the maximum number
@@ -507,18 +511,20 @@ $\angb{3,3,6}$ \cite{smirnov2013bilinear} & 40 & 54 & 35\% \\
 \end{table}
 
 
-\section{Implementation and practical consideration}
+\section{Project overview}
 
 \subsection{Fork overview and comparison with c++ version}
 
 
 
 The implementation consists in a Rust porting of the c++ project made by Benson and Ballard
-summarized in~\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. 
+summarized in~\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. We
+will refere to this project as "the C++ project" or "Benson\&Ballard's project".
 They provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
 multiplication algorithms, achieved trough code generation, using lapack and MKL dgemm for numerical
-computation, and OpenMP for parallelization. We develop a Rust project with some similarities but
-also structural differences and limitations. The main similarities are that both use MKL for base, 
+computation, and OpenMP for parallelization. We develop a Rust project that aims to replicate a
+parallel framework for fast multiplication algorithms, but
+with structural differences and current limitations. The main similarities are that both use MKL for base, 
 but Rust project also uses Faer. In the C++ project, MKL is imported, while
 in Rust it is binded via FFI.
 Besides tool choices, the C++ algorithms are code-generated by a script that parses CP tensor decomposition slices and
@@ -528,8 +534,8 @@ program is launched, before doing the multiplication, which does not affect spee
 decomposition is cached at runtime} and then applies the pseudocode in
 Algorithm~\ref{alg:strassen}. The advantage of the first is
 speed, at the cost of more complex code and parallelism. The advantage of the second is simplicity
-of code, at the cost of speed (at the current state, but which it could be improved by adding more
-SIMD optimizations). The C++ project can handle multiplications between rectangular matrices, 
+of code, at the cost of speed (at the current state, but which it could be improved by adding
+optimization, we will address these issues in Section~\ref{sec:future}). The C++ project can handle multiplications between rectangular matrices, 
 as well as APA algorithms, while our doesn't. Also, while it could work, we didn't tested subexpression eliminated algorithms. 
 
 
@@ -596,33 +602,11 @@ a custom \texttt{build.rs} script compiles the Intel MKL FFI C wrapper (\texttt{
 correctly loaded. To eliminate the need for manual \texttt{LD\_LIBRARY\_PATH} configuration at
 runtime, the MKL library path is compiled into the executable binaries as a runtime.
 
-\subsection{Practical optimizations}
-
-
+\section{Practical optimizations}
 
 Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
-implementation, which are recursion cutoff and input matrices sizes not matching with base case. The
-parallel case, there also scheduling problems to consider.
-
-\subsection{Recursive cutoff strategies}
-
-In divide et impera algorithms such as Strassen, we can't afford taking many recursive stes, as
-spawning many children constitutes a significant recursive overhead.
-Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard gemm.
-We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
-under a certain size, the latter is taking a fixed number $ L $ of recursions.
-
-
-\subsection*{Optimal cutoff size search}
-
-The authors in~\cite{bensonballard2015} explain an euristical process for finding the optimal cutoff
-size, which can be resumed in looking at the performance plot of the gemm function, where (figure)
-the function exibits a ramp-up and then flatten for large dimensions. They take a
-recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
-manually by the authors. During the experimentation we developed a function to plot this curve, and
-its derivative (using splines) to automatically find this size. In practice, we never use this as we
-believe that our code is not efficient enough to implement this strategy.
-
+implementation, which are recursion cutoff and input matrices sizes not matching with base case. In
+the parallel case, there also scheduling problems to consider to avoid algorithm overhead.
 
 \subsection{Dynamic Peeling}
 \label{sec:dynpeel}
@@ -676,23 +660,17 @@ Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen
 multiplication, while all other terms are computed via standard matrix multiplication.
 
 
-
-\section{Parallel algorithms for shared memory}
+\subsection{Parallel algorithms for shared memory}
 
 Matrix multiplication is a problem subject to both computational and memory bound. The first is
 limited by the amount of computation the device can handle (i.e cores,cpu/gpu speed), while the
-latter by physical storage of the matrices (i.e available RAM memory). In a parallel implemntation,
+latter by physical storage of the matrices (i.e available RAM memory). In a parallel implementation,
 when dealing with recursive algorithms which use divide-et-impera (like Strassen), it is important
 in practice to balance algorithmic load between threads to avoid overhead caused by both taking
 recursive branches and doing parallel matrix multiplication. To address this issue, we adopt the
 scheduling schema suggested by Benson and Ballard in their work~\cite{bensonballard2015}.
-
-\section{Finding the optimal recursive cutoff}
-
-
-\subsection{Implementation}
-
-We use Rust's Rayon to handle parallelization, and we can summarize the parallel scheduling as following: 
+We use Rust's Rayon to handle parallelization, and we can summarize the parallel scheduling as
+following: 
 
 \begin{itemize}
   \item \textbf{BFS:} Each recursive matrix multiplication routine and the associated matrix
@@ -715,8 +693,25 @@ We use Rust's Rayon to handle parallelization, and we can summarize the parallel
     \input{./figures/parallel.tikz}
   }%
   \caption{BFS and DFS load balancing. The parallelized tasks are in red.}
-  \label{fig:unfoldings}
+  \label{fig:load_balancing}
 \end{figure}
+
+
+\subsection{Recursive cutoff strategies}
+
+In divide et impera algorithms such as Strassen, we can't afford taking many recursive steps, as
+spawning many children constitutes a significant recursive overhead, especially for larger matrices.
+Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard gemm.
+We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
+under a certain size, the latter is taking a fixed number $ L $ of recursions.
+
+The authors in~\cite{bensonballard2015} explain an euristical process for finding the optimal cutoff
+size, which can be resumed in looking at the performance plot of the gemm function, where (figure)
+the function exibits a ramp-up and then flatten for large dimensions. They take a
+recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
+manually by the authors. During the experimentation we developed a function to plot this curve, and
+its derivative (using splines) to automatically find this size. In practice, we never use this as we
+believe that our code is not efficient enough to implement this strategy.
 
 
 \section{Experimental results}
@@ -828,7 +823,10 @@ row).}
 
 \subsection{Finding the optimal cutoff for the parallel case}
 
-COMMENT
+Figure~\ref{fig:combined_par_cutoff_grid} shows different recursive size thresholds for the parallel
+case. Compared to the sequential case in Figure~\ref{fig:seq_grid_plot}, optimal performance is
+found for larger cutoff size, such as greater equal to $ 8102 $. This is due the fact that smaller cases trigger more recursive steps and cause thread oversubscription.
+\todo{Discuss variants dgemm and faer}
 
 \begin{figure}[htbp]
   \centering
@@ -853,7 +851,13 @@ COMMENT
 
 
 \subsection{Numerical comparison with Benson\&Ballard Strassen}
-We perform a numerical performance comparison between our optimized Rust implementation of Strassen's algorithm and the reference C++ implementation by Benson and Ballard~\cite{bensonballard2015}. The results are shown in Figure~\ref{fig:ballard_comparison}. We compare the algorithms across one, two, and three levels of recursion using different thread scheduling paradigms: Sequential, Parallel DFS, Parallel BFS, and Parallel Hybrid.
+We perform a numerical performance comparison between our optimized Rust implementation of
+Strassen's algorithm and the reference C++ implementation by Benson and
+Ballard~\cite{bensonballard2015}. The results are shown in Figure~\ref{fig:ballard_comparison}. We
+compare the algorithms across one, two, and three levels of recursion using different thread
+scheduling paradigms: Sequential, Parallel DFS, Parallel BFS, and Parallel Hybrid. We see that our
+algorithm to compete especially in the sequential case, where the dgemm variant keeps head. In DFS
+case, Ballard code outperforms our algorithm, we think this is due their better parallelization of additions.
 
 \begin{figure}[htbp]
   \centering
@@ -865,6 +869,7 @@ We perform a numerical performance comparison between our optimized Rust impleme
 
 
 \section{Further work}
+\label{sec:future}
 
 \begin{itemize}
   \item \textbf{Profiling and SIMD} We believe that code can be made more efficient by doing
