@@ -166,14 +166,16 @@ A \emph{tensor} is a multidimensional array, and in this work we deal only with 
 tensors $ \Tn{T} \in \R^{M\times N\times P}$. The \emph{$ k $-th frontal slice} of $ \Tn{T} $ is the matrix
 $ \Mx{X}_k $. For $ \Vc{u} \in \R^M, \Vc{v} \in \R^N, \Vc{w} \in \R^P $, we define the rank-1 \emph{outer
 product} tensor $\Tn{T} = \Vc{u} \topp \Vc{v} \topp \Vc{w} \in \R^{M \times N \times P}$ with entries
-$ x_{ijk} = u_iv_jw_k $. Addition of tensors is defined entry-wise. The \emph{rank} of a tensor $ \Tn{T} $
+$ x_{ijk} = u_iv_jw_k $; such tensor has \emph{rank} one. Addition of tensors is defined entry-wise. The rank of a tensor $ \Tn{T} $
 is defined as the minimum number of rank-one tensors that generate $ \Tn{T} $ as their sum.
 We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{T}$ as the sum $ \Tn{T} =
-\sum_{r=1}^R u_r \topp v_r \topp w_r $. We denote it by $ \Tn{T} = \dsqr{U,V,W} $, where $ U,V $
+\sum_{r=1}^R u_r \topp v_r \topp w_r $, and we denote it by $ \Tn{T} = \dsqr{U,V,W} $, where $ U,V $
 and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation
-in the context of tensors is the \emph{mode$ -k $ product}, which is defined as. 
-In this work, we will often use the equation $ \Tn{T} \ttm[1]
-a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{T}{k}b = \sum_{i=1}^m\sum_{j=1}^n x_{ijk}$ to refer to matrix multiplication algorithms.
+in the context of tensors is the \emph{mode$ -k $ product} between $ \Tn{t} \in \R^{N_1,N_2,N_3} $
+and a matrix $ U \in \R^{N_k \times R} $, for $ k \in \{1,2,3\}  $, which is defined as a tensor
+$  \Tn{y} = \Tn{x} \ttm U \in \R^{n_{k-1}\times R\times n_{k+1}} \text{ with } \Tm{Y}{k} = U
+\Tm{X}{k} $, also in components
+as $\Tn{y}(i_{k-1},\alpha,i_{k+1}) = \sum_{i_k = 1}^3 \Tn{X}_{i_1i_2i_3} U_{\alpha, i_k} $.
 
 \begin{table}[tb]
 \centering
@@ -208,16 +210,46 @@ $ x\in X $ and $ y\in Y $. Any bilinear form can be represented by a matrix $ M 
 f(x,y) = x^{\top}My = \sum_i \sum_j m_{ij}x_iy_j $, and we can write it component-wise using a
 tensor $ \Tn{t} $ of coefficients $ t_{ijk} $ as follows:
 \begin{equation}
+  \label{eq:bil_tensor_full}
   f_k(x,y) = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j, \quad \text{ for all } 1\le k\le K,
 \end{equation}
 or in more succint tensor notation, 
 \begin{equation}
   \label{eq:bil_tensor}
- f = \Tn{t} \ttm[1] x \ttm[2] y.
+ f = \Tn{t} \ttm[1] x^{\top} \ttm[2] y^{\top}.
 \end{equation}
 
-\todo{Add from thesis}
+Numerically evaluating the bilinear form in Equation~\ref{eq:bil_tensor_full} has an high computational cost driven by the multiplication that depends by the non-zero entries of $ \Tn{t}
+$. We call those multiplications \emph{active} to emphasize their dominant computational role. We can reduce the cost in evaluating $
+f(x,y) $ by
+considering a CP decomposition $ \dsqr{U,V,W} $ of rank $ R $ of $ \Tn{t} $.
+Denoting $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ as the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $, we have
+the decomposition $ \Tn{t} =
+\sum_{r=1}^R u_r \topp v_r \topp w_r $, and by performing a substitution into
+Equation~\ref{eq:bil_tensor} component-wise, we get
 
+\begin{equation}
+  \label{eq:b_active}
+  \begin{aligned}
+    f_k(x,y) &= \left( \left( \sum_{r=1}^R u_l \topp v_r \topp w_r \right) \ttm[1] x^{\top} \ttm[2]
+  y^{\top}  \right)_k  
+             = \left( \sum_{r=1}^R \left( u_r \topp v_r \topp w_r  \right) \ttm[1] x^{\top} \ttm[2]
+    y^{\top} \right)_k  \\ 
+             &=
+  \sum_{i=1}^I \sum_{j=1}^J \sum_{r=1}^R u_{ir}v_{jr}w_{kr} x_i y_j = \sum_{r=1}^R \left(\sum_{i=1}^I 
+    u_{ir} x_i \right) \cdot \left( \sum_{j=1}^J v_{jr} y_j  \right)  w_{kr} \\
+             &= \sum_{r=1}^R
+   (u_r^{\top}x) \cdot (v_r^{\top}y)w_{kr},
+  \end{aligned}
+\end{equation}
+for every $ k = 1, \ldots, K $. Since this holds for every $ k $, we can write
+\begin{equation}
+  \label{eq:active_final}
+  f(x,y) = \sum_{l=1}^r (u_l^{\top}x)\cdot(v_l^{\top}y)w_l.
+\end{equation}
+
+Here we highlight with $ (\cdot) $ the active multiplications. Now, evaluating $ f $ requires exactly $ R $ active multiplications (and $
+  O(r) $ additions).
 
 \subsection{Recursive matrix multiplication}
 
@@ -228,30 +260,27 @@ Recall that matrix multiplication for two matrices $ A \in \R^{M\times N} $ and 
   \begin{bmatrix}  A_{:1} | \cdots | A_{:n} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{n:}
 \end{bmatrix} = \sum_{k=1}^n A_{:k}B_{k:}.
 \end{equation*}
-From this expression easily follows the bilinearity of the map $ (A,B) \to AB $, and we indicate with $ \angb{m,n,p} $ the form that represents the multiplication between $ A $
-and $ B $. Thus we can rewrite this form as in Equation~\ref{eq:bil_tensor}: fixing the natural
-ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
-\Tm{A}\Tm{B} $, we get a representation of $ \Tn{T} \in \R^{MN\times NP\times MP} $ of the matrix
-multiplication $ \angb{m,n,p} $ such that
+From this expression easily follows the bilinearity of the map $ (A,B) \mapsto AB $, 
+and we indicate with $ \angb{M,N,P} $ the form that represents the multiplication between $ A $
+and $ B $. By this property, we can rewrite Equation~\ref{eq:bil_tensor} putting $ x =
+\Vec(A),y=\Vec(B) $ and $ C= \Vec(C^{\top}) $. This fixes the natural
+ordering on the entries of $ \Vec(\Tm{A}) $ and $ \Vec(\Tm{B}) $ and the inverse ordering on $
+\Vec(\Tm{C}^{\top})$). This
+yields a representation of the tensor $ \Tn{T} \in \R^{MN\times NP\times MP} $ of matrix
+multiplication $ \angb{M,N,P} $ from Equation~\ref{eq:bil_tensor} such that
 \begin{equation}
   \label{eq:mulvec}
 \Vec(\Tm{C}^{\top}) = \Tn{T} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
 .\end{equation}
-Note that by transposing $ C $ and then vectorizing, we get a vector whose indexes are in
-reverse order.
 
-\todo{Tensor definition}
-
-If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{T}  = \dsqr{U,V,W}$, we can
-rewrite Equation \ref{eq:mulvec} into
+If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{T}  = \dsqr{U,V,W}$, by
+Equation~\ref{eq:bil_tensor_full} this expression becomes
 \begin{equation}
   \label{eq:mulvec:CP}
   \Vec(\Tm{C}^{\top}) = \sum_{l=1}^r (\underbrace{\Vc{u_l}^{\top} \Vec(\Tm{A})}_{s_l}) \cdot
   (\underbrace{\Vc{v_l}^{\top}\vec(\Tm{B})}_{t_l})\Vc{w_l} = \sum_{l=1}^r (\underbrace{s_l \cdot
   t_l}_{m_l})w_l,
 \end{equation}
-where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $. This
-reduces the number of active multiplications to the rank $ r $ of $ \Tn{T} $.
 
 
 \subsection{The classic matrix multiplication algorithm tensor formulation}
