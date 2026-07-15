@@ -221,14 +221,14 @@ or in more succint tensor notation,
 
 \subsection{Recursive matrix multiplication}
 
-Matrix multiplication is a bilinear operation; given two matrices $ A \in \R^{m\times n} $ and $ B
-\in \R^{n\times p} $, their product is
+Recall that matrix multiplication for two matrices $ A \in \R^{m\times n} $ and $ B
+\in \R^{n\times p} $ is defined as
 \begin{equation*}
   C = AB = \left(\sum_{k=1}^n A_{ik}B_{kj}\right)_{\substack{1\le i\le m, \\ 1\le j\le p}} =
   \begin{bmatrix}  A_{:1} | \cdots | A_{:n} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{n:}
-\end{bmatrix} = \sum_{k=1}^n A_{:k}B_{k:},
+\end{bmatrix} = \sum_{k=1}^n A_{:k}B_{k:}.
 \end{equation*}
-We indicate with $ \angb{m,n,p} $ the bilinear form that represents the multiplication between $ A $
+From this expression easily follows the bilinearity of the map $ (A,B) \to AB $, and we indicate with $ \angb{m,n,p} $ the form that represents the multiplication between $ A $
 and $ B $. Thus we can rewrite this form as in Equation~\ref{eq:bil_tensor}: fixing the natural
 ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
 \Tm{A}\Tm{B} $, we get a representation of $ \Tn{x} \in \R^{mn\times np\times mp} $ of the matrix
@@ -745,7 +745,7 @@ due the type conversion which is performed during the binding.
   \label{fig:gemm_comparison}
 \end{figure}
 
-\subsection{Recursion level and cutoff recursive size strategy comparison}
+\subsection{Comparison of the level and size recursive cutoff strategies}
 
 The experimental results for sequential and parallel cutoff strategies are shown in
 Figures~\ref{fig:seq_grid_plot} and~\ref{fig:par_grid_plot}, respectively.
@@ -758,32 +758,42 @@ For parallel execution, Figure~\ref{fig:par_grid_plot} shows the performance (no
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/sequential_grid_plot.pdf}
-  \caption{Sequential matrix multiplication performance comparison of Strassen variants across recursion levels (1, 2, 3) and size cutoffs (256, 512, 1024, 2048).}
-  \label{fig:seq_grid_plot}
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/sequential_grid_plot.pdf}
+    \caption{Sequential execution.}
+    \label{fig:seq_grid_plot}
+  \end{subfigure}
+  \vskip 15pt
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_strassen_only.pdf}
+    \caption{Parallel execution (normalized per core).}
+    \label{fig:par_grid_plot}
+  \end{subfigure}
+  \caption{Performance comparison of Strassen variants (DFS, BFS, Hybrid) across recursion levels and size cutoffs in sequential and parallel executions.}
+  \label{fig:combined_strassen_grid}
 \end{figure}
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_strassen_only.pdf}
-  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen variants (DFS, BFS, Hybrid) across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
-  \label{fig:par_grid_plot}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_dgemm.pdf}
-  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
-  variants (DFS, BFS, Hybrid) against parallel \textbf{dgemm} across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
-  \label{fig:par_grid_plot_dgemm}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_faer.pdf}
-  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
-  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (2048, 4096, 8192, 16384) in the first row, and recursion levels (1, 2, 3) in the second row.}
-  \label{fig:par_grid_plot_faer}
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_dgemm.pdf}
+    \caption{Parallel dgemm base.}
+    \label{fig:par_grid_plot_dgemm}
+  \end{subfigure}
+  \vskip 15pt
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_grid_plot_faer.pdf}
+    \caption{Parallel faer base.}
+    \label{fig:par_grid_plot_faer}
+  \end{subfigure}
+  \caption{Parallel performance comparison (normalized per core) of Strassen variants (DFS, BFS,
+  Hybrid) against parallel gemm, across cutoff sizes (first row), and recursion levels (second
+row).}
+  \label{fig:combined_par_backends}
 \end{figure}
 
 
@@ -793,18 +803,22 @@ COMMENT
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_dgemm.pdf}
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_dgemm.pdf}
+    \caption{Parallel dgemm base.}
+    \label{fig:par_cutoff_grid_plot_dgemm}
+  \end{subfigure}
+  \vskip 15pt
+  \begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_faer.pdf}
+    \caption{Parallel faer base.}
+    \label{fig:par_cutoff_grid_plot_faer}
+  \end{subfigure}
   \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
-  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (256, 512, 1024, 2048, 4096, 8192, 16384).}
-  \label{fig:par_cutoff_grid_plot_dgemm}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth, keepaspectratio]{figures/parallel_cutoff_grid_plot_faer.pdf}
-  \caption{Parallel matrix multiplication performance comparison (normalized per core) of Strassen
-  variants (DFS, BFS, Hybrid) against parallel \textbf{faer} across cutoff sizes (256, 512, 1024, 2048, 4096, 8192, 16384).}
-  \label{fig:par_cutoff_grid_plot_faer}
+  variants (DFS, BFS, Hybrid) against parallel gemm across size cutoffs.}
+  \label{fig:combined_par_cutoff_grid}
 \end{figure}
 
 
@@ -815,7 +829,8 @@ We perform a numerical performance comparison between our optimized Rust impleme
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=\textwidth, keepaspectratio]{figures/compare_ballard.pdf}
-  \caption{Performance comparison of our Rust Strassen implementation (using dgemm and faer base cases) against the Benson \& Ballard reference benchmarks across sequential and parallel execution modes.}
+  \caption{Performance comparison of our Rust Strassen implementation (using dgemm and faer base
+  cases) against the Benson \& Ballard reference benchmarks, sequential and parallel execution.}
   \label{fig:ballard_comparison}
 \end{figure}
 
