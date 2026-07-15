@@ -104,9 +104,10 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
         "axes.titlesize": 8,
     }
 
+    nrows, ncols = 2, 4
+    figsize = (5.8, 3.8)
+
     if is_seq:
-        nrows, ncols = 2, 4
-        figsize = (5.8, 3.8)
         configs = [
             # (row, col, title, is_cutoff, value)
             (0, 0, "Cutoff = 256", True, 256),
@@ -118,24 +119,25 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
             (1, 2, "Level = 3", False, 3),
         ]
     else:
-        nrows, ncols = 1, 4
-        figsize = (5.8, 2.3)
         configs = [
             # (row, col, title, is_cutoff, value)
             (0, 0, "Cutoff = 2048", True, 2048),
             (0, 1, "Cutoff = 4096", True, 4096),
             (0, 2, "Cutoff = 8192", True, 8192),
             (0, 3, "Cutoff = 16384", True, 16384),
+            (1, 0, "Level = 1", False, 1),
+            (1, 1, "Level = 2", False, 2),
+            (1, 2, "Level = 3", False, 3),
         ]
 
     with plt.rc_context(custom_rc):
-        fig, axs = plt.subplots(nrows, ncols, figsize=figsize, sharex=True, sharey=True if not is_seq else "row", dpi=300)
+        fig, axs = plt.subplots(nrows, ncols, figsize=figsize, sharex=True, sharey="row", dpi=300)
 
         legend_handles = {}
         max_gflops_row = [0.0, 0.0]
 
         for row, col, title, is_cutoff, value in configs:
-            ax = axs[row, col] if is_seq else axs[col]
+            ax = axs[row, col]
             ax.set_facecolor("none")
             ax.set_xscale("log", base=2)
             ax.set_xlim(left=2, right=65536)
@@ -387,31 +389,25 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
             ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
         # Set dynamic tight y-limits across subplots per row to reduce blank space
-        for r in range(nrows):
+        for r in range(2):
             if max_gflops_row[r] > 0:
-                for c in range(ncols):
-                    ax = axs[r, c] if is_seq else axs[c]
-                    ax.set_ylim(0, max_gflops_row[r] * 1.05)
+                for c in range(4):
+                    axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
 
         # Add labels on outer plots
-        if is_seq:
-            for col in range(4):
-                axs[1, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
-            axs[1, 3].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
+        for col in range(4):
+            axs[1, col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
+        axs[1, 3].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
 
-            for row in range(2):
-                ylabel = "Effective GFLOPS" if is_seq else "Effective GFLOPS / core"
-                axs[row, 0].set_ylabel(ylabel, labelpad=4)
-        else:
-            for col in range(4):
-                axs[col].set_xlabel(r"Matrix Size ($N \times N$)", labelpad=4)
-            axs[0].set_ylabel("Effective GFLOPS / core", labelpad=4)
+        for row in range(2):
+            ylabel = "Effective GFLOPS" if is_seq else "Effective GFLOPS / core"
+            axs[row, 0].set_ylabel(ylabel, labelpad=4)
 
         # Legend axis configuration
-        if is_seq:
-            legend_ax = axs[1, 3]
-            legend_ax.axis("off")
+        legend_ax = axs[1, 3]
+        legend_ax.axis("off")
 
+        if is_seq:
             if backend_filter == "faer":
                 sorted_labels = ["faer (Sequential)", "Strassen (faer base)"]
                 ncol = 1
@@ -424,20 +420,6 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
             else:
                 sorted_labels = ["MKL dgemm", "faer (Sequential)", "Strassen (dgemm base)", "Strassen (faer base)"]
                 ncol = 1
-
-            handles = [legend_handles[lbl] for lbl in sorted_labels if lbl in legend_handles]
-            labels = [lbl for lbl in sorted_labels if lbl in legend_handles]
-
-            legend_ax.legend(
-                handles,
-                labels,
-                loc="center left",
-                frameon=True,
-                framealpha=0.9,
-                edgecolor="#cbd5e1",
-                ncol=ncol,
-                bbox_to_anchor=(-0.15, 0.5) if ncol == 2 else (0.05, 0.5),
-            )
         else:
             if backend_filter == "faer":
                 sorted_labels = [
@@ -446,7 +428,7 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
                     "Strassen BFS (faer base)",
                     "Strassen Hybrid (faer base)",
                 ]
-                ncol = 2
+                ncol = 1
             elif backend_filter == "dgemm":
                 sorted_labels = [
                     "MKL dgemm",
@@ -454,7 +436,7 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
                     "Strassen BFS (dgemm base)",
                     "Strassen Hybrid (dgemm base)",
                 ]
-                ncol = 2
+                ncol = 1
             elif backend_filter == "strassen_only":
                 sorted_labels = [
                     "Strassen DFS (dgemm base)",
@@ -464,7 +446,7 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
                     "Strassen BFS (faer base)",
                     "Strassen Hybrid (faer base)",
                 ]
-                ncol = 3
+                ncol = 1
             else:
                 sorted_labels = [
                     "MKL dgemm",
@@ -476,33 +458,24 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
                     "Strassen BFS (faer base)",
                     "Strassen Hybrid (faer base)",
                 ]
-                ncol = 4
+                ncol = 2
 
-            handles = [legend_handles[lbl] for lbl in sorted_labels if lbl in legend_handles]
-            labels = [lbl for lbl in sorted_labels if lbl in legend_handles]
+        handles = [legend_handles[lbl] for lbl in sorted_labels if lbl in legend_handles]
+        labels = [lbl for lbl in sorted_labels if lbl in legend_handles]
 
-            fig.legend(
-                handles,
-                labels,
-                loc="lower center",
-                ncol=ncol,
-                frameon=True,
-                framealpha=0.9,
-                edgecolor="#cbd5e1",
-            )
+        legend_ax.legend(
+            handles,
+            labels,
+            loc="center left",
+            frameon=True,
+            framealpha=0.9,
+            edgecolor="#cbd5e1",
+            ncol=ncol,
+            bbox_to_anchor=(-0.15, 0.5) if ncol == 2 else (0.05, 0.5),
+        )
 
-        if is_seq:
-            title_text = "Sequential Matrix Multiplication Performance Comparison"
-            if backend_filter == "strassen_only":
-                title_text = f"{title_text} (Strassen Variants)"
-            elif backend_filter:
-                title_text = f"{title_text} ({backend_filter.upper()} Backend)"
-
-            plt.suptitle(title_text, y=0.98)
-            fig.subplots_adjust(hspace=0.42, wspace=0.28, top=0.88, bottom=0.15, left=0.09, right=0.97)
-        else:
-            # Parallel mode: remove suptitle as requested, and allocate space for bottom legend
-            fig.subplots_adjust(wspace=0.28, top=0.90, bottom=0.28, left=0.09, right=0.97)
+        # Remove suptitle for both sequential and parallel modes to follow report formatting standards, and use uniform margins
+        fig.subplots_adjust(hspace=0.42, wspace=0.28, top=0.92, bottom=0.15, left=0.09, right=0.97)
 
         # Save outputs
         out_dir_plots = os.path.join(project_root, "generated", "plots")
@@ -1319,9 +1292,9 @@ def main() -> None:
         elif mode == "sequential":
             plot_mode_grid(project_root, "sequential")
         elif mode == "cutoff_grid":
-            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="faer")
-            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="dgemm")
-            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="strassen_only")
+            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="faer")
+            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="dgemm")
+            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="strassen_only")
         else:
             plot_mode_grid(project_root, mode, par_dir=args.par_dir)
 
