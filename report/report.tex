@@ -150,7 +150,7 @@
 
 \begin{abstract}
     \noindent We develop a Rust
-crate (library) that given matrices $ A,B \in \R^n$ computes their product $ C=AB $ using fast matrix multiplication algorithms, for any given CP decomposition.
+crate (library) that given matrices $ A,B \in \R^N$ computes their product $ C=AB $ using fast matrix multiplication algorithms, for any given CP decomposition.
 \end{abstract}
 
 {\setlength{\parskip}{0em}
@@ -163,17 +163,17 @@ crate (library) that given matrices $ A,B \in \R^n$ computes their product $ C=A
 The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
 following the notation in \cite{BK25}.
 A \emph{tensor} is a multidimensional array, and in this work we deal only with 3-dimensional (or 3-way)
-tensors $ \Tn{x} \in \R^{m\times n\times p}$. The \emph{$ k $-th frontal slice} of $ \Tn{x} $ is the matrix
-$ \Mx{X}_k $. For $ \Vc{u} \in \R^m, \Vc{v} \in \R^n, \Vc{w} \in \R^p $, we define the rank-1 \emph{outer
-product} tensor $\Tn{x} = \Vc{u} \topp \Vc{v} \topp \Vc{w} \in \R^{m \times n \times p}$ with entries
-$ x_{ijk} = u_iv_jw_k $. Addition of tensors is defined entry-wise. The \emph{rank} of a tensor $ \Tn{x} $
-is defined as the minimum number of rank-one tensors that generate $ \Tn{x} $ as their sum.
-We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{x}$ as the sum $ \Tn{x} =
-\sum_{r=1}^R u_r \topp v_r \topp w_r $. We denote it by $ \Tn{x} = \dsqr{U,V,W} $, where $ U,V $
+tensors $ \Tn{T} \in \R^{M\times N\times P}$. The \emph{$ k $-th frontal slice} of $ \Tn{T} $ is the matrix
+$ \Mx{X}_k $. For $ \Vc{u} \in \R^M, \Vc{v} \in \R^N, \Vc{w} \in \R^P $, we define the rank-1 \emph{outer
+product} tensor $\Tn{T} = \Vc{u} \topp \Vc{v} \topp \Vc{w} \in \R^{M \times N \times P}$ with entries
+$ x_{ijk} = u_iv_jw_k $. Addition of tensors is defined entry-wise. The \emph{rank} of a tensor $ \Tn{T} $
+is defined as the minimum number of rank-one tensors that generate $ \Tn{T} $ as their sum.
+We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{T}$ as the sum $ \Tn{T} =
+\sum_{r=1}^R u_r \topp v_r \topp w_r $. We denote it by $ \Tn{T} = \dsqr{U,V,W} $, where $ U,V $
 and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation
 in the context of tensors is the \emph{mode$ -k $ product}, which is defined as. 
-In this work, we will often use the equation $ \Tn{x} \ttm[1]
-a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{x}{k}b = \sum_{i=1}^m\sum_{j=1}^n x_{ijk}$ to refer to matrix multiplication algorithms.
+In this work, we will often use the equation $ \Tn{T} \ttm[1]
+a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{T}{k}b = \sum_{i=1}^m\sum_{j=1}^n x_{ijk}$ to refer to matrix multiplication algorithms.
 
 \begin{table}[tb]
 \centering
@@ -181,16 +181,16 @@ a^{\top} \ttm[2] b^{\top} = c $, with $ c_k = a^{\top}\Tm{x}{k}b = \sum_{i=1}^m\
 \label{tab:notation}
 \begin{tabular}{ll}
 \toprule
-$\angb{M,K,N}$ & Bilinear form representing base case matrix multiplication \\
-& of an $M \times K$ matrix by a $K \times N$ matrix. \\
-$\msiz{P,Q,R}$ & Dimensions of actual matrices that are multiplied \\
-& ($P \times Q$ matrix multiplied by $Q \times R$ matrix). \\
+$\angb{m,n,p}$ & Bilinear form representing base case matrix multiplication \\
+& of an $m \times n$ matrix by a $n \times p$ matrix. \\
+$\msiz{M,N,P}$ & Dimensions of actual matrices that are multiplied \\
+& ($M \times N$ matrix multiplied by $N \times P$ matrix). \\
 $\dsqr{\Mx{U}, \Mx{V}, \Mx{W}}$ & Factor matrices corresponding to a tensor CP \\
 & decomposition that provides a fast algorithm. \\
-$\Tn{X}$ & Order-3 tensor. \\
-$\Tn{X} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & Rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$. \\
-$\Tm{X}{i}$ & $i$th frontal slice of $\Tn{X}$, the matrix of entries $X_{:,:,i}$. \\
-$\Vc{a}_k$, $A_{ij}$ & $k$th column and $i, j$ entry of matrix $\Mx{A}$. \\
+$\Tn{T}$ & Order-3 tensor. \\
+$\Tn{T} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & Rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$. \\
+$\Tm{T}{i}$ & $i$th frontal slice of $\Tn{T}$, the matrix of entries $X_{:,:,i}$. \\
+$A_{:k}$, $A_{k:}$, $A_{ij}$ & $k$th column, $ k $th row and $i, j$ entry of matrix $\Mx{A}$. \\
 $\vec(\Mx{A})$ & Row-order vectorization of the entries of $\Mx{A}$. \\
 $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 \bottomrule
@@ -221,8 +221,8 @@ or in more succint tensor notation,
 
 \subsection{Recursive matrix multiplication}
 
-Recall that matrix multiplication for two matrices $ A \in \R^{m\times n} $ and $ B
-\in \R^{n\times p} $ is defined as
+Recall that matrix multiplication for two matrices $ A \in \R^{M\times N} $ and $ B
+\in \R^{N\times P} $ is defined as
 \begin{equation*}
   C = AB = \left(\sum_{k=1}^n A_{ik}B_{kj}\right)_{\substack{1\le i\le m, \\ 1\le j\le p}} =
   \begin{bmatrix}  A_{:1} | \cdots | A_{:n} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{n:}
@@ -231,18 +231,18 @@ Recall that matrix multiplication for two matrices $ A \in \R^{m\times n} $ and 
 From this expression easily follows the bilinearity of the map $ (A,B) \to AB $, and we indicate with $ \angb{m,n,p} $ the form that represents the multiplication between $ A $
 and $ B $. Thus we can rewrite this form as in Equation~\ref{eq:bil_tensor}: fixing the natural
 ordering on the entries of $ \Tm{A} $ and $ \Tm{B} $ and the inverse ordering on $ \Tm{C} =
-\Tm{A}\Tm{B} $, we get a representation of $ \Tn{x} \in \R^{mn\times np\times mp} $ of the matrix
+\Tm{A}\Tm{B} $, we get a representation of $ \Tn{T} \in \R^{MN\times NP\times MP} $ of the matrix
 multiplication $ \angb{m,n,p} $ such that
 \begin{equation}
   \label{eq:mulvec}
-\Vec(\Tm{C}^{\top}) = \Tn{X} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
+\Vec(\Tm{C}^{\top}) = \Tn{T} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
 .\end{equation}
 Note that by transposing $ C $ and then vectorizing, we get a vector whose indexes are in
 reverse order.
 
 \todo{Tensor definition}
 
-If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{x}  = \dsqr{U,V,W}$, we can
+If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{T}  = \dsqr{U,V,W}$, we can
 rewrite Equation \ref{eq:mulvec} into
 \begin{equation}
   \label{eq:mulvec:CP}
@@ -251,7 +251,7 @@ rewrite Equation \ref{eq:mulvec} into
   t_l}_{m_l})w_l,
 \end{equation}
 where $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ denote the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $. This
-reduces the number of active multiplications to the rank $ r $ of $ \Tn{x} $.
+reduces the number of active multiplications to the rank $ r $ of $ \Tn{T} $.
 
 
 \subsection{The classic matrix multiplication algorithm tensor formulation}
@@ -605,9 +605,9 @@ reached, but this adds a significant memory waste. A more efficient approach, ca
 peeling}, consists in stripping the extra row off and/or column and adding their contribution to the
 final results. In detail,
 
-For the matrix multiplication $C = AB$, where $A$ is an $m \times n$ matrix and $B$ is an $n \times
-p$ matrix. The matrix $A$ is split into an $(m-1) \times (n-1)$ core matrix $A_{11}$, alongside its
-peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22}$. Similarly, the matrix $B$ is split into an $(n-1) \times (p-1)$ core matrix $B_{11}$, with its corresponding peeled components $b_{12}$, $b_{21}$, and $b_{22}$:
+For the matrix multiplication $C = AB$, where $A$ is an $M \times N$ matrix and $B$ is an $N \times
+P$ matrix. The matrix $A$ is split into an $(M-1) \times (N-1)$ core matrix $A_{11}$, alongside its
+peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22}$. Similarly, the matrix $B$ is split into an $(N-1) \times (P-1)$ core matrix $B_{11}$, with its corresponding peeled components $b_{12}$, $b_{21}$, and $b_{22}$:
 
 
 \begin{equation*}
