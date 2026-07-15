@@ -311,6 +311,7 @@ impl Benchmark {
 
 /// Entry point for running the matrix multiplication benchmarks.
 fn main() {
+    fast_matmul::matmul::init_rayon_threads();
     job_helper::handle_job_dependent_execution();
     let args: Vec<String> = std::env::args().collect();
 

@@ -282,12 +282,11 @@ impl<'a> MatMul<'a> {
         init_rayon_threads();
         match base_choice {
             BaseMatMul::Faer => {
-                let par =
-                    if multithreaded && a.nrows() >= 256 && a.ncols() >= 256 && b.ncols() >= 256 {
-                        faer::get_global_parallelism()
-                    } else {
-                        faer::Par::Seq
-                    };
+                let par = if multithreaded {
+                    faer::get_global_parallelism()
+                } else {
+                    faer::Par::Seq
+                };
                 faer::linalg::matmul::matmul(dst, accum, a, b, 1.0, par);
             }
             BaseMatMul::Dgemm => {
@@ -346,7 +345,8 @@ impl<'a> MatMul<'a> {
         recursion_limit: RecursionLimit,
         is_top_level: bool,
     ) {
-        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice, recursion_limit, is_top_level);
+        let peeling =
+            DynamicPeeling::new(self, a, b, mode, base_choice, recursion_limit, is_top_level);
         peeling.peel_core(dst.as_mut());
         peeling.correct_inner_dimension(dst.as_mut());
         peeling.correct_right_columns(dst.as_mut());
