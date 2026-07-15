@@ -11,8 +11,15 @@
 \usepackage{latexsym}
 \usepackage{graphicx}
 \usepackage{float}
+\RequirePackage[dvipsnames]{xcolor}
 \usepackage{etoolbox}
-\usepackage{hyperref}
+\usepackage[%
+  colorlinks = true,
+  citecolor  = RoyalBlue,
+  linkcolor  = RoyalBlue,
+  urlcolor   = RoyalBlue,
+  unicode,
+  ]{hyperref}
 \usepackage{subcaption}
 \usepackage{tikz}
 \usepackage{nicematrix}
@@ -158,12 +165,36 @@ crate (library) that given matrices $ A,B \in \R^N$ computes their product $ C=A
 
 \section{Introduction}
 
-Fast matrix multiplication algorithms perform fewer recursive matrix multiplications at the expense
+Matrix multiplication is one of the most fundamental computations in numerical linear algebra and
+scientific computing. We define \emph{fast multiplication algorithms} as those that perform
+asymptotically fewer floating point operations, and communicate asymptotically less data than the 
+classical algorithm. In this work, we want to show that fast matrix multiplication algorithms
+are sensible to the choice of base case, and perform better than their base case for larger sizes.
+We also provide a library function written in Rust perform matrix multiplication with these
+algorithms, which supports parallel execution and different general matrix matrix multiplication \emph{gemm}
+libraries, and we perform our benchmarks with Intel Math Kernel Library (MKL) \texttt{dgemm} (double
+precision general matrix-matrix multiplication) and
+faer (a modern, high performance linear algebra library for the rust programming language).
+According to Benson and Ballard~\cite{bensonballard2015}, fast matrix multiplication algorithms have
+largely been ignored by numerical libraries due to ungrounded reasons. As they state, Intel's MKL,
+Amd's Core Math Library (ACML) do not provide implementation of fast algorithms. In reality, fast matrix
+multiplication algorithms perform fewer recursive matrix multiplications at the expense
 of more matrix additions, and are faster than classical ones both in theory and in practice.
+
+Strassen's algorithm is the most well known fast algorithm, and will be at the core of our
+experiments, but we develop an algorithm that supports also algorithms other algorithms among those
+listed in Table~\ref{tab:algorithms}. We review those algorithms and methods to construct them in
+Section~\ref{sec:fast_matmul}. In Section~\ref{sec:overview} we explain the technical details of our
+implementation, and in Section~\ref{sec:optimizations} we explain parallel and algorithmical
+optimizations. Finally, we summarize experimental results in Section~\ref{sec:results}.
+We summarize our findings as follow: \todo{write}
+In addition, this work also serves as an evaluation of Rust as a language in scientific computing which is currently
+in early adoption~\cite{lombardo2026evaluatingrustsparsematrix}.
 
 
 
 \subsection{Notation and tensor preliminaries}
+\label{sec:not_prel}
 
 The relevant notation for our work is in Table~\ref{tab:notation}. We briefly review basic tensor preliminaries,
 following the notation in \cite{BK25}.
@@ -206,6 +237,7 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 
 
 \section{Fast matrix multiplication}
+\label{sec:fast_matmul}
 
 \subsection{Evaluation of bilinear form using low-rank tensor decompositions}
 
@@ -512,6 +544,7 @@ $\angb{3,3,6}$ \cite{smirnov2013bilinear} & 40 & 54 & 35\% \\
 
 
 \section{Project overview}
+\label{sec:overview}
 
 \subsection{Fork overview and comparison with c++ version}
 
@@ -603,6 +636,7 @@ correctly loaded. To eliminate the need for manual \texttt{LD\_LIBRARY\_PATH} co
 runtime, the MKL library path is compiled into the executable binaries as a runtime.
 
 \section{Practical optimizations}
+\label{sec:optimizations}
 
 Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
 implementation, which are recursion cutoff and input matrices sizes not matching with base case. In
@@ -715,6 +749,7 @@ believe that our code is not efficient enough to implement this strategy.
 
 
 \section{Experimental results}
+\label{sec:results}
 
 \subsection{Metrics}
 
@@ -868,7 +903,7 @@ case, Ballard code outperforms our algorithm, we think this is due their better 
 \end{figure}
 
 
-\section{Further work}
+\section{Conclusion \& Further work}
 \label{sec:future}
 
 \begin{itemize}
