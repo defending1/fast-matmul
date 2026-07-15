@@ -202,7 +202,7 @@ impl Benchmark {
         size: usize,
         algorithms: &[&str],
         filename: &str,
-        config: Option<(RecursionLimit, String, String)>,
+        config: Option<RecursionLimit>,
         targets: &[(BaseMatMul, &str, &str)],
         matmul_mode: &str,
     ) -> Result<(), std::io::Error> {
@@ -260,7 +260,7 @@ impl Benchmark {
                 measure_ms,
             );
         } else {
-            let (limit, _, _) = config.as_ref().unwrap();
+            let limit = config.as_ref().unwrap();
             // Run CP decomposition algorithms
             for &(base_choice, _, _) in targets {
                 for &(algo, ref cp) in &cps {
@@ -289,7 +289,7 @@ impl Benchmark {
                 &new_timings,
             )?;
         } else {
-            let (limit, _, _) = config.as_ref().unwrap();
+            let limit = config.as_ref().unwrap();
             let last_idx = targets.len() - 1;
             for (idx, &(base_choice, _, _)) in targets.iter().enumerate() {
                 let is_last = idx == last_idx;
@@ -386,18 +386,10 @@ fn main() {
         None
     } else if !param_cutoffs.is_empty() {
         let cutoff = param_cutoffs[0];
-        Some((
-            RecursionLimit::Cutoff(cutoff),
-            format!("benchmark_cutoff_{}", cutoff),
-            format!("cutoff: {}", cutoff),
-        ))
+        Some(RecursionLimit::Cutoff(cutoff))
     } else {
         let level = param_levels[0];
-        Some((
-            RecursionLimit::Depth(level),
-            format!("benchmark_level_{}", level),
-            format!("level: {}", level),
-        ))
+        Some(RecursionLimit::Depth(level))
     };
 
     let algorithms = &["strassen"];

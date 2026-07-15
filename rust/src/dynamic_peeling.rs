@@ -53,6 +53,7 @@ pub(crate) struct DynamicPeeling<'a, 'b> {
     mode: ParallelismMode,
     base_choice: BaseMatMul,
     recursion_limit: RecursionLimit,
+    pub(crate) is_top_level: bool,
     pub(crate) core_m: usize,
     pub(crate) core_n: usize,
     pub(crate) core_p: usize,
@@ -81,6 +82,7 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
         mode: ParallelismMode,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
+        is_top_level: bool,
     ) -> Self {
         let cp = matmul.cp();
         let m = a.nrows();
@@ -104,6 +106,7 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
             mode,
             base_choice,
             recursion_limit,
+            is_top_level,
             core_m,
             core_n,
             core_p,
@@ -133,6 +136,7 @@ impl<'a, 'b> DynamicPeeling<'a, 'b> {
                 self.mode,
                 self.base_choice,
                 self.recursion_limit,
+                self.is_top_level,
             );
         }
     }

@@ -335,6 +335,7 @@ impl<'a> MatMul<'a> {
     /// * `b` - The right matrix operand as a `MatRef`.
     /// * `mode` - The parallelism mode to use.
     /// * `base_choice` - The backend choice (Faer or Dgemm).
+    #[allow(clippy::too_many_arguments)]
     fn dynamic_peeling(
         &self,
         mut dst: faer::MatMut<'_, f64>,
@@ -343,8 +344,9 @@ impl<'a> MatMul<'a> {
         mode: ParallelismMode,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
+        is_top_level: bool,
     ) {
-        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice, recursion_limit);
+        let peeling = DynamicPeeling::new(self, a, b, mode, base_choice, recursion_limit, is_top_level);
         peeling.peel_core(dst.as_mut());
         peeling.correct_inner_dimension(dst.as_mut());
         peeling.correct_right_columns(dst.as_mut());
@@ -384,6 +386,7 @@ impl<'a> MatMul<'a> {
             mode,
             base_choice,
             recursion_limit,
+            false,
         );
         m_prod
     }
@@ -656,6 +659,7 @@ impl<'a> MatMul<'a> {
     /// * `mode` - The parallelism mode to use.
     /// * `base_choice` - The backend choice (Faer or Dgemm).
     /// * `recursion_limit` - The recursion limit choice (Depth or Cutoff).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn cp_matmul_impl(
         &self,
         dst: faer::MatMut<'_, f64>,
@@ -664,6 +668,7 @@ impl<'a> MatMul<'a> {
         mode: ParallelismMode,
         base_choice: BaseMatMul,
         recursion_limit: RecursionLimit,
+        is_top_level: bool,
     ) {
         if mode == ParallelismMode::Hybrid && matches!(recursion_limit, RecursionLimit::Cutoff(_)) {
             panic!("Hybrid parallelism mode is only supported with RecursionLimit::Depth");
@@ -692,7 +697,13 @@ impl<'a> MatMul<'a> {
         if stop_recursing {
             let leaf_multithreaded = match mode {
                 ParallelismMode::Dfs => true,
-                ParallelismMode::Bfs => false,
+                ParallelismMode::Bfs => {
+                    if matches!(recursion_limit, RecursionLimit::Cutoff(_)) {
+                        is_top_level
+                    } else {
+                        false
+                    }
+                }
                 ParallelismMode::Sequential => false,
                 ParallelismMode::Hybrid => {
                     // This can only occur if depth = 0 and mode is Hybrid
@@ -722,7 +733,7 @@ impl<'a> MatMul<'a> {
         let extra_p = p % self.cp.p;
 
         if extra_m > 0 || extra_n > 0 || extra_p > 0 {
-            self.dynamic_peeling(dst, a, b, mode, base_choice, recursion_limit);
+            self.dynamic_peeling(dst, a, b, mode, base_choice, recursion_limit, is_top_level);
             return;
         }
 
@@ -777,6 +788,7 @@ impl<'a> MatMul<'a> {
             mode,
             base_choice,
             recursion_limit,
+            true,
         );
         c
     }
