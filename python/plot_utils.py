@@ -334,6 +334,10 @@ def calculate_gflops_ballard(size: pd.Series, time_ms: pd.Series, is_parallel: b
 def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
     """Save the Matplotlib figure to the filesystem as PDF only.
 
+    Saves the figure to the specified output path, and automatically saves a copy
+    to both the 'generated/plots' and 'report/figures' directories to ensure
+    consistency across target output locations.
+
     Args:
         fig: The Matplotlib Figure instance.
         output_path: Absolute or relative filepath (typically ending in .pdf).
@@ -343,9 +347,34 @@ def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
     if ext.lower() != ".pdf":
         output_path = base + ".pdf"
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    fig.savefig(output_path, bbox_inches="tight", dpi=dpi)
-    print(f"Plot saved successfully to: {output_path}")
+    abs_output_path = os.path.abspath(output_path)
+
+    # Save to the original output_path
+    os.makedirs(os.path.dirname(abs_output_path), exist_ok=True)
+    fig.savefig(abs_output_path, bbox_inches="tight", dpi=dpi)
+    print(f"Plot saved successfully to: {abs_output_path}")
+
+    # Determine project root and additional directories
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    filename = os.path.basename(abs_output_path)
+
+    gen_plots_dir = os.path.join(project_root, "generated", "plots")
+    report_figures_dir = os.path.join(project_root, "report", "figures")
+
+    # Save to generated/plots if not already saved there
+    gen_plots_path = os.path.join(gen_plots_dir, filename)
+    if os.path.abspath(gen_plots_path) != abs_output_path:
+        os.makedirs(gen_plots_dir, exist_ok=True)
+        fig.savefig(gen_plots_path, bbox_inches="tight", dpi=dpi)
+        print(f"Plot also saved to: {gen_plots_path}")
+
+    # Save to report/figures if not already saved there
+    report_figures_path = os.path.join(report_figures_dir, filename)
+    if os.path.abspath(report_figures_path) != abs_output_path:
+        os.makedirs(report_figures_dir, exist_ok=True)
+        fig.savefig(report_figures_path, bbox_inches="tight", dpi=dpi)
+        print(f"Plot also saved to: {report_figures_path}")
 
 
 def is_parallel(col: str) -> bool:

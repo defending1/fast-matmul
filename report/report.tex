@@ -161,7 +161,8 @@
     dimensions, dynamic peeling is implemented as a memory-efficient alternative to zero-padding.
     Performance is evaluated using both Intel MKL \texttt{dgemm} (via FFI) and the native Rust
     library \texttt{faer} as the base case. The implementation supports both sequential and parallel
-    execution with multiple scheduling strategies. Finally, benchmarks on an AMD EPYC server demonstrate that fast algorithms outperform standard GEMM base cases for larger matrix sizes.
+    execution with multiple scheduling strategies. Finally, benchmarks on an AMD EPYC server demonstrate
+    that fast algorithms outperform standard GEMM base cases for larger matrix sizes.
 \end{abstract}
 
 {\setlength{\parskip}{0em}
@@ -174,22 +175,14 @@ scientific computing. We define \emph{fast multiplication algorithms} as those t
 asymptotically fewer floating-point operations, and require asymptotically less data communication than the 
 classical algorithm. In this work, we demonstrate that fast matrix multiplication algorithms
 are sensitive to the choice of base case, and perform better than their base case for larger sizes.
-We also provide a library function written in Rust to perform matrix multiplication with these
-algorithms, which supports parallel execution and different general matrix matrix multiplication
-\emph{GEMM}
-libraries, and we perform our benchmarks with Intel Math Kernel Library (MKL) \texttt{dgemm}
-(double-precision general matrix-matrix multiplication) and
-faer (a modern, high performance linear algebra library for the Rust programming language), to
-evaluate performance of small matrix multiplication libraries integrated in faer scientific
-computing library, which are commonly used among users, as they work out-the-box compared to
-optimized GEMM libraries such as DGEMM, which require some setup. 
+We provide a library function written in Rust to perform matrix multiplication with these algorithms, supporting parallel execution and different general matrix-matrix multiplication (GEMM) libraries. We perform benchmarks using the Intel Math Kernel Library (MKL) \texttt{dgemm} (double-precision general matrix-matrix multiplication) and \texttt{faer} (a modern, high-performance linear algebra library in Rust). This allows us to evaluate the performance of native Rust kernels integrated into scientific computing stacks, which are frequently chosen for their out-of-the-box ease of use compared to optimized vendor-specific GEMM libraries that require linking configurations. 
 According to Benson and Ballard~\cite{bensonballard2015}, fast matrix multiplication algorithms have
 largely been ignored by numerical libraries due to unfounded reasons. As they state, Intel's MKL,
 AMD's Core Math Library (ACML) do not provide implementations of fast algorithms. In reality, fast matrix
 multiplication algorithms perform fewer recursive matrix multiplications at the expense
 of more matrix additions, and are faster than classical ones both in theory and in practice.
 
-Strassen's algorithm is the best-known known fast algorithm, and will be at the core of our
+Strassen's algorithm is the best-known fast algorithm, and will be at the core of our
 experiments, but we also support other algorithms among those
 listed in Table~\ref{tab:algorithms}. We review those algorithms and methods to construct them in
 Section~\ref{sec:fast_matmul}. In Section~\ref{sec:overview} we explain the technical details of our
@@ -197,11 +190,8 @@ implementation, and in Section~\ref{sec:optimizations} we explain parallel and a
 optimizations. Finally, we summarize experimental results in Section~\ref{sec:results}.
 We summarize our findings as follows:
 \begin{itemize}
-  \item Performance of base GEMM impacts performance of fast matrix multiplication algorithm, 
-  \item We evaluate Rust as a language in scientific computing, a
-domain where rust is in the early stages of adoption~\cite{lombardo2026evaluatingrustsparsematrix}.
-
-
+  \item Performance of the base GEMM library directly impacts the practical performance and scaling crossover point of fast matrix multiplication algorithms.
+  \item We evaluate Rust as a language for high-performance scientific computing, which is currently in the early stages of adoption for sparse and dense matrix operations~\cite{lombardo2026evaluatingrustsparsematrix}.
 \end{itemize}
 
 
@@ -218,12 +208,10 @@ $ x_{ijk} = u_iv_jw_k $; such tensor has \emph{rank} one. Tensor addition is def
 is defined as the minimum number of rank-one tensors that generate $ \Tn{T} $ as their sum.
 We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{T}$ as the sum $ \Tn{T} =
 \sum_{r=1}^R u_r \topp v_r \topp w_r $, and we denote it by $ \Tn{T} = \dsqr{U,V,W} $, where $ U,V $
-and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation
-in the context of tensors is the \emph{mode$ -k $ product} between $ \Tn{t} \in \R^{N_1,N_2,N_3} $
-and a matrix $ U \in \R^{N_k \times R} $, for $ k \in \{1,2,3\}  $, which is defined as a tensor
-$  \Tn{y} = \Tn{x} \ttm U \in \R^{n_{k-1}\times R\times n_{k+1}} \text{ with } \Tm{Y}{k} = U
-\Tm{X}{k} $, also in components
-as $\Tn{y}(i_{k-1},\alpha,i_{k+1}) = \sum_{i_k = 1}^3 \Tn{X}_{i_1i_2i_3} U_{\alpha, i_k} $.
+and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation in the context of tensors is the \emph{mode-$k$ product} between a tensor $\Tn{T} \in \mathbb{R}^{N_1 \times N_2 \times N_3}$ and a matrix $U \in \mathbb{R}^{J \times N_k}$ for $k \in \{1,2,3\}$, which is denoted by $\Tn{Y} = \Tn{T} \times_k U \in \mathbb{R}^{N_1 \times \cdots \times J \times \cdots \times N_3}$ where the $k$-th dimension is replaced by $J$. In slice form, the mode-$k$ product has matricized representation $\mathbf{Y}_{(k)} = U \mathbf{T}_{(k)}$. In components, it is represented as:
+\begin{equation}
+  y_{i_1 \dots i_{k-1} j i_{k+1} \dots i_3} = \sum_{i_k=1}^{N_k} t_{i_1 i_2 i_3} u_{j, i_k}.
+\end{equation}
 
 \begin{table}[tb]
 \centering
@@ -260,14 +248,14 @@ which can be represented by a matrix slice $ \Tm{t}{k} $ of a tensor $ \Tn{t} $ 
 \begin{equation}
 \label{eq:bil_tensor_full}
 f_k(x,y) = x^{\top}\Tm{t}{k}y = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j
-\end{equation}, for all $ k \in \{1,\ldots, K\}  $. Hence we can construct a tensor $ \Tn{t} $ which represents $ f $ by taking the the slices $ \Tm{t}{k} $ that represent $ f_k $. In more succint tensor notation, 
+\end{equation}, for all $ k \in \{1,\ldots, K\}  $. Hence we can construct a tensor $ \Tn{t} $ which represents $ f $ by taking the slices $ \Tm{t}{k} $ that represent $ f_k $. In more succint tensor notation, 
 \begin{equation}
   \label{eq:bil_tensor}
  f = \Tn{t} \ttm[1] x^{\top} \ttm[2] y^{\top}.
 \end{equation}
 
 Numerically evaluating the bilinear form in Equation~\ref{eq:bil_tensor_full} has a high computational cost driven by the multiplication that depends by the non-zero entries of $ \Tn{t}
-$. We call those multiplications \emph{active} to emphasize their dominant computational role. We can reduce the cost in evaluating $
+$. We call these multiplications \emph{active} to emphasize their dominant computational role. We can reduce the cost of evaluating $
 f(x,y) $ by
 considering a CP decomposition $ \dsqr{U,V,W} $ of rank $ R $ of $ \Tn{t} $.
 Denoting $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ as the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $, we have
@@ -278,7 +266,7 @@ Equation~\ref{eq:bil_tensor} component-wise, we get
 \begin{equation}
   \label{eq:b_active}
   \begin{aligned}
-    f_k(x,y) &= \left( \left( \sum_{r=1}^R u_l \topp v_r \topp w_r \right) \ttm[1] x^{\top} \ttm[2]
+    f_k(x,y) &= \left( \left( \sum_{r=1}^R u_r \topp v_r \topp w_r \right) \ttm[1] x^{\top} \ttm[2]
   y^{\top}  \right)_k  
              = \left( \sum_{r=1}^R \left( u_r \topp v_r \topp w_r  \right) \ttm[1] x^{\top} \ttm[2]
     y^{\top} \right)_k  \\ 
@@ -292,27 +280,26 @@ Equation~\ref{eq:bil_tensor} component-wise, we get
 for every $ k = 1, \ldots, K $. Since this holds for every $ k $, we can write
 \begin{equation}
   \label{eq:active_final}
-  f(x,y) = \sum_{l=1}^r (u_l^{\top}x)\cdot(v_l^{\top}y)w_l.
+  f(x,y) = \sum_{l=1}^R (u_l^{\top}x)\cdot(v_l^{\top}y)w_l.
 \end{equation}
 
-Here we highlight with $ (\cdot) $ the active multiplications. Now, evaluating $ f $ requires exactly $ R $ active multiplications (and $
-  O(r) $ additions).
+Here we highlight with $ (\cdot) $ the active multiplications. Now, evaluating $ f $ requires exactly $ R $ active multiplications (and $ O(R) $ additions).
 
 \subsection{Recursive matrix multiplication}
 
 Recall that matrix multiplication for two matrices $ A \in \R^{M\times N} $ and $ B
 \in \R^{N\times P} $ is defined as
 \begin{equation*}
-  C = AB = \left(\sum_{k=1}^n A_{ik}B_{kj}\right)_{\substack{1\le i\le m, \\ 1\le j\le p}} =
-  \begin{bmatrix}  A_{:1} | \cdots | A_{:n} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{n:}
-\end{bmatrix} = \sum_{k=1}^n A_{:k}B_{k:}.
+  C = AB = \left(\sum_{k=1}^N A_{ik}B_{kj}\right)_{\substack{1\le i\le M, \\ 1\le j\le P}} =
+  \begin{bmatrix}  A_{:1} | \cdots | A_{:N} \end{bmatrix} \begin{bmatrix} B_{1:} \\ \vdots \\ B_{N:}
+\end{bmatrix} = \sum_{k=1}^N A_{:k}B_{k:}.
 \end{equation*}
 From this expression easily follows the bilinearity of the map $ (A,B) \mapsto AB $, 
 and we indicate with $ \angb{M,N,P} $ the form that represents the multiplication between $ A $
 and $ B $. By this property, we can rewrite Equation~\ref{eq:bil_tensor} putting $ x =
-\Vec(A),y=\Vec(B) $ and $ C= \Vec(C^{\top}) $. This fixes the natural
+\Vec(A),y=\Vec(B) $ and the output vector $ z = \Vec(C^{\top}) $. This fixes the natural
 ordering on the entries of $ \Vec(\Tm{A}) $ and $ \Vec(\Tm{B}) $ and the inverse ordering on $
-\Vec(\Tm{C}^{\top})$). This
+\Vec(\Tm{C}^{\top})$. This
 yields a representation of the tensor $ \Tn{T} \in \R^{MN\times NP\times MP} $ of matrix
 multiplication $ \angb{M,N,P} $ from Equation~\ref{eq:bil_tensor} such that
 \begin{equation}
@@ -324,9 +311,9 @@ If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{T}  = \dsqr
 Equation~\ref{eq:bil_tensor_full} this expression becomes
 \begin{equation}
   \label{eq:mulvec:CP}
-  \Vec(\Tm{C}^{\top}) = \sum_{l=1}^r (\underbrace{\Vc{u_l}^{\top} \Vec(\Tm{A})}_{s_l}) \cdot
-  (\underbrace{\Vc{v_l}^{\top}\vec(\Tm{B})}_{t_l})\Vc{w_l} = \sum_{l=1}^r (\underbrace{s_l \cdot
-  t_l}_{m_l})w_l,
+  Vec(\Tm{C}^{\top}) = \sum_{l=1}^R (\underbrace{\Vc{u_l}^{\top} \Vec(\Tm{A})}_{s_l}) \cdot
+  (\underbrace{\Vc{v_l}^{\top}\Vec(\Tm{B})}_{t_l})\Vc{w_l} = \sum_{l=1}^R (\underbrace{s_l \cdot
+  t_l}_{m_l})\Vc{w_l},
 \end{equation}
 
 The expressions above allow us to define fast matrix multiplications algorithms for any base case $ \angb{m,n,p} $.
@@ -352,6 +339,10 @@ When $ M,N,P>2 $ we can always partition them in blocks as:
 
 where the sizes of the subblocks are depicted in the above equation. This algorithmic formulation is
 often called \emph{divide-and-conquer}, as it consists in breaking the problem into smaller subproblems, and later recombining the results.
+
+\begin{remark}
+  While this floor/ceiling partition is mathematically valid for classical block matrix multiplication, it cannot be directly applied to Strassen's algorithm or other CP-based fast multiplication schemes if dimensions are odd. This is because Strassen's algorithm performs additions between subblocks (e.g., $A_{11} + A_{22}$), which are only defined if the subblocks have identical dimensions. Thus, in practice, odd or non-power-of-two dimensions are first handled using dynamic peeling (Section~\ref{sec:dynpeel}) to obtain an even-dimensioned core, which is then partitioned into equal-sized blocks.
+\end{remark}
 In particular, we can view the product $ AB $ as the product between $ 2\times 2 $ block matrices 
 \begin{equation}
   \label{eq:matprod}
@@ -506,8 +497,7 @@ While we cannot use less than 7 multiplications for the $ \angb{2,2,2} $ algorit
 there are natural extensions to Strassen algorithm:
 
 \begin{enumerate}
-  \item We can reduce the number of addition from 18 down to 15, which leads to Strassen-Winograd algorithm
-    \todo{cite}.
+  \item We can reduce the number of additions from 18 down to 15, which leads to the Strassen-Winograd algorithm~\cite{winograd1971}.
   \item We can change constant on the leading term by choosing a bigger base case dimension (and
     using the standard algorithm (also called \emph{gemm}) on the base case).
   \item We can use blocking schemes different from $ \angb{2,2,2} $.
@@ -526,13 +516,13 @@ The number of multiplications  is equal to the rank $R$ of the corresponding ten
 The multiplication speedup per recursive step is the expected speedup if
 matrix additions were free.
 Note that this speedup does not determine the fastest algorithm because the maximum number
-of recursive steps depend on the size of the subproblems created by the algorithm.
+of recursive steps depends on the size of the subproblems created by the algorithm.
 }
-\begin{tabular}{l c c c c}
+\begin{tabular}{l c c c}
 \toprule
-                & Number of  & Number of    & Multiplication \\
-Algorithm              & multiplies    &  multiplies     &  speedup per \\
-base case &   (fast)         & (classical)     & recursive step \\\midrule
+Algorithm Base Case & Multiplications & Multiplications & Speedup per \\
+$\langle m, n, p \rangle$ & (Fast, $R$) & (Classical, $mnp$) & Recursive Step \\
+\midrule
 $\angb{2,2,3}$ & 11 & 12 & 9\% \\
 $\angb{2,2,5}$ & 18 & 20 & 11\% \\
 $\angb{2,2,2}$ \cite{strassen1969} & 7 & 8 & 14\% \\
@@ -553,20 +543,19 @@ $\angb{3,3,6}$ \cite{smirnov2013bilinear} & 40 & 54 & 35\% \\
 \section{Project overview}
 \label{sec:overview}
 
-\subsection{Fork overview and comparison with c++ version}
+\subsection{Fork overview and comparison with C++ version}
 
 
 
 The implementation consists of a Rust port of the c++ project made by Benson and Ballard
 summarized in~\cite{bensonballard2015}, available in the relative repository under BSD 2-Clause. We
-will refere to this project as "the C++ project" or "Benson and Ballard's project".
+will refer to this project as "the C++ project" or "Benson and Ballard's project".
 They provide a fast and efficient framework for benchmarking parallel and sequential fast matrix
 multiplication algorithms, achieved through code generation, using lapack and MKL dgemm for numerical
 computation, and OpenMP for parallelization. We develop a Rust project that aims to replicate a
-parallel framework for fast multiplication algorithms, but
-with structural differences and current limitations. The main similarities are that both use MKL for base, 
-but Rust project also uses Faer. In the C++ project, MKL is imported, while
-in Rust it wrapped via FFI.
+parallel framework for fast multiplication algorithms, but with structural differences and current limitations. The main similarities are that both use MKL for base, 
+but the Rust project also uses Faer. In the C++ project, MKL is imported directly, while
+in Rust it is wrapped via FFI.
 Besides tool choices, the C++ algorithms are code-generated by a script that parses CP tensor decomposition slices and
 translates the matrix multiplication expression into C++ code, while Rust loads the tensor at
 runtime \footnote{when
@@ -576,7 +565,7 @@ Algorithm~\ref{alg:strassen}. The advantage of the first is
 speed, at the cost of more complex code and parallelism. The advantage of the second is simplicity
 of code, at the cost of speed (at the current state, but which it could be improved by adding
 optimization, we will address these issues in Section~\ref{sec:future}). The C++ project can handle multiplications between rectangular matrices, 
-as well as APA algorithms, while our does not. Also, while it could work, we did not tested subexpression eliminated algorithms. 
+as well as APA algorithms, while ours does not. Also, while it could work, we have not tested subexpression-eliminated algorithms. 
 
 
 \subsection{Algorithm schema}
@@ -623,8 +612,7 @@ Since the comparison targets both sequential and parallel matrix multiplication 
 The software environment is configured and reproduced using Environment
 Modules. The configuration loads \texttt{gcc/13.2.0} as the base compiler toolchain, alongside the
 \texttt{intel-oneapi-compilers} version \texttt{2025.0.4-gcc-11.4.0}. To provide an optimized
-BLAS/LAPACK backend, the environment loads \texttt{intel-oneapi-mkl}. We are aware that this makes
-the environment not consistent, but it was not possible match the correct versions without incurring compilation errors.
+BLAS/LAPACK backend, the environment loads \texttt{intel-oneapi-mkl}. Although this combination introduces minor version discrepancies, it was required to prevent compilation and linking failures under the available cluster toolchain.
 
 \subsection*{Compilation}
 When building the C wrappers and Rust bindings, all compilation targets are explicitly optimized for
@@ -642,37 +630,37 @@ runtime, the MKL library path is compiled into the executable binaries as a runt
 \section{Practical optimizations}
 \label{sec:optimizations}
 
-Fast matrix multiplication algorithm such as Strassen face two significant problems in practical
-implementation, which are recursion cutoff and input matrices sizes not matching with base case. In
-the parallel case, there also scheduling problems to consider to avoid algorithm overhead.
+Fast matrix multiplication algorithms such as Strassen face two significant problems in practical
+implementation: recursion cutoff and input matrix sizes not matching the base case dimensions. In
+the parallel case, there are also scheduling problems to consider to avoid algorithmic overhead.
 
 \subsection{Dynamic Peeling}
 \label{sec:dynpeel}
 
-In fast matrix multiplication algorithms we want to multiply $ M \times N\times P $ matrices by splitting in four blocks as
+In fast matrix multiplication algorithms we want to multiply $ M \times N\times P $ matrices by splitting them into blocks as
 in Equation~\ref{eq:blocks}. If $ M,N $ and $ P $ are not divisible by the base case $ \angb{m,n,p} $, then the
-matrices cannot be partitioned into equal blocks. The easiest fix for this is padding the matrix with zeros until an even size is
-reached, but this adds a significant memory waste. A more efficient approach, called \emph{dynamic
+matrices cannot be partitioned into equal blocks. The easiest fix for this is padding the matrix with zeros until a divisible size is
+reached, but this incurs significant memory overhead. A more efficient approach, called \emph{dynamic
 peeling}, consists in stripping the extra row off and/or column and adding their contribution to the
 final results.
 
 We present dynamic peeling for Strassen's algorithm for the sake of clarity---the construction easily adapts to other base
 cases. For the matrix multiplication $C = AB$, where $A$ is an $M \times N$ matrix and $B$ is an $N \times
-P$ matrix. The matrix $A$ is split into an $(M-1) \times (N-1)$ core matrix $A_{11}$, alongside its
+P$ matrix, the matrix $A$ is split into an $(M-1) \times (N-1)$ core matrix $A_{11}$, alongside its
 peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22}$. Similarly, the matrix $B$ is split into an $(N-1) \times (P-1)$ core matrix $B_{11}$, with its corresponding peeled components $b_{12}$, $b_{21}$, and $b_{22}$:
 
 
 \begin{equation*}
   A = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{1}{n-1} & \Hbrace{1}{1} \\
-    & & &\Vbrace{3}{m-1}  \\
+    & \Hbrace{1}{N-1} & \Hbrace{1}{1} \\
+    & & &\Vbrace{3}{M-1}  \\
     & A_{11} & a_{12} & \\
     & & & \\ \hline
     & a_{21} & a_{22} & \Vbrace{1}{1}
   \end{bNiceArray} \qquad,\qquad
   B = \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{1}{p-1} & \Hbrace{1}{1} \\
-    & & &\Vbrace{3}{n-1}  \\
+    & \Hbrace{1}{P-1} & \Hbrace{1}{1} \\
+    & & &\Vbrace{3}{N-1}  \\
     & B_{11} & b_{12} & \\
     & & & \\ \hline
     & b_{21} & b_{22} & \Vbrace{1}{1}
@@ -682,8 +670,8 @@ peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22
 The final block matrix product is computed directly through a combination of the core Strassen multiplication ($A_{11}B_{11}$) and low-rank vector/scalar fixup modifications:
 \begin{equation*}
 \begin{bNiceArray}{c|c}[first-row, first-col, last-col, margin, xdots/horizontal-labels]
-    & \Hbrace{1}{p-1} &\Hbrace{1}{1} \\
-    & & &  \Vbrace{3}{m-1} \\
+    & \Hbrace{1}{P-1} &\Hbrace{1}{1} \\
+    & & &  \Vbrace{3}{M-1} \\
     & C_{11} & c_{12} & \\
     & & & \\ \hline
     & c_{21} & c_{22} & \Vbrace{1}{1} 
@@ -698,16 +686,18 @@ The final block matrix product is computed directly through a combination of the
 Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix
 multiplication, while all other terms are computed via standard matrix multiplication.
 
+Although the mathematical formulation suggests computing multiple small matrix additions and products, such a block-wise approach would suffer from high library call overhead and poor cache locality. In our Rust implementation, we consolidate the boundary corrections into larger, contiguous GEMM operations: the right columns are computed via a single product $A \times B_{extra}$ (where $B_{extra}$ represents the peeled columns of $B$), and the bottom rows are computed via $A_{extra} \times B_{core}$ (where $A_{extra}$ represents the peeled rows of $A$). This consolidation maintains high arithmetic intensity and maximizes vendor BLAS efficiency.
+
 
 \subsection{Parallel algorithms for shared memory}
 
-Matrix multiplication is a problem subject to both computational and memory bound. The first is
-limited by the amount of computation the device can handle (i.e cores,cpu/gpu speed), while the
-latter by physical storage of the matrices (i.e available RAM memory). In a parallel implementation,
-when dealing with recursive algorithms which use divide-et-impera (like Strassen), it is important
+Matrix multiplication is a problem subject to both computational and memory bandwidth bounds. The first is
+limited by the amount of computation the device can handle (i.e., cores, CPU/GPU speed), while the
+latter is limited by memory transfer throughput. In a parallel implementation,
+when dealing with recursive algorithms which use divide-and-conquer (like Strassen), it is important
 in practice to balance algorithmic load between threads to avoid overhead caused by both taking
 recursive branches and doing parallel matrix multiplication. To address this issue, we adopt the
-scheduling schema suggested by Benson and Ballard in their work~\cite{bensonballard2015}.
+scheduling scheme suggested by Benson and Ballard in their work~\cite{bensonballard2015}.
 We use Rust's Rayon to handle parallelization, and we can summarize the parallel scheduling as
 following: 
 
@@ -715,12 +705,12 @@ following:
   \item \textbf{BFS:} Each recursive matrix multiplication routine and the associated matrix
     additions are launched by Rayon as an iterable, and then are collected in an array of matrices $
     \left[M_1, \ldots, M_r \right]$.
-  \item \textbf{DFS:} Each vendor matrix multiplication call uses all thread, and matrix
+  \item \textbf{DFS:} Each vendor matrix multiplication call uses all threads, and matrix
     multiplications are always fully parallelized.
   \item \textbf{Hybrid:} The Hybrid approach developed in \cite{bensonballard2015} compensates 
     for the load imbalance in BFS by applying DFS on a subset of the base case problems. With $ L $
     levels of recursion and $ P $ threads, the hybrid algorithm applies task parallelism (BFS) to
-    the first $ R^L - (R^L \mod P) $ multiplication. Because the number of subproblems is a multiple
+    the first $ R^L - (R^L \bmod P) $ multiplications. Because the number of subproblems is a multiple
     of $ P $, this part is load balanced. On the remaining $ R^L \mod P $ subproblems, all threads
     are used on each matrix multiplication (DFS).
 \end{itemize}
@@ -742,15 +732,14 @@ In divide-and-conquer algorithms such as Strassen, we cannot afford taking many 
 spawning many children constitutes a significant recursive overhead, especially for larger matrices.
 Thus, finding an optimal cutoff is important for stopping the recursion and switch to standard GEMM.
 We try two techniques: the first is breaking by size, that is when the sizes of matrices in the recursion fall
-under a certain size, the latter is taking a fixed number $ L $ of recursions.
+under a certain size, the latter is stopping after a fixed number $ L $ of recursive levels.
 
 The authors in~\cite{bensonballard2015} explain a heuristic process for finding the optimal cutoff
 size, which can be resumed in looking at the performance plot of the GEMM function, where (figure)
 the function exibits a ramp-up and then flatten for large dimensions. They take a
 recursion step only if the recursive sub-problem fall in the flat part of the curve. This is done
 manually by the authors. During the experimentation we developed a function to plot this curve, and
-its derivative (using splines) to automatically find this size. In practice, we never use this as we
-believe that our code is not efficient enough to implement this strategy.
+its derivative (using splines) to automatically find this size. Due to the performance characteristics of our current implementation, this automated cutoff selection was not integrated into the final benchmark runs, and a fixed cutoff size was used instead.
 
 
 \section{Experimental results}
@@ -758,7 +747,7 @@ believe that our code is not efficient enough to implement this strategy.
 
 \subsection{Metrics}
 
-All benchmarks are recorded using Rust's system clock, performing warm-up before doing measuring
+All benchmarks are recorded using Rust's system clock, performing warm-up runs before measuring
 each matrix multiplication. In order to compare the performance of matrix multiplication algorithms with different
 computational costs, we use the \emph{effective} GFLOPS metric for $ M \times N\times P $ matrix
 multiplication:
@@ -777,8 +766,7 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 We aim to understand how the choice of the base matrix multiplication impacts performance of fast
 algorithms. In our experiments, we use random square matrices with $ 64bit $ floating-point entries 
 in $ (-1,1) $ of sizes $ N \in \{2,4,\ldots,2^k\} $. As the standard matrix multiplication algorithm
-implemented in GEMM costs $ O(n^3) $ while Strassen costs $ O(n^{2.81}) $, we expect it to beat GEMM
-\footnote{which is in practice more optimized and a linear algorithm} for a large $ N $, that is, we are interested in finding the $ N $ such that using a fast matrix algorithm
+implemented in GEMM costs $ O(N^3) $ while Strassen costs $ O(N^{2.81}) $, we expect the fast algorithm to outperform standard GEMM for sufficiently large $N$; thus, we seek to determine the crossover dimension $N$. Such $ N $ cannot be determined a priori, as it
 is faster than doing standard matrix multiplication. Such $ N $ cannot be determined a priori, as it
 depends on factors such as platform and implementation. In other words, we expect fast algorithms to surpass the curves in Figure~\ref{fig:gemm_comparison}.
 
@@ -787,9 +775,7 @@ depends on factors such as platform and implementation. In other words, we expec
 In this work, we consider two different matrix multiplication routines: MKL dgemm and faer base matmul. 
 \begin{itemize}
   \item \textbf{\href{https://docs.rs/faer-core/latest/faer_core/mul/fn.matmul.html}{Faer matmul:}}
-    The method is entirely written in Rust and is part of the faer library, and it wants to be a
-    small performant matrix multiplication function, with fewer microkernel optimization than
-    standard GEMMs. See~\cite{ek2026nanogemm} for a method overview from the library's author.
+    The method is entirely written in Rust and is part of the faer library, which is designed as a lightweight, performant matrix multiplication kernel with fewer microkernel optimizations than vendor GEMMs. See~\cite{ek2026nanogemm} for a method overview from the library's author.
   \item \textbf{MKL dgemm:} is a routine in the Intel Math Kernel Library (MKL) for multiplying
     double-precision matrices. In Rust, this routine runs via a Foreign Function Interface (FFI)
     calling the C wrapper \texttt{cblas\_dgemm}. In the C++ project, the function is called
@@ -798,10 +784,10 @@ In this work, we consider two different matrix multiplication routines: MKL dgem
 
 From Figure~\ref{fig:gemm_comparison}, we see that all functions have a ramp-up phase and then
 flatten for larger sizes---even if the parallel case is not flattening yet, we expect it to flatten
-after few more runs. Also, dgemm performs better than faer for larger sizes, and we believe
+after a few more runs. Also, dgemm performs better than faer for larger sizes, and we believe
 this is due to the many low-level optimizations in dgemm. Further, there is a discrepancy between
-Rust FFI dgemm and the C++ code which tends to decrease for larger size. We think that this might be
-due to the type conversion which is performed during the binding.
+Rust FFI dgemm and the C++ code which tends to decrease for larger sizes. This discrepancy is likely
+due to differences in threading framework overhead (Rayon in Rust vs. OpenMP in C++), thread pool pinning/affinity, or memory alignment, rather than FFI binding translation overhead.
 
 
 \begin{figure}[ht]
@@ -822,11 +808,10 @@ and~\ref{fig:par_grid_plot} show.
 In the sequential case in Figure~\ref{fig:seq_grid_plot}, the best performance is achieved when cutoff
 is 2048 or when two levels of recursion are taken. We notice that in all cases Strassen outperforms
 GEMM, and growth is expected to continue for larger sizes, though we didn't test it as it would have required high computational time.
-In the parallel case, Figure~\ref{fig:par_grid_plot} shows that for optimal recursive levels and
-cutoffs, for example when Level $ =2 $ or for Cutoffs $ 8129 $ or $ 16384 $. Compared to the MKL
+In the parallel case, Figure~\ref{fig:par_grid_plot} shows optimal recursive performance is achieved at specific cutoff sizes (for example, when Level $ =2 $ or for Cutoffs $ 8192 $ or $ 16384 $). Compared to the MKL
 base case in Figure~\ref{fig:par_grid_plot_dgemm} and Figure~\ref{fig:par_grid_plot_faer} Strassen,
 especially the BFS and Hybrid variants perform better, showing peak performance with 2 or 3 levels
-of recursion and for greater cutoffs (when $ \ge 4096 $). \todo{improve with dgemm better data}.
+of recursion and for greater cutoffs (when $ \ge 4096 $), leveraging parallel OpenMP execution within the MKL threading layer.
 
 \begin{figure}[htbp]
   \centering
@@ -872,12 +857,11 @@ row).}
 \subsection{Finding the optimal cutoff for the parallel case}
 
 Figure~\ref{fig:combined_par_cutoff_grid} shows different recursive size thresholds for the parallel
-case, where BFS outperforms DFS in both variants, seeming also not sensible to the base case as DFS.
+case, where BFS outperforms DFS in both variants, seeming also less sensitive to the base case than DFS.
 Compared to the sequential case in Figure~\ref{fig:seq_grid_plot}, optimal performance is
-found for larger cutoff size, such as when $ \ge  8102 $. We think that this is due that smaller cases
-trigger more recursive steps, causing more overhead.
-In Figure~\ref{fig:par_cutoff_grid_plot_faer}, the faer variant shows 
-
+found for larger cutoff sizes, such as when $ \ge  8192 $. We think that this is because smaller cutoff sizes
+trigger more recursive steps, causing higher scheduling and recursion overhead.
+In Figure~\ref{fig:par_cutoff_grid_plot_faer}, the faer variant shows that for smaller cutoff sizes (e.g., $1024$ or $2048$), the recursion overhead dominates, whereas larger cutoff sizes (e.g., $8192$ or $16384$) achieve peak efficiency by transitioning to the optimized base case sooner.
 \begin{figure}[htbp]
   \centering
   \begin{subfigure}{\textwidth}
@@ -906,9 +890,9 @@ Strassen's algorithm and the reference C++ implementation by Benson and
 Ballard~\cite{bensonballard2015}. The results are shown in Figure~\ref{fig:ballard_comparison}. We
 compare the algorithms across one, two, and three levels of recursion using different thread
 scheduling paradigms: Sequential, Parallel DFS, Parallel BFS, and Parallel Hybrid. We observe that
-our implementation is competitive in the sequential case, where the dgemm-backed version yielding
+our implementation is competitive in the sequential case, with the dgemm-backed version yielding
 the highest performance. In the DFS
-case, Ballard code outperforms our algorithm, we think this is due to their better parallelization of additions.
+case, Ballard's code outperforms our algorithm; we hypothesize that this is due to their more efficient parallelization of matrix additions.
 
 \begin{figure}[htbp]
   \centering
@@ -924,12 +908,12 @@ case, Ballard code outperforms our algorithm, we think this is due to their bett
 
 In conclusion, we noticed fast matrix multiplication algorithm show more optimal performance than
 the base GEMM libraries both in sequential and parallel cases, even with little performance
-optimizations. We believe that results of our work can be further improved by porsueing some of the
+optimizations. We believe that results of our work can be further improved by pursuing some of the
 following steps:
 
 \begin{itemize}
-  \item \textbf{Profiling and SIMD} We believe that code can be made more efficient by doing
-    a more fine refactory with profiling result. Many algorithm steps can be optimizing by
+  \item \textbf{Profiling and SIMD:} We believe that the code can be made more efficient by doing
+    a finer refactoring informed by profiling results. Many algorithm steps can be optimized by
     introducing more SIMD operations.
   \item \textbf{GEMM comparison:} Though we choose mkl-dgemm for a better comparison, our ffi bindings easily extend to any other GEMM, such as OpenBlas, which we leave to further work. 
   \item \textbf{Gpu/distributed version:} We would like to port the project to GPU or distributed
