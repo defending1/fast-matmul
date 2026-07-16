@@ -8,7 +8,7 @@
 set -e
 
 # Target CPU architecture defaults to broadwell if not specified
-TARGET_ARCH=${1:-broadwell}
+TARGET_ARCH=${1:-znver3}
 
 echo "=================================================="
 echo "Starting pre-setup compilation for: ${TARGET_ARCH}"

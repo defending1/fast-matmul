@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=cl_c-matmul
-#SBATCH --partition=cl2
+#SBATCH --job-name=cmatmul
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gres=cl2:1
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=250G
 #SBATCH --time=3-02:00:00
 #SBATCH --output=generated/logs/cl_c_matmul_%j.log

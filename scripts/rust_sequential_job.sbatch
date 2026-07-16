@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=rust-matmul
-#SBATCH --partition=cl2
+#SBATCH --job-name=rmatmul
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gres=cl2:1
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=250G
 #SBATCH --time=3-02:00:00
-#SBATCH --output=generated/logs/cl_rmatmul_%j.log
+#SBATCH --output=generated/logs/rmatmul_%j.log
 
 # Ensure we exit on any error
 set -e
@@ -30,7 +30,7 @@ cd "${PROJECT_ROOT}/rust"
 PARAM_TYPE=$1  # "base", "cutoff", or "level"
 PARAM_VAL=$2   # e.g., 256 or 1 (ignored for "base")
 MATRIX_SIZE=$3 # e.g., 1024
-ARCH="broadwell"
+ARCH="znver3"
 MODE_FLAG=${4:-"--par"}
 
 # Execute the specific benchmark
