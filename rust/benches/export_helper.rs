@@ -267,39 +267,7 @@ pub fn export_results_to_csv(
 
     println!("Successfully wrote benchmark CSV output to: {}", filename);
 
-    if plot {
-        let plot_script = if std::path::Path::new("python/plot.py").exists() {
-            "python/plot.py"
-        } else if std::path::Path::new("../python/plot.py").exists() {
-            "../python/plot.py"
-        } else {
-            "python/plot.py"
-        };
-
-        println!(
-            "Generating plot automatically using '{}' for '{}'...",
-            plot_script, filename
-        );
-
-        let absolute_filename = std::path::Path::new(filename)
-            .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(filename));
-
-        let plot_status = std::process::Command::new("uv")
-            .args(["run", plot_script, &absolute_filename.to_string_lossy()])
-            .status();
-        match plot_status {
-            Ok(status) if status.success() => {
-                println!("Plot generated successfully.");
-            }
-            Ok(status) => {
-                eprintln!("Plot generation failed with status: {:?}", status);
-            }
-            Err(e) => {
-                eprintln!("Failed to execute plot script: {:?}", e);
-            }
-        }
-    }
+    let _ = plot;
 
     Ok(())
 }

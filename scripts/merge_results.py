@@ -115,31 +115,17 @@ def main():
             levels_df = final_df[final_df['recursion_level'].notna()]
             cutoff_df = final_df[final_df['size_cutoff'].notna()]
             
-            plot_script = os.path.join(project_root, "python", "plot.py")
-            
             if not levels_df.empty:
                 levels_output_path = os.path.join(csv_dir, "benchmark_results_levels.csv")
                 levels_df.to_csv(levels_output_path, index=False)
                 print(f"Successfully wrote merged levels results to: {levels_output_path}")
                 levels_merged = True
-                if os.path.exists(plot_script):
-                    print(f"Generating plots from merged levels CSV using '{plot_script}'...")
-                    try:
-                        subprocess.run(["uv", "run", plot_script, levels_output_path], check=True)
-                    except Exception as e:
-                        print(f"Error running plot script on levels CSV: {e}")
                         
             if not cutoff_df.empty:
                 cutoff_output_path = os.path.join(csv_dir, "benchmark_results_cutoff.csv")
                 cutoff_df.to_csv(cutoff_output_path, index=False)
                 print(f"Successfully wrote merged cutoff results to: {cutoff_output_path}")
                 cutoff_merged = True
-                if os.path.exists(plot_script):
-                    print(f"Generating plots from merged cutoff CSV using '{plot_script}'...")
-                    try:
-                        subprocess.run(["uv", "run", plot_script, cutoff_output_path], check=True)
-                    except Exception as e:
-                        print(f"Error running plot script on cutoff CSV: {e}")
 
     # 2. Merge Base results
     base_pattern = os.path.join(csv_dir, "benchmark_results_base_*.csv")

@@ -43,9 +43,13 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
         levels_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_levels.csv")
         base_csv_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_base.csv")
     else:
-        # Load parallel levels from run_par and parallel cutoffs from run_par2
-        cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
-        levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
+        # Load parallel levels and cutoffs from par_dir if available, otherwise fallback
+        cutoff_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_cutoff.csv")
+        levels_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_levels.csv")
+        if not os.path.exists(cutoff_path):
+            cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
+        if not os.path.exists(levels_path):
+            levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
         base_csv_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_base.csv")
 
     if not os.path.exists(base_csv_path):
@@ -501,6 +505,8 @@ def plot_cutoff_grid(project_root: str, par_dir: str = "run_par2", backend_filte
         backend_filter: Filter for backend: 'faer', 'dgemm', or None (default).
     """
     cutoff_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_cutoff.csv")
+    if not os.path.exists(cutoff_path):
+        cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
     base_csv_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_base.csv")
 
     if not os.path.exists(base_csv_path):
@@ -848,8 +854,12 @@ def plot_compare_ballard(project_root: str, par_dir: str = "run_par") -> None:
         if os.path.exists(seq_std_path):
             seq_dfs.append(pd.read_csv(seq_std_path))
 
-    par_cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
-    par_levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
+    par_cutoff_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results_cutoff.csv")
+    par_levels_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results_levels.csv")
+    if not os.path.exists(par_cutoff_path):
+        par_cutoff_path = os.path.join(project_root, "generated", "csv", "run_par2", "benchmark_results_cutoff.csv")
+    if not os.path.exists(par_levels_path):
+        par_levels_path = os.path.join(project_root, "generated", "csv", "run_par", "benchmark_results_levels.csv")
     base_par_path = os.path.join(project_root, "generated", "csv", csv_par_dir, "benchmark_results_base.csv")
 
     if not os.path.exists(base_par_path):
@@ -1292,9 +1302,9 @@ def main() -> None:
         elif mode == "sequential":
             plot_mode_grid(project_root, "sequential")
         elif mode == "cutoff_grid":
-            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="faer")
-            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="dgemm")
-            plot_cutoff_grid(project_root, par_dir="run_par2", backend_filter="strassen_only")
+            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="faer")
+            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="dgemm")
+            plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="strassen_only")
         else:
             plot_mode_grid(project_root, mode, par_dir=args.par_dir)
 

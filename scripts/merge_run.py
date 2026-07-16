@@ -247,25 +247,6 @@ def merge_run_dir(run_dir_path, project_root):
     
     # 5. Run plots
     if levels_merged or cutoff_merged:
-        plot_script = os.path.join(project_root, "python", "plot.py")
-        if os.path.exists(plot_script):
-            if levels_merged:
-                rust_output_results_std = os.path.join(project_root, "generated", "csv", "benchmark_results_levels.csv")
-                rust_output_results_run = os.path.join(run_dir_path, "benchmark_results_levels.csv")
-                
-                print(f"Generating plots in generated/plots/ using '{plot_script}' on standard levels CSV...")
-                subprocess.run(["uv", "run", plot_script, rust_output_results_std, "--mode", mode_str], check=False)
-                print(f"Generating plots in {run_dir_name}/ using '{plot_script}' on run levels CSV...")
-                subprocess.run(["uv", "run", plot_script, rust_output_results_run, "--mode", mode_str], check=False)
-                
-            if cutoff_merged:
-                rust_output_results_std = os.path.join(project_root, "generated", "csv", "benchmark_results_cutoff.csv")
-                rust_output_results_run = os.path.join(run_dir_path, "benchmark_results_cutoff.csv")
-                
-                print(f"Generating plots in generated/plots/ using '{plot_script}' on standard cutoff CSV...")
-                subprocess.run(["uv", "run", plot_script, rust_output_results_std, "--mode", mode_str], check=False)
-                print(f"Generating plots in {run_dir_name}/ using '{plot_script}' on run cutoff CSV...")
-                subprocess.run(["uv", "run", plot_script, rust_output_results_run, "--mode", mode_str], check=False)
             
         grid_plot_script = os.path.join(project_root, "python", "plot_grid.py")
         if os.path.exists(grid_plot_script):
