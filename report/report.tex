@@ -171,10 +171,14 @@ asymptotically fewer floating-point operations, and require asymptotically less 
 classical algorithm. In this work, we demonstrate that fast matrix multiplication algorithms
 are sensitive to the choice of base case, and perform better than their base case for larger sizes.
 We also provide a library function written in Rust to perform matrix multiplication with these
-algorithms, which supports parallel execution and different general matrix matrix multiplication \emph{gemm}
+algorithms, which supports parallel execution and different general matrix matrix multiplication
+\emph{GEMM}
 libraries, and we perform our benchmarks with Intel Math Kernel Library (MKL) \texttt{dgemm}
 (double-precision general matrix-matrix multiplication) and
-faer (a modern, high performance linear algebra library for the Rust programming language).
+faer (a modern, high performance linear algebra library for the Rust programming language), to
+evaluate performance of small matrix multiplication libraries integrated in faer scientific
+computing library, which are commonly used among users, as they work out-the-box compared to
+optimized GEMM libraries such as DGEMM, which require some setup. 
 According to Benson and Ballard~\cite{bensonballard2015}, fast matrix multiplication algorithms have
 largely been ignored by numerical libraries due to unfounded reasons. As they state, Intel's MKL,
 AMD's Core Math Library (ACML) do not provide implementations of fast algorithms. In reality, fast matrix
@@ -187,10 +191,14 @@ listed in Table~\ref{tab:algorithms}. We review those algorithms and methods to 
 Section~\ref{sec:fast_matmul}. In Section~\ref{sec:overview} we explain the technical details of our
 implementation, and in Section~\ref{sec:optimizations} we explain parallel and algorithmic
 optimizations. Finally, we summarize experimental results in Section~\ref{sec:results}.
-We summarize our findings as follows: \todo{write}
-In addition, this work also serves as an evaluation of Rust as a language in scientific computing, a
+We summarize our findings as follows:
+\begin{itemize}
+  \item Performance of base GEMM impacts performance of fast matrix multiplication algorithm, 
+  \item We evaluate Rust as a language in scientific computing, a
 domain where rust is in the early stages of adoption~\cite{lombardo2026evaluatingrustsparsematrix}.
 
+
+\end{itemize}
 
 
 \subsection{Notation and tensor preliminaries}
@@ -490,9 +498,6 @@ W &= \begin{bmatrix}
 \end{bmatrix}.
 \end{align*}
 
-\todo{complete}
-
-
 While we cannot use less than 7 multiplications for the $ \angb{2,2,2} $ algorithm~\cite{winograd1971},
 there are natural extensions to Strassen algorithm:
 
@@ -615,14 +620,13 @@ The software environment is configured and reproduced using Environment
 Modules. The configuration loads \texttt{gcc/13.2.0} as the base compiler toolchain, alongside the
 \texttt{intel-oneapi-compilers} version \texttt{2025.0.4-gcc-11.4.0}. To provide an optimized
 BLAS/LAPACK backend, the environment loads \texttt{intel-oneapi-mkl}. We are aware that this makes
-the environment not consistent, but it was not possible match the correct versions without incurring compilation errors\todo{Ask robol}.
+the environment not consistent, but it was not possible match the correct versions without incurring compilation errors.
 
 \subsection*{Compilation}
 When building the C wrappers and Rust bindings, all compilation targets are explicitly optimized for
 the server target architecture. In the C++ project, to support both sequential and parallel modes
-within a single executable, the MKL backend was dynamically linked against the GNU OpenMP threading
-layer (\texttt{mkl\_gnu\_thread} and \texttt{-lgomp}) instead of the sequential MKL library. By
-mistake, the C++ project was linked against LLVM OpenMP passing \texttt{-liomp5}.
+within a single executable, the MKL backend was dynamically linked against the LLVM OpenMP threading
+layer passing \texttt{-liomp5}.
 We build the Rust code with the nightly-2026-06-23 toolchain because this release uses LLVM 22, which
 generates optimized vector instructions leveraging AVX2 and FMA. 
 Since the C/C++ wrappers and Rust code compile with matching CPU targets, 
@@ -641,14 +645,15 @@ the parallel case, there also scheduling problems to consider to avoid algorithm
 \subsection{Dynamic Peeling}
 \label{sec:dynpeel}
 
-In Strassen algorithm we want to multiply $ \angb{m,n,p} $ matrices by splitting in four blocks as
-in Equation~\ref{eq:blocks}. If $ m,n $ and $ p $ are not divisible by the base case, then the
+In fast matrix multiplication algorithms we want to multiply $ M \times N\times P $ matrices by splitting in four blocks as
+in Equation~\ref{eq:blocks}. If $ M,N $ and $ P $ are not divisible by the base case $ \angb{m,n,p} $, then the
 matrices cannot be partitioned into equal blocks. The easiest fix for this is padding the matrix with zeros until an even size is
 reached, but this adds a significant memory waste. A more efficient approach, called \emph{dynamic
 peeling}, consists in stripping the extra row off and/or column and adding their contribution to the
-final results. In detail,
+final results.
 
-For the matrix multiplication $C = AB$, where $A$ is an $M \times N$ matrix and $B$ is an $N \times
+We present dynamic peeling for Strassen's algorithm for the sake of clarity---the construction easily adapts to other base
+cases. For the matrix multiplication $C = AB$, where $A$ is an $M \times N$ matrix and $B$ is an $N \times
 P$ matrix. The matrix $A$ is split into an $(M-1) \times (N-1)$ core matrix $A_{11}$, alongside its
 peeled boundary vectors $a_{12}$, $a_{21}$, and the scalar corner element $a_{22}$. Similarly, the matrix $B$ is split into an $(N-1) \times (P-1)$ core matrix $B_{11}$, with its corresponding peeled components $b_{12}$, $b_{21}$, and $b_{22}$:
 
@@ -751,12 +756,12 @@ believe that our code is not efficient enough to implement this strategy.
 
 All benchmarks are recorded using Rust's system clock, performing warm-up before doing measuring
 each matrix multiplication. In order to compare the performance of matrix multiplication algorithms with different
-computational costs, we use the \emph{effective} GFLOPS metric for $ \angb{m,n,r} $ matrix
+computational costs, we use the \emph{effective} GFLOPS metric for $ M \times N\times P $ matrix
 multiplication:
 \begin{equation}
-  \text{effective GFLOPS} = \frac{2mnp - mp}{\text{time in seconds} \cdot 10^9},
+  \text{effective GFLOPS} = \frac{2MNP - MP}{\text{time in seconds} \cdot 10^9},
 \end{equation}
-where the numerator can be rewritten as $2mnp - mp = mnp + m(n-1)p$, which is the number of
+where the numerator can be rewritten as $2MNP - MP = MNP + M(N-1)P$, which is the number of
 multiplications and additions performed for classical matrix multiplication. This allows us to
 compare all of the algorithms on an inverse-time scale, normalized by problem size
 \cite{bensonballard2015}. For fast algorithms, considering both multiplications and additions in the metric is more
@@ -778,7 +783,9 @@ depends on factors such as platform and implementation. In other words, we expec
 In this work, we consider two different matrix multiplication routines: MKL dgemm and faer base matmul. 
 \begin{itemize}
   \item \textbf{\href{https://docs.rs/faer-core/latest/faer_core/mul/fn.matmul.html}{Faer matmul:}}
-    The method is entirely written in Rust and is part of the faer library.
+    The method is entirely written in Rust and is part of the faer library, and it wants to be a
+    small performant matrix multiplication function, with fewer microkernel optimization than
+    standard GEMMs. See~\cite{ek2026nanogemm} for a method overview from the library's author.
   \item \textbf{MKL dgemm:} is a routine in the Intel Math Kernel Library (MKL) for multiplying
     double-precision matrices. In Rust, this routine runs via a Foreign Function Interface (FFI)
     calling the C wrapper \texttt{cblas\_dgemm}. In the C++ project, the function is called
@@ -795,7 +802,7 @@ due to the type conversion which is performed during the binding.
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.9\textwidth, keepaspectratio]{figures/mkl_faer_seq_comparison.pdf}
+  \includegraphics[width=0.9\textwidth, keepaspectratio]{figures/mkl_faer_comparison.pdf}
   \caption{Comparison between MKL and faer in sequential and parallel execution.}
   \label{fig:gemm_comparison}
 \end{figure}
@@ -804,12 +811,18 @@ due to the type conversion which is performed during the binding.
 
 The experimental results for sequential and parallel cutoff strategies are shown in
 Figures~\ref{fig:seq_grid_plot} and~\ref{fig:par_grid_plot}, respectively.
-Figures~\ref{fig:par_grid_plot_dgemm} and~\ref{fig:par_grid_plot_faer} show comparison of Strassen
-and base GEMM.
-
-Figure~\ref{fig:seq_grid_plot} shows the performance of sequential Strassen variants across different recursion levels (1, 2, and 3) and cutoff sizes (256, 512, 1024, and 2048). As expected, sequential execution has lower overhead, and selecting a larger size cutoff stops recursion earlier, preventing recursive overhead.
-
-For parallel execution, Figure~\ref{fig:par_grid_plot} shows the performance (normalized per core) across larger cutoff sizes (2048, 4096, 8192, and 16384) in the first row, and recursion levels (1, 2, and 3) in the second row. Because spawning tasks in parallel introduces scheduling overhead, a larger cutoff size is needed in practice to maximize parallel efficiency, as smaller subproblems do not benefit from thread-level parallelism.
+Figures~\ref{fig:par_grid_plot_dgemm} and~\ref{fig:par_grid_plot_faer} show comparison of Strassen and base GEMM for the parallel case. In general, we notice
+that while base matmul performance tends to be different between MKL and faer, the respective Strassen
+variants tend to have similar performance, as Figures~\ref{fig:seq_grid_plot}
+and~\ref{fig:par_grid_plot} show.
+In the sequential case in Figure~\ref{fig:seq_grid_plot}, the best performance is achieved when cutoff
+is 2048 or when two levels of recursion are taken. We notice that in all cases Strassen outperforms
+GEMM, and growth is expected to continue for larger sizes, though we didn't test it as it would have required high computational time.
+In the parallel case, Figure~\label{fig:par_grid_plot} shows that for optimal recursive levels and
+cutoffs, for example when Level $ =2 $ or for Cutoffs $ 8129 $ or $ 16384 $. Compared to the MKL
+base case in Figure~\ref{fig:par_grid_plot_dgemm} and Figure~\ref{fig:par_grid_plot_faer} Strassen,
+especially the BFS and Hybrid variants perform better, showing peak performance with 2 or 3 levels
+of recursion and for greater cutoffs (when $ \ge 4096 $). \todo{improve with dgemm better data}.
 
 \begin{figure}[htbp]
   \centering
@@ -855,9 +868,11 @@ row).}
 \subsection{Finding the optimal cutoff for the parallel case}
 
 Figure~\ref{fig:combined_par_cutoff_grid} shows different recursive size thresholds for the parallel
-case. Compared to the sequential case in Figure~\ref{fig:seq_grid_plot}, optimal performance is
-found for larger cutoff size, such as $ \ge  8102 $. This is due the fact that smaller cases trigger more recursive steps and cause thread oversubscription.
-\todo{Discuss variants dgemm and faer}
+case, where BFS outperforms DFS in both variants, seeming also not sensible to the base case as DFS.
+Compared to the sequential case in Figure~\ref{fig:seq_grid_plot}, optimal performance is
+found for larger cutoff size, such as when $ \ge  8102 $. We think that this is due that smaller cases
+trigger more recursive steps, causing more overhead.
+In Figure~\ref{fig:par_cutoff_grid_plot_faer}, the faer variant shows 
 
 \begin{figure}[htbp]
   \centering
