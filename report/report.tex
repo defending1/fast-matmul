@@ -143,11 +143,11 @@
 \newtheorem*{experiment}{Experiment}
 
 \title{%
-   Fast Matrix Multiplication Algorithms In Rust
+   Evaluating Fast Matrix Multiplication Algorithms In Rust
     \\ \large Computational Laboratory Project Report}
 \author{Alberto Defendi\\Project supervisor: Leonardo Robol}
 
-\date{}
+\date{\today}
 
 \setlength{\parskip}{1em}
 \setlength{\parindent}{0em}
@@ -156,8 +156,12 @@
 \maketitle
 
 \begin{abstract}
-    \noindent We develop a Rust
-crate (library) that given matrices $ A,B \in \R^{N\times N}$ computes their product $ C=AB $ using fast matrix multiplication algorithms, for any given CP decomposition.
+    \noindent We develop a Rust library to compute the product of two matrices using fast matrix
+    multiplication algorithms for arbitrary CP tensor decompositions. To support general matrix
+    dimensions, dynamic peeling is implemented as a memory-efficient alternative to zero-padding.
+    Performance is evaluated using both Intel MKL \texttt{dgemm} (via FFI) and the native Rust
+    library \texttt{faer} as the base case. The implementation supports both sequential and parallel
+    execution with multiple scheduling strategies. Finally, benchmarks on an AMD EPYC server demonstrate that fast algorithms outperform standard GEMM base cases for larger matrix sizes.
 \end{abstract}
 
 {\setlength{\parskip}{0em}
@@ -818,7 +822,7 @@ and~\ref{fig:par_grid_plot} show.
 In the sequential case in Figure~\ref{fig:seq_grid_plot}, the best performance is achieved when cutoff
 is 2048 or when two levels of recursion are taken. We notice that in all cases Strassen outperforms
 GEMM, and growth is expected to continue for larger sizes, though we didn't test it as it would have required high computational time.
-In the parallel case, Figure~\label{fig:par_grid_plot} shows that for optimal recursive levels and
+In the parallel case, Figure~\ref{fig:par_grid_plot} shows that for optimal recursive levels and
 cutoffs, for example when Level $ =2 $ or for Cutoffs $ 8129 $ or $ 16384 $. Compared to the MKL
 base case in Figure~\ref{fig:par_grid_plot_dgemm} and Figure~\ref{fig:par_grid_plot_faer} Strassen,
 especially the BFS and Hybrid variants perform better, showing peak performance with 2 or 3 levels
