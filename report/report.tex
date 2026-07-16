@@ -202,16 +202,15 @@ The relevant notation for our work is in Table~\ref{tab:notation}. We briefly re
 following the notation in \cite{BK25}.
 A \emph{tensor} is a multidimensional array, and in this work we deal only with 3-dimensional (or 3-way)
 tensors $ \Tn{T} \in \R^{M\times N\times P}$. The \emph{$ k $-th frontal slice} of $ \Tn{T} $ is the matrix
-$ \Mx{X}_k $. For $ \Vc{u} \in \R^M, \Vc{v} \in \R^N, \Vc{w} \in \R^P $, we define the rank-1 \emph{outer
-product} tensor $\Tn{T} = \Vc{u} \topp \Vc{v} \topp \Vc{w} \in \R^{M \times N \times P}$ with entries
+$ \Mx{X}_k $. For $ u \in \R^M, v \in \R^N, w \in \R^P $, we define the rank-1 \emph{outer
+product} tensor $\Tn{T} = u \topp v \topp w \in \R^{M \times N \times P}$ with entries
 $ x_{ijk} = u_iv_jw_k $; such tensor has \emph{rank} one. Tensor addition is defined entry-wise. The rank of a tensor $ \Tn{T} $
 is defined as the minimum number of rank-one tensors that generate $ \Tn{T} $ as their sum.
 We define the \emph{CP} decomposition of rank $ R $ of a tensor $\Tn{T}$ as the sum $ \Tn{T} =
 \sum_{r=1}^R u_r \topp v_r \topp w_r $, and we denote it by $ \Tn{T} = \dsqr{U,V,W} $, where $ U,V $
-and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation in the context of tensors is the \emph{mode-$k$ product} between a tensor $\Tn{T} \in \mathbb{R}^{N_1 \times N_2 \times N_3}$ and a matrix $U \in \mathbb{R}^{J \times N_k}$ for $k \in \{1,2,3\}$, which is denoted by $\Tn{Y} = \Tn{T} \times_k U \in \mathbb{R}^{N_1 \times \cdots \times J \times \cdots \times N_3}$ where the $k$-th dimension is replaced by $J$. In slice form, the mode-$k$ product has matricized representation $\mathbf{Y}_{(k)} = U \mathbf{T}_{(k)}$. In components, it is represented as:
-\begin{equation}
-  y_{i_1 \dots i_{k-1} j i_{k+1} \dots i_3} = \sum_{i_k=1}^{N_k} t_{i_1 i_2 i_3} u_{j, i_k}.
-\end{equation}
+and $ W $ are matrices with $ R $ columns given by $ u_r,v_r $, and $ w_r $. An important operation in the context of tensors is the \emph{mode-$k$ product} between a tensor $\Tn{T} \in \mathbb{R}^{N_1 \times N_2 \times N_3}$ and a matrix $U \in \mathbb{R}^{R \times N_k}$ for $k \in \{1,2,3\}$, which is denoted by $\Tn{Y} = \Tn{T} \times_k U \in \mathbb{R}^{N_1 \times \cdots \times R \times \cdots \times N_3}$ where the $k$-th dimension is replaced by $R$. In slice form, the mode-$k$ product has matricized representation $\mathbf{Y}_{(k)} = U \mathbf{T}_{(k)}$. In components, it is represented as:
+$  y_{i_1 \dots i_{k-1} \alpha i_{k+1} \dots i_3} = \sum_{i_k=1}^{N_k} t_{i_1 i_2 i_3} u_{\alpha,
+i_k}$.
 
 \begin{table}[tb]
 \centering
@@ -226,7 +225,7 @@ $\msiz{M,N,P}$ & Dimensions of actual matrices that are multiplied \\
 $\dsqr{\Mx{U}, \Mx{V}, \Mx{W}}$ & Factor matrices corresponding to a tensor CP \\
 & decomposition that provides a fast algorithm. \\
 $\Tn{T}$ & Order-3 tensor. \\
-$\Tn{T} = \Vc{u} \topp \Vc{v} \topp \Vc{w}$ & Rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$. \\
+$\Tn{T} = u \topp v \topp w$ & Rank-1 tensor with entries $X_{ijk} = u_i v_j w_k$. \\
 $\Tm{T}{i}$ & $i$th frontal slice of $\Tn{T}$, the matrix of entries $X_{:,:,i}$. \\
 $A_{:k}$, $A_{k:}$, $A_{ij}$ & $k$th column, $ k $th row and $i, j$ entry of matrix $\Mx{A}$. \\
 $\vec(\Mx{A})$ & Column-order vectorization of the entries of $\Mx{A}$. \\
@@ -241,7 +240,8 @@ $\nnz(\cdot)$ & Number of non-zero entries of an object. \\
 
 \subsection{Evaluation of bilinear form using low-rank tensor decompositions}
 
-Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A bilinear form is a mapping $ f : X \times Y \to
+Let $ X,Y,Z $ be finite-dimensional vector spaces of dimensions $ I,J,K $ respectively. A
+\emph{bilinear form} is a mapping $ f : X \times Y \to
 Z$ that is linear in each entry, in other words such that $ f(x, \cdot) $ and $ f(\cdot,y) $ are linear for all
 $ x\in X $ and $ y\in Y $. Each component $ f_k $ is a bilinear form $ f_k : X \times Y \to \R$,
 which can be represented by a matrix slice $ \Tm{t}{k} $ of a tensor $ \Tn{t} $ such as 
@@ -258,7 +258,7 @@ Numerically evaluating the bilinear form in Equation~\ref{eq:bil_tensor_full} ha
 $. We call these multiplications \emph{active} to emphasize their dominant computational role. We can reduce the cost of evaluating $
 f(x,y) $ by
 considering a CP decomposition $ \dsqr{U,V,W} $ of rank $ R $ of $ \Tn{t} $.
-Denoting $ \Vc{u_l}, \Vc{v_l}, \Vc{w_l}$ as the columns of $ \Tm{U},\Tm{V} $ and $ \Tm{W} $, we have
+Denoting as $ u_l, v_l, w_l$ the columns of $ U,V $ and $ W $, we have
 the decomposition $ \Tn{t} =
 \sum_{r=1}^R u_r \topp v_r \topp w_r $, and by performing a substitution into
 Equation~\ref{eq:bil_tensor} component-wise, we get
@@ -298,22 +298,22 @@ From this expression easily follows the bilinearity of the map $ (A,B) \mapsto A
 and we indicate with $ \angb{M,N,P} $ the form that represents the multiplication between $ A $
 and $ B $. By this property, we can rewrite Equation~\ref{eq:bil_tensor} putting $ x =
 \Vec(A),y=\Vec(B) $ and the output vector $ z = \Vec(C^{\top}) $. This fixes the natural
-ordering on the entries of $ \Vec(\Tm{A}) $ and $ \Vec(\Tm{B}) $ and the inverse ordering on $
-\Vec(\Tm{C}^{\top})$. This
+ordering on the entries of $ \Vec(A) $ and $ \Vec(B) $ and the inverse ordering on $
+\Vec(C^\top)$. This
 yields a representation of the tensor $ \Tn{T} \in \R^{MN\times NP\times MP} $ of matrix
 multiplication $ \angb{M,N,P} $ from Equation~\ref{eq:bil_tensor} such that
 \begin{equation}
   \label{eq:mulvec}
-\Vec(\Tm{C}^{\top}) = \Tn{T} \ttm[1] \Vec(\Tm{A})^{\top} \ttm[2] \Vec(\Tm{B})^{\top}
+\Vec(C^\top) = \Tn{T} \ttm[1] \Vec(A)^{\top} \ttm[2] \Vec(B)^{\top}
 .\end{equation}
 
 If we are given a CP decomposition of rank $ r $ of the tensor $ \Tn{T}  = \dsqr{U,V,W}$, by
 Equation~\ref{eq:bil_tensor_full} this expression becomes
 \begin{equation}
   \label{eq:mulvec:CP}
-  Vec(\Tm{C}^{\top}) = \sum_{l=1}^R (\underbrace{\Vc{u_l}^{\top} \Vec(\Tm{A})}_{s_l}) \cdot
-  (\underbrace{\Vc{v_l}^{\top}\Vec(\Tm{B})}_{t_l})\Vc{w_l} = \sum_{l=1}^R (\underbrace{s_l \cdot
-  t_l}_{m_l})\Vc{w_l},
+  Vec(C^\top) = \sum_{l=1}^R (\underbrace{u_l^\top \Vec(A)}_{s_l}) \cdot
+  (\underbrace{v_l^\top\Vec(B)}_{t_l})w_l = \sum_{l=1}^R (\underbrace{s_l \cdot
+  t_l}_{m_l})w_l,
 \end{equation}
 
 The expressions above allow us to define fast matrix multiplications algorithms for any base case $ \angb{m,n,p} $.
@@ -595,7 +595,7 @@ block sizes---this is how it is implemented in practice.
   \State  $ T_r \leftarrow \sum_{i=1}^{4} V_{i,r} \vec(B)_i$
   \State $ M_r \gets\Call{Strassen}{S_r,T_r,\frac{N}{2}} $  \Comment{Recursive call.}
   \EndFor
-  \State $ \Vec(\Tm{C}^{\top}) = \sum_{r=1}^r M_r w_r$
+  \State $ \Vec(C^\top) = \sum_{r=1}^r M_r w_r$
   \State \Return $ C $.
 \EndProcedure
 \end{algorithmic}
@@ -786,8 +786,8 @@ From Figure~\ref{fig:gemm_comparison}, we see that all functions have a ramp-up 
 flatten for larger sizes---even if the parallel case is not flattening yet, we expect it to flatten
 after a few more runs. Also, dgemm performs better than faer for larger sizes, and we believe
 this is due to the many low-level optimizations in dgemm. Further, there is a discrepancy between
-Rust FFI dgemm and the C++ code which tends to decrease for larger sizes. This discrepancy is likely
-due to differences in threading framework overhead (Rayon in Rust vs. OpenMP in C++), thread pool pinning/affinity, or memory alignment, rather than FFI binding translation overhead.
+Rust FFI dgemm and the C++ code which tends to decrease for larger sizes, even if we pass the same
+configuration flags to both programs, but we did not expect C++ code further to discover the reason.
 
 
 \begin{figure}[ht]
