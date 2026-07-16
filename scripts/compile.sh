@@ -21,7 +21,7 @@ cd "${PROJECT_ROOT}/rust"
 
 # Set target-specific flags for both C and Rust compilation
 export TARGET_CPU="${TARGET_ARCH}"
-export RUSTFLAGS="-C target-cpu=${TARGET_ARCH}"
+export RUSTFLAGS="-C target-cpu=${TARGET_ARCH} -C link-arg=-Wl,--no-rosegment"
 
 echo "Cleaning previous build artifacts..."
 cargo clean
