@@ -247,8 +247,8 @@ $ x\in X $ and $ y\in Y $. Each component $ f_k $ is a bilinear form $ f_k : X \
 which can be represented by a matrix slice $ \Tm{t}{k} $ of a tensor $ \Tn{t} $ such as 
 \begin{equation}
 \label{eq:bil_tensor_full}
-f_k(x,y) = x^{\top}\Tm{t}{k}y = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j
-\end{equation}, for all $ k \in \{1,\ldots, K\}  $. Hence we can construct a tensor $ \Tn{t} $ which represents $ f $ by taking the slices $ \Tm{t}{k} $ that represent $ f_k $. In more succint tensor notation, 
+f_k(x,y) = x^{\top}\Tm{t}{k}y = \sum_{i=1}^I \sum_{j=1}^J t_{ijk}x_iy_j,
+\end{equation} for all $ k \in \{1,\ldots, K\}  $. Hence we can construct a tensor $ \Tn{t} $ which represents $ f $ by taking the slices $ \Tm{t}{k} $ that represent $ f_k $. In more succint tensor notation, 
 \begin{equation}
   \label{eq:bil_tensor}
  f = \Tn{t} \ttm[1] x^{\top} \ttm[2] y^{\top}.
@@ -686,7 +686,7 @@ The final block matrix product is computed directly through a combination of the
 Here, only the sub-product $A_{11}B_{11}$ is executed recursively using Strassen's matrix
 multiplication, while all other terms are computed via standard matrix multiplication.
 
-Although the mathematical formulation suggests computing multiple small matrix additions and products, such a block-wise approach would suffer from high library call overhead and poor cache locality. In our Rust implementation, we consolidate the boundary corrections into larger, contiguous GEMM operations: the right columns are computed via a single product $A \times B_{extra}$ (where $B_{extra}$ represents the peeled columns of $B$), and the bottom rows are computed via $A_{extra} \times B_{core}$ (where $A_{extra}$ represents the peeled rows of $A$). This consolidation maintains high arithmetic intensity and maximizes vendor BLAS efficiency.
+Although the mathematical formulation suggests computing multiple small matrix additions and products, such a block-wise approach would suffer from high library call overhead and poor cache locality. In our Rust implementation, we consolidate the boundary corrections into larger, contiguous GEMM operations: the right columns are computed via a single product $A B_{extra}$ (where $B_{extra}$ represents the peeled columns of $B$), and the bottom rows are computed via $A_{extra} B_{core}$ (where $A_{extra}$ represents the peeled rows of $A$). This consolidation maintains high arithmetic intensity and maximizes vendor BLAS efficiency.
 
 
 \subsection{Parallel algorithms for shared memory}
