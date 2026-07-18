@@ -690,6 +690,7 @@ Although the mathematical formulation suggests computing multiple small matrix a
 
 
 \subsection{Parallel algorithms for shared memory}
+\label{sec:par_alg_shared}
 
 Matrix multiplication is a problem subject to both computational and memory bandwidth bounds. The first is
 limited by the amount of computation the device can handle (i.e., cores, CPU/GPU speed), while the
@@ -705,8 +706,7 @@ following:
   \item \textbf{BFS:} Each recursive matrix multiplication routine and the associated matrix
     additions are launched by Rayon as an iterable, and then are collected in an array of matrices $
     \left[M_1, \ldots, M_r \right]$.
-  \item \textbf{DFS:} Each vendor matrix multiplication call uses all threads, and matrix
-    multiplications are always fully parallelized.
+  \item \textbf{DFS:} Each vendor matrix multiplication call uses all threads and the recursion tree is evaluated sequentially.
   \item \textbf{Hybrid:} The Hybrid approach developed in \cite{bensonballard2015} compensates 
     for the load imbalance in BFS by applying DFS on a subset of the base case problems. With $ L $
     levels of recursion and $ P $ threads, the hybrid algorithm applies task parallelism (BFS) to
@@ -763,12 +763,11 @@ accurate than taking multiplications only \cite{commavoidingstrass}.
 
 \subsection{Measuring impact of base GEMM}
 
-We aim to understand how the choice of the base matrix multiplication impacts performance of fast
-algorithms. In our experiments, we use random square matrices with $ 64bit $ floating-point entries 
-in $ (-1,1) $ of sizes $ N \in \{2,4,\ldots,2^k\} $. As the standard matrix multiplication algorithm
-implemented in GEMM costs $ O(N^3) $ while Strassen costs $ O(N^{2.81}) $, we expect the fast algorithm to outperform standard GEMM for sufficiently large $N$; thus, we seek to determine the crossover dimension $N$. Such $ N $ cannot be determined a priori, as it
-is faster than doing standard matrix multiplication. Such $ N $ cannot be determined a priori, as it
-depends on factors such as platform and implementation. In other words, we expect fast algorithms to surpass the curves in Figure~\ref{fig:gemm_comparison}.
+We aim to understand how the choice of the base matrix multiplication impacts the performance of fast
+algorithms. In our experiments, we use random square matrices with double-precision (64-bit) floating-point entries 
+in $(-1,1)$ of sizes $N \in \{2,4,\dots,2^k\}$. As the standard matrix multiplication algorithm
+implemented in GEMM costs $O(N^3)$ while Strassen costs $O(N^{2.81})$, we expect the fast algorithm to outperform standard GEMM for sufficiently large $N$. We thus seek to determine the crossover dimension $N$. Such $N$ cannot be determined a priori, as it
+depends on hardware features (such as cache capacities, SIMD widths) and software platform implementation details. In other words, we expect fast algorithms to surpass the base GEMM curves shown in Figure~\ref{fig:gemm_comparison}.
 
 \subsection{Comparison of MKL dgemm FFI and Faer matmul}
 
@@ -783,11 +782,11 @@ In this work, we consider two different matrix multiplication routines: MKL dgem
 \end{itemize}
 
 From Figure~\ref{fig:gemm_comparison}, we see that all functions have a ramp-up phase and then
-flatten for larger sizes---even if the parallel case is not flattening yet, we expect it to flatten
-after a few more runs. Also, dgemm performs better than faer for larger sizes, and we believe
-this is due to the many low-level optimizations in dgemm. Further, there is a discrepancy between
-Rust FFI dgemm and the C++ code which tends to decrease for larger sizes, even if we pass the same
-configuration flags to both programs, but we did not expect C++ code further to discover the reason.
+flatten for larger sizes as they transition from memory-bound overheads to compute-bound SIMD
+execution. In the sequential case, both libraries plateau beyond $N = 4096$, with MKL dgemm
+achieving approximately $48.0$ GFLOPS at $N = 65536$ and faer achieving $43.1$ GFLOPS; this gap is
+attributed to the highly optimized assembly microkernels embedded in MKL.
+In the parallel case (run on the AMD EPYC 7763 GPU partition using $16$ threads), there is a noticeable discrepancy between parallel MKL dgemm called directly from C++ and that invoked via Rust FFI. We believe this result is run-dependent, as we observed in some experimental runs that the FFI version was slightly faster than the native C++ MKL, likely due to OS scheduling and thread pool fluctuations on the shared cluster nodes. This discrepancy disappears at $N = 65536$, where both achieve $16.16$ GFLOPS/core. Additionally, parallel faer performs best at smaller dimensions ($N < 8192$), achieving $14.18$ GFLOPS/core at $N=2048$ (compared to MKL's $3.88$ GFLOPS/core) and peaking at $17.67$ GFLOPS/core at $N=4096$, outperforming MKL due to its lightweight scheduling layer. However, at $N \ge 8192$ faer is surpassed by MKL dgemm, which reaches $18.58$ GFLOPS/core at $N=8192$ and sustains $16.16$ GFLOPS/core at $N=65536$ compared to faer's $13.65$ GFLOPS/core.
 
 
 \begin{figure}[ht]
@@ -801,17 +800,27 @@ configuration flags to both programs, but we did not expect C++ code further to 
 
 The experimental results for sequential and parallel cutoff strategies are shown in
 Figures~\ref{fig:seq_grid_plot} and~\ref{fig:par_grid_plot}, respectively.
-Figures~\ref{fig:par_grid_plot_dgemm} and~\ref{fig:par_grid_plot_faer} show comparison of Strassen and base GEMM for the parallel case. In general, we notice
-that while base matmul performance tends to be different between MKL and faer, the respective Strassen
-variants tend to have similar performance, as Figures~\ref{fig:seq_grid_plot}
-and~\ref{fig:par_grid_plot} show.
-In the sequential case in Figure~\ref{fig:seq_grid_plot}, the best performance is achieved when cutoff
-is 2048 or when two levels of recursion are taken. We notice that in all cases Strassen outperforms
-GEMM, and growth is expected to continue for larger sizes, though we didn't test it as it would have required high computational time.
-In the parallel case, Figure~\ref{fig:par_grid_plot} shows optimal recursive performance is achieved at specific cutoff sizes (for example, when Level $ =2 $ or for Cutoffs $ 8192 $ or $ 16384 $). Compared to the MKL
-base case in Figure~\ref{fig:par_grid_plot_dgemm} and Figure~\ref{fig:par_grid_plot_faer} Strassen,
-especially the BFS and Hybrid variants perform better, showing peak performance with 2 or 3 levels
-of recursion and for greater cutoffs (when $ \ge 4096 $), leveraging parallel OpenMP execution within the MKL threading layer.
+Figures~\ref{fig:par_grid_plot_dgemm} and~\ref{fig:par_grid_plot_faer} show the comparison of Strassen and base GEMM for the parallel case. In general, we notice
+that while the base GEMM performance differs between MKL and faer, the respective Strassen
+variants tend to show similar performance characteristics, as Figures~\ref{fig:seq_grid_plot}
+and~\ref{fig:par_grid_plot} demonstrate.
+
+In the sequential case (Figure~\ref{fig:seq_grid_plot}), sequential Strassen starts to outperform
+standard GEMM around $N = 8192$. The performance gains become more pronounced at larger dimensions:
+at $N = 65536$, sequential Strassen achieves approximately $61.2$ GFLOPS ($L=2$) for the MKL base
+and $54.8$ GFLOPS ($L=2$) for the faer base, outperforming their respective base GEMM counterparts
+($48.0$ GFLOPS and $43.1$ GFLOPS) by approximately $27.5\%$ and $27.1\%$ in throughput. The optimal
+cutoff strategy is a fixed size cutoff of $2048$ or a recursion depth of $L=2$, which balances
+Strassen's arithmetic advantage against the overhead of memory allocation.
+
+In the parallel case (Figure~\ref{fig:par_grid_plot}), the crossover point is shifted at $N =
+16384$. At this dimension, the parallel BFS Strassen variant backed by MKL dgemm is still close to
+MKL dgemm, but at the maximum tested dimension, parallel BFS Strassen with $L=3$ recursion levels
+achieves peak performance of approximately $28.96$ GFLOPS/core, representing a $79.2\%$ throughput increase over the parallel MKL base of $16.16$ GFLOPS/core. Similarly, BFS Strassen backed by faer at $L=3$ achieves $24.93$ GFLOPS/core, outperforming the base ($13.65$ GFLOPS/core) by $82.6\%$. The parallel OpenMP execution inside the MKL threading layer and Rayon's dynamic scheduling in the BFS and Hybrid variants are critical to sustaining these gains at larger dimensions.
+
+To summarize, best performance is obtained when less with $ L=2 $ or when using an optimal cutoff ($
+2048 $ for sequential, and $ 16384 $ for parallel), which is when less recursive steps are taken.
+Furthermore, an accurate implementation could include a dynamic switch between the two modes.
 
 \begin{figure}[htbp]
   \centering
@@ -857,11 +866,20 @@ row).}
 \subsection{Finding the optimal cutoff for the parallel case}
 
 Figure~\ref{fig:combined_par_cutoff_grid} shows different recursive size thresholds for the parallel
-case, where BFS outperforms DFS in both variants, seeming also less sensitive to the base case than DFS.
-Compared to the sequential case in Figure~\ref{fig:seq_grid_plot}, optimal performance is
-found for larger cutoff sizes, such as when $ \ge  8192 $. We think that this is because smaller cutoff sizes
-trigger more recursive steps, causing higher scheduling and recursion overhead.
-In Figure~\ref{fig:par_cutoff_grid_plot_faer}, the faer variant shows that for smaller cutoff sizes (e.g., $1024$ or $2048$), the recursion overhead dominates, whereas larger cutoff sizes (e.g., $8192$ or $16384$) achieve peak efficiency by transitioning to the optimized base case sooner.
+case. We observe that BFS consistently outperforms DFS across all cutoff configurations, showing also less sensitivity to the base case than DFS.
+Recall that in DFS scheduling paradigm the recursion tree is evaluated sequentially, parallelizing only the leaf-node GEMM operations. Consequently, DFS suffers from thread under-utilization during the recursive splits and matrix addition phases. To maximize DFS performance, the leaf-node GEMM size must be large enough to saturate the 16 cores; hence, DFS achieves its best performance at larger cutoffs.
+Conversely, BFS parallelizes the 7 subproblems at the top levels of the recursion tree using Rayon.
+With 16 available threads, a single level of recursion (7 tasks) leaves at least
+9 threads idle, whereas going to 2 or 3 levels easily saturates the thread pool (for instance, when
+$ L=2 $ there are $ 7^2 =49$ tasks). However, choosing a
+cutoff that is too small (e.g., Cutoff $ 256 $ or $ 512 $) triggers an exponential growth in auxiliary memory allocations and memory bus contention, which degrades performance.
+For $N=32768$ backed by MKL dgemm, BFS achieves its peak performance at Cutoff $ 2048 $ ($19.76$
+GFLOPS/core), while for $N=65536$ it peaks at Cutoff $ 4096 $ ($29.41$ GFLOPS/core). For the faer backend, the optimal cutoff is larger (Cutoff $ 8192 $ for $N=32768$ achieving $17.24$ GFLOPS/core,
+and Cutoff $ 4096 $ for $N=65536$ achieving $25.91$ GFLOPS/core). Hence due to inner parallelism
+efficiency of MKL and faer, MKL Strassen variants
+perform better when breaking smaller blocks, while faer making it beneficial to transition to the
+base case sooner thank faer.
+
 \begin{figure}[htbp]
   \centering
   \begin{subfigure}{\textwidth}
@@ -889,10 +907,18 @@ We perform a numerical performance comparison between our optimized Rust impleme
 Strassen's algorithm and the reference C++ implementation by Benson and
 Ballard~\cite{bensonballard2015}. The results are shown in Figure~\ref{fig:ballard_comparison}. We
 compare the algorithms across one, two, and three levels of recursion using different thread
-scheduling paradigms: Sequential, Parallel DFS, Parallel BFS, and Parallel Hybrid. We observe that
-our implementation is competitive in the sequential case, with the dgemm-backed version yielding
-the highest performance. In the DFS
-case, Ballard's code outperforms our algorithm; we hypothesize that this is due to their more efficient parallelization of matrix additions.
+scheduling paradigms from Section~\ref{sec:par_alg_shared}. We choose only to
+compare cutoff by level as is currently the only supported by the C++ project.
+
+We observe that our implementation is highly competitive in the sequential case, with the dgemm-backed version yielding the highest overall throughput. In the parallel DFS case, Ballard's C++ code outperforms our algorithm (e.g., at $N=65536$ with $L=2$, Ballard DFS achieves $27.27$ GFLOPS/core compared to our Rust DFS's $19.23$ GFLOPS/core). This discrepancy is because Ballard's implementation parallelizes the recursive matrix additions across threads using OpenMP, whereas our Rust DFS performs the additions and splits sequentially on the main thread, parallelizing only the leaf GEMM operations. On a 16-thread machine, these sequential matrix additions introduce a severe memory-bound bottleneck.
+However, in the parallel BFS and Hybrid scheduling paradigms, our Rust implementation significantly
+outperforms the C++ reference at large scales. At $N=65536$ with $L=3$, our Rust BFS achieves
+$28.96$ GFLOPS/core (outperforming Ballard BFS's $26.32$ GFLOPS/core by $10.0\%$ in throughput), and
+our Rust Hybrid achieves $28.88$ GFLOPS/core (when Ballard Hybrid's scores $21.74$ GFLOPS/core by
+$32.8\%$ in throughput). Crucially, while Ballard's C++ Hybrid strategy suffers from performance
+degradation at $L=3$, our Rust Hybrid implementation maintains flat, high scaling. This confirms
+that Rayon's dynamic scheduler in Rust manages the recursive task scheduling and
+load-balancing with better efficiency compared to OpenMP's runtime configuration.
 
 \begin{figure}[htbp]
   \centering

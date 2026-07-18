@@ -151,7 +151,7 @@
 
 #slide(title: [Low-Rank Tensor Decompositions])[
   #definition([CP Decomposition], [
-    The CANDECOMP/PARAFAC (CP) decomposition of rank $R$ of a tensor $T$ is:
+    The Canonical Polyadic (CP) decomposition of rank $R$ of a tensor $T$ is:
     $ T = dsqr(U, V, W) = sum_(r=1)^R u_r topp v_r topp w_r $
     where $U in RR^(M times R)$, $V in RR^(N times R)$, and $W in RR^(P times R)$ are factor matrices with columns $u_r$, $v_r$, and $w_r$.
   ])
@@ -163,7 +163,8 @@
 ]
 
 #slide(title: [Bilinear Forms via Low-Rank Decompositions])[
-- A bilinear form $f : X times Y -> Z$ is represented by a tensor $T$:
+- A bilinear form (between finite dimensional vector spaces $X,Y$ and $Z$) is a mapping $f : X times
+Y -> Z$ which can be represented by a tensor $T$ as
 $ f = T times_1 x^T times_2 y^T $
 - Using a CP decomposition $T = dsqr(U, V, W)$ of rank $R$:
 $ f(x, y) = sum_(l=1)^R (u_l^T x) dot (v_l^T y) w_l $
@@ -214,26 +215,16 @@ where $s_l = u_l^T Vec(A)$ and $t_l = v_l^T Vec(B)$.
 - Traditional fast algorithms require dimensions to match the base case power.
 - *Dynamic Peeling:* A memory-efficient alternative to zero-padding.
 - Split $A$ and $B$ into core components and peeled boundary vectors/scalars:
-$ A = mat(A_11, a_12; a_21, a_22), \qquad B = mat(B_11, b_12; b_21, b_22) $
+$ A = mat(A_11, a_12; a_21, a_22), B = mat(B_11, b_12; b_21, b_22) $
 - Recombine using a combination of the core product and boundary corrections:
 $ C = mat(C_11, c_12; c_21, c_22) = mat(A_11 B_11 + a_12 b_21, A_11 b_12 + a_12 b_22; a_21 B_11 + a_22 b_21, a_21 b_12 + a_22 b_22) $
 - Leaf-node $A_11 B_11$ is solved recursively, while all boundary corrections are consolidated into single, large GEMM calls to maximize cache locality and vendor BLAS efficiency.
 ]
 
 #slide(title: [Shared Memory Parallel Scheduling])[
-  To balance computational load and avoid recursion tree overhead, we benchmarked three scheduling strategies in Rust using the Rayon library:
-
-- *DFS (Depth-First-Search):*
-- Evaluates the recursion tree sequentially.
-- Uses all available threads inside vendor leaf GEMM calls.
-- High thread under-utilization during split and addition phases.
-- *BFS (Breadth-First-Search):*
-- Parallelizes all independent recursive subproblems at the top levels.
-- Rayon executes recursive branches in parallel.
-- *Hybrid:*
-- Compensates for BFS load imbalance.
-- BFS task parallelism is applied to the first $R^L - (R^L mod P)$ tasks (where $P$ is the thread count).
-- DFS (all threads on single GEMM) is used on the remaining $R^L mod P$ tasks.
+  #align(center + horizon)[
+    #image("figures/parallel_diagram.pdf", width: 90%)
+  ]
 ]
 
 #slide(title: [Execution Platform & Setup])[
