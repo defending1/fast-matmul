@@ -96,6 +96,7 @@ impl Benchmark {
             BaseMatMul::Faer => "Faer",
             BaseMatMul::Dgemm => "MKL",
         };
+        let mut c = Mat::zeros(size, size);
         if self.run_sequential {
             Self::register_bench(
                 new_timings,
@@ -103,7 +104,7 @@ impl Benchmark {
                 size,
                 warmup_ms,
                 measure_ms,
-                || util::base_matmul(a, b, false, base_choice),
+                || util::base_matmul_inplace(c.as_mut(), a.as_ref(), b.as_ref(), false, base_choice),
             );
         }
         if self.run_parallel {
@@ -113,7 +114,7 @@ impl Benchmark {
                 size,
                 warmup_ms,
                 measure_ms,
-                || util::base_matmul(a, b, true, base_choice),
+                || util::base_matmul_inplace(c.as_mut(), a.as_ref(), b.as_ref(), true, base_choice),
             );
         }
     }
@@ -141,6 +142,7 @@ impl Benchmark {
             RecursionLimit::Depth(level) => format!("level_{}", level),
             RecursionLimit::Cutoff(cutoff) => format!("cutoff_{}", cutoff),
         };
+        let mut c = Mat::zeros(size, size);
         if self.run_sequential {
             Self::register_bench(
                 new_timings,
@@ -149,9 +151,10 @@ impl Benchmark {
                 warmup_ms,
                 measure_ms,
                 || {
-                    mm.cp_matmul(
-                        a,
-                        b,
+                    mm.cp_matmul_inplace(
+                        c.as_mut(),
+                        a.as_ref(),
+                        b.as_ref(),
                         ParallelismMode::Sequential,
                         base_choice,
                         recursion_limit,
@@ -166,7 +169,16 @@ impl Benchmark {
                 size,
                 warmup_ms,
                 measure_ms,
-                || mm.cp_matmul(a, b, ParallelismMode::Dfs, base_choice, recursion_limit),
+                || {
+                    mm.cp_matmul_inplace(
+                        c.as_mut(),
+                        a.as_ref(),
+                        b.as_ref(),
+                        ParallelismMode::Dfs,
+                        base_choice,
+                        recursion_limit,
+                    )
+                },
             );
             Self::register_bench(
                 new_timings,
@@ -174,7 +186,16 @@ impl Benchmark {
                 size,
                 warmup_ms,
                 measure_ms,
-                || mm.cp_matmul(a, b, ParallelismMode::Bfs, base_choice, recursion_limit),
+                || {
+                    mm.cp_matmul_inplace(
+                        c.as_mut(),
+                        a.as_ref(),
+                        b.as_ref(),
+                        ParallelismMode::Bfs,
+                        base_choice,
+                        recursion_limit,
+                    )
+                },
             );
             if let RecursionLimit::Depth(_) = recursion_limit {
                 Self::register_bench(
@@ -183,7 +204,16 @@ impl Benchmark {
                     size,
                     warmup_ms,
                     measure_ms,
-                    || mm.cp_matmul(a, b, ParallelismMode::Hybrid, base_choice, recursion_limit),
+                    || {
+                        mm.cp_matmul_inplace(
+                            c.as_mut(),
+                            a.as_ref(),
+                            b.as_ref(),
+                            ParallelismMode::Hybrid,
+                            base_choice,
+                            recursion_limit,
+                        )
+                    },
                 );
             }
         }

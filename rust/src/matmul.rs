@@ -323,6 +323,34 @@ impl<'a> MatMul<'a> {
         c
     }
 
+    /// Computes classical matrix multiplication C = A * B in-place using the underlying library
+    /// without extra allocation.
+    ///
+    /// # Arguments
+    /// * `dst` - The destination matrix slice.
+    /// * `a` - The left matrix operand.
+    /// * `b` - The right matrix operand.
+    /// * `multithreaded` - Whether to use multithreading.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
+    pub fn base_matmul_inplace(
+        &self,
+        dst: faer::MatMut<'_, f64>,
+        a: MatRef<'_, f64>,
+        b: MatRef<'_, f64>,
+        multithreaded: bool,
+        base_choice: BaseMatMul,
+    ) {
+        self.base_matmul_impl(
+            dst,
+            faer::Accum::Replace,
+            a,
+            b,
+            multithreaded,
+            base_choice,
+        );
+    }
+
+
     /// Calculate the total number of recursion levels for the given input matrix shape.
     /// Performs one step of dynamic peeling in the multiplication C = A * B.
     ///
@@ -791,5 +819,35 @@ impl<'a> MatMul<'a> {
             true,
         );
         c
+    }
+
+    /// Computes matrix multiplication using the CP decomposition formula in-place
+    /// without extra allocation.
+    ///
+    /// # Arguments
+    /// * `dst` - The destination matrix slice.
+    /// * `a` - The left matrix operand as a `MatRef`.
+    /// * `b` - The right matrix operand as a `MatRef`.
+    /// * `mode` - The parallelism mode to use.
+    /// * `base_choice` - The backend choice (Faer or Dgemm).
+    /// * `recursion_limit` - The recursion limit choice.
+    pub fn cp_matmul_inplace(
+        &self,
+        dst: faer::MatMut<'_, f64>,
+        a: MatRef<'_, f64>,
+        b: MatRef<'_, f64>,
+        mode: ParallelismMode,
+        base_choice: BaseMatMul,
+        recursion_limit: RecursionLimit,
+    ) {
+        self.cp_matmul_impl(
+            dst,
+            a,
+            b,
+            mode,
+            base_choice,
+            recursion_limit,
+            true,
+        );
     }
 }

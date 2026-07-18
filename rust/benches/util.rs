@@ -82,6 +82,41 @@ pub fn base_matmul(
     }
 }
 
+/// Run the baseline sequential or parallel matrix multiplication in-place,
+/// selectively using `faer` or Intel MKL `dgemm` based on the specified choice.
+#[allow(dead_code)]
+pub fn base_matmul_inplace(
+    dst: faer::MatMut<'_, f64>,
+    a: faer::MatRef<'_, f64>,
+    b: faer::MatRef<'_, f64>,
+    multithreaded: bool,
+    base_choice: BaseMatMul,
+) {
+    fast_matmul::matmul::init_rayon_threads();
+    match base_choice {
+        BaseMatMul::Faer => {
+            let par = if multithreaded {
+                faer::get_global_parallelism()
+            } else {
+                faer::Par::Seq
+            };
+            faer::linalg::matmul::matmul(
+                dst,
+                faer::Accum::Replace,
+                a,
+                b,
+                1.0,
+                par,
+            );
+        }
+        BaseMatMul::Dgemm => {
+            fast_matmul::mkl::mkl_set_threads(if multithreaded { 0 } else { 1 });
+            fast_matmul::mkl::mkl_matmul_impl(dst, faer::Accum::Replace, a, b);
+        }
+    }
+}
+
+
 /// Evaluates the first derivative of a 1D spline at the specified query points.
 #[allow(dead_code)]
 pub fn evaluate_spline_derivative<const K: usize>(

@@ -51,7 +51,7 @@ pub fn mkl_set_threads(num_threads: i32) {
 /// * `accum` - The accumulation strategy (Add or Replace).
 /// * `a` - The left matrix operand as a `MatRef`.
 /// * `b` - The right matrix operand as a `MatRef`.
-pub(crate) fn mkl_matmul_impl(
+pub fn mkl_matmul_impl(
     mut dst: faer::MatMut<'_, f64>,
     accum: faer::Accum,
     a: faer::MatRef<'_, f64>,
