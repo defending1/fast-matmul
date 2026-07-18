@@ -393,10 +393,17 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
             ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
         # Set dynamic tight y-limits across subplots per row to reduce blank space
-        for r in range(2):
-            if max_gflops_row[r] > 0:
-                for c in range(4):
-                    axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
+        if not is_seq:
+            max_gflops_all = max(max_gflops_row)
+            if max_gflops_all > 0:
+                for r in range(2):
+                    for c in range(4):
+                        axs[r, c].set_ylim(0, max_gflops_all * 1.05)
+        else:
+            for r in range(2):
+                if max_gflops_row[r] > 0:
+                    for c in range(4):
+                        axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
 
         # Add labels on outer plots
         for col in range(4):
@@ -732,11 +739,12 @@ def plot_cutoff_grid(project_root: str, par_dir: str = "run_par2", backend_filte
             ax.tick_params("x", labelbottom=True, rotation=70, rotation_mode="xtick", labelsize=5)
             ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-        # Set dynamic tight y-limits across subplots per row to reduce blank space
-        for r in range(2):
-            if max_gflops_row[r] > 0:
+        # Set dynamic tight y-limits across subplots using same scale on both rows
+        max_gflops_all = max(max_gflops_row)
+        if max_gflops_all > 0:
+            for r in range(2):
                 for c in range(4):
-                    axs[r, c].set_ylim(0, max_gflops_row[r] * 1.05)
+                    axs[r, c].set_ylim(0, max_gflops_all * 1.05)
 
         # Add labels on outer plots
         for col in range(4):

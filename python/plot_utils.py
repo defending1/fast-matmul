@@ -330,13 +330,14 @@ def calculate_gflops_ballard(size: pd.Series, time_ms: pd.Series, is_parallel: b
         gflops = gflops / float(num_cores)
     return gflops
 
-
 def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
     """Save the Matplotlib figure to the filesystem as PDF only.
 
     Saves the figure to the specified output path, and automatically saves a copy
     to both the 'generated/plots' and 'report/figures' directories to ensure
-    consistency across target output locations.
+    consistency across target output locations. If the SKIP_REPORT_PLOTS environment
+    variable is set to '1', saves to the report directory or any path containing
+    'report' will be skipped.
 
     Args:
         fig: The Matplotlib Figure instance.
@@ -350,9 +351,12 @@ def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
     abs_output_path = os.path.abspath(output_path)
 
     # Save to the original output_path
-    os.makedirs(os.path.dirname(abs_output_path), exist_ok=True)
-    fig.savefig(abs_output_path, bbox_inches="tight", dpi=dpi)
-    print(f"Plot saved successfully to: {abs_output_path}")
+    if not (os.environ.get("SKIP_REPORT_PLOTS") == "1" and "report" in abs_output_path):
+        os.makedirs(os.path.dirname(abs_output_path), exist_ok=True)
+        fig.savefig(abs_output_path, bbox_inches="tight", dpi=dpi)
+        print(f"Plot saved successfully to: {abs_output_path}")
+    else:
+        print(f"Skipping save to report: {abs_output_path}")
 
     # Determine project root and additional directories
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -370,11 +374,14 @@ def save_plot(fig: plt.Figure, output_path: str, dpi: int = 300) -> None:
         print(f"Plot also saved to: {gen_plots_path}")
 
     # Save to report/figures if not already saved there
-    report_figures_path = os.path.join(report_figures_dir, filename)
-    if os.path.abspath(report_figures_path) != abs_output_path:
-        os.makedirs(report_figures_dir, exist_ok=True)
-        fig.savefig(report_figures_path, bbox_inches="tight", dpi=dpi)
-        print(f"Plot also saved to: {report_figures_path}")
+    if os.environ.get("SKIP_REPORT_PLOTS") != "1":
+        report_figures_path = os.path.join(report_figures_dir, filename)
+        if os.path.abspath(report_figures_path) != abs_output_path:
+            os.makedirs(report_figures_dir, exist_ok=True)
+            fig.savefig(report_figures_path, bbox_inches="tight", dpi=dpi)
+            print(f"Plot also saved to: {report_figures_path}")
+    else:
+        print(f"Skipping copy to report directory for {filename}")
 
 
 def is_parallel(col: str) -> bool:
