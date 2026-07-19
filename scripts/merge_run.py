@@ -21,6 +21,73 @@ def parse_job_id(filename):
         return int(match.group(1))
     return 0
 
+def check_mixed_run(run_dir_path):
+    """Checks if the directory contains both sequential and parallel Rust results."""
+    csv_files = glob.glob(os.path.join(run_dir_path, "*.csv"))
+    has_seq = False
+    has_par = False
+    for f in csv_files:
+        filename = os.path.basename(f)
+        try:
+            df = pd.read_csv(f)
+            if "_base_" in filename:
+                is_seq = df["mkl_seq"].notna().any() or df["faer_seq"].notna().any()
+                is_par = df["mkl_par"].notna().any() or df["faer_par"].notna().any()
+            else:
+                is_seq = df["strassen_seq"].notna().any()
+                is_par = df["strassen_dfs"].notna().any() or df["strassen_bfs"].notna().any() or df["strassen_hybrid"].notna().any()
+            if is_seq:
+                has_seq = True
+            if is_par:
+                has_par = True
+        except Exception:
+            pass
+    return has_seq and has_par
+
+def split_mixed_run(run_dir_path, project_root, seq_dest_name="run_seq2", par_dest_name="run_par7"):
+    """Splits a mixed run directory into sequential and parallel run directories."""
+    print(f"Detected mixed sequential and parallel files in {run_dir_path}.")
+    csv_dir = os.path.dirname(run_dir_path)
+    seq_dir = os.path.join(csv_dir, seq_dest_name)
+    par_dir = os.path.join(csv_dir, par_dest_name)
+    
+    # Re-create clean target directories
+    import shutil
+    for d in [seq_dir, par_dir]:
+        rust_dir = os.path.join(d, "rust")
+        if os.path.exists(rust_dir):
+            shutil.rmtree(rust_dir)
+        os.makedirs(rust_dir, exist_ok=True)
+        
+    csv_files = glob.glob(os.path.join(run_dir_path, "*.csv"))
+    
+    seq_count = 0
+    par_count = 0
+    
+    for f in csv_files:
+        filename = os.path.basename(f)
+        try:
+            df = pd.read_csv(f)
+            if "_base_" in filename:
+                is_seq = df["mkl_seq"].notna().any() or df["faer_seq"].notna().any()
+            else:
+                is_seq = df["strassen_seq"].notna().any()
+                
+            if is_seq:
+                dest = os.path.join(seq_dir, "rust", filename)
+                seq_count += 1
+            else:
+                dest = os.path.join(par_dir, "rust", filename)
+                par_count += 1
+            shutil.copy2(f, dest)
+        except Exception as e:
+            print(f"Error copying {filename}: {e}")
+            
+    print(f"Successfully split into:")
+    print(f"  {seq_dir}/rust: {seq_count} files")
+    print(f"  {par_dir}/rust: {par_count} files")
+    return seq_dir, par_dir
+
 def merge_rust_results(input_dir):
     """Merges Rust benchmark CSV files (Strassen and base files) from input_dir and returns the dataframes."""
     print(f"Merging Rust results from {input_dir}...")
@@ -187,7 +254,7 @@ def format_c_merged_content(var_runs):
         content += f"{var_name} = [ {formatted_runs} ];\n\n\n"
     return content
 
-def merge_run_dir(run_dir_path, project_root):
+def merge_run_dir(run_dir_path, project_root, seq_dir=None):
     """Processes a single run directory, merging its Rust and C subdirectories, and returns whether it is a parallel run."""
     run_dir_path = os.path.abspath(run_dir_path)
     run_dir_name = os.path.basename(run_dir_path)
@@ -254,12 +321,18 @@ def merge_run_dir(run_dir_path, project_root):
             grid_cmd = ["uv", "run", grid_plot_script, "--mode", mode_str]
             if is_parallel:
                 grid_cmd.extend(["--par-dir", run_dir_name])
+                if seq_dir:
+                    grid_cmd.extend(["--seq-dir", seq_dir])
+            else:
+                grid_cmd.extend(["--seq-dir", run_dir_name])
             subprocess.run(grid_cmd, check=False)
             
             if is_parallel:
                 print(f"Generating parallel cutoff grid plots using '{grid_plot_script}'...")
                 grid_cmd_cutoff = ["uv", "run", grid_plot_script, "--mode", "cutoff_grid"]
                 grid_cmd_cutoff.extend(["--par-dir", run_dir_name])
+                if seq_dir:
+                    grid_cmd_cutoff.extend(["--seq-dir", seq_dir])
                 subprocess.run(grid_cmd_cutoff, check=False)
             
     return is_parallel
@@ -309,9 +382,27 @@ def main():
                 print(f"Error: Could not find run directory '{item}'")
                 sys.exit(1)
                 
-    last_par_dir = None
+    # Detect and split mixed run directories
+    new_target_dirs = []
     for run_dir in target_dirs:
-        is_par = merge_run_dir(run_dir, project_root)
+        if check_mixed_run(run_dir):
+            seq_dir, par_dir = split_mixed_run(run_dir, project_root, seq_dest_name="run_seq2", par_dest_name="run_par7")
+            new_target_dirs.extend([seq_dir, par_dir])
+        else:
+            new_target_dirs.append(run_dir)
+    target_dirs = new_target_dirs
+
+    last_par_dir = None
+    last_seq_dir = None
+    
+    # Pre-scan targets to find any sequential directory name
+    for run_dir in target_dirs:
+        is_par = "par" in os.path.basename(run_dir).lower()
+        if not is_par:
+            last_seq_dir = os.path.basename(run_dir)
+            
+    for run_dir in target_dirs:
+        is_par = merge_run_dir(run_dir, project_root, seq_dir=last_seq_dir)
         if is_par:
             last_par_dir = os.path.basename(run_dir)
             
@@ -322,6 +413,8 @@ def main():
         cmd = ["uv", "run", plot_base_comp]
         if last_par_dir:
             cmd.extend(["--par-dir", last_par_dir])
+        if last_seq_dir:
+            cmd.extend(["--seq-dir", last_seq_dir])
         subprocess.run(cmd, check=False)
 
     # Always update the Ballard comparison plot
@@ -331,6 +424,8 @@ def main():
         cmd = ["uv", "run", grid_plot_script, "--mode", "compare_ballard"]
         if last_par_dir:
             cmd.extend(["--par-dir", last_par_dir])
+        if last_seq_dir:
+            cmd.extend(["--seq-dir", last_seq_dir])
         subprocess.run(cmd, check=False)
 
 if __name__ == "__main__":
