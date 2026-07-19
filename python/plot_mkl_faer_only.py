@@ -29,15 +29,25 @@ def main() -> None:
         default="run_par",
         help="Directory name under generated/csv/ for parallel results (default: 'run_par')."
     )
+    parser.add_argument(
+        "--seq-dir",
+        default="run_seq",
+        help="Directory name under generated/csv/ for sequential results (default: 'run_seq')."
+    )
     args = parser.parse_args()
     par_dir = args.par_dir
+    seq_dir = args.seq_dir
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
 
     # 1. Paths for Sequential Data
-    seq_base_csv_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_base.csv")
-    seq_ballard_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmarks_seq.txt")
+    seq_base_csv_path = os.path.join(project_root, "generated", "csv", seq_dir, "benchmark_results_base.csv")
+    seq_ballard_path = os.path.join(project_root, "generated", "csv", seq_dir, "benchmarks_seq.txt")
+    if not os.path.exists(seq_ballard_path):
+        seq_ballard_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmarks_seq.txt")
+    if not os.path.exists(seq_ballard_path):
+        seq_ballard_path = os.path.join(project_root, "benchmarks", "generated", "benchmarks_seq.txt")
 
     # 2. Paths for Parallel Data
     par_base_csv_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_base.csv")

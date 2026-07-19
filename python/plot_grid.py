@@ -24,7 +24,7 @@ import shutil
 import plot_utils
 
 
-def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backend_filter: str = None) -> None:
+def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", seq_dir: str = "run_seq", backend_filter: str = None) -> None:
     """Generates a performance comparison grid plot for the specified mode.
 
     Does not display Ballard reference lines. Enforces tight y-limits starting at 0.
@@ -33,15 +33,16 @@ def plot_mode_grid(project_root: str, mode: str, par_dir: str = "run_par", backe
         project_root: The root directory of the project.
         mode: The plotting mode, either 'sequential' ('seq') or 'parallel' ('par').
         par_dir: Directory name under generated/csv/ for parallel results (default: 'run_par').
+        seq_dir: Directory name under generated/csv/ for sequential results (default: 'run_seq').
         backend_filter: Filter for backend: 'faer', 'dgemm', or None (default).
     """
     is_seq = mode in ("sequential", "seq")
-    csv_dir = "run_seq" if is_seq else par_dir
+    csv_dir = seq_dir if is_seq else par_dir
 
     if is_seq:
-        cutoff_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_cutoff.csv")
-        levels_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_levels.csv")
-        base_csv_path = os.path.join(project_root, "generated", "csv", "run_seq", "benchmark_results_base.csv")
+        cutoff_path = os.path.join(project_root, "generated", "csv", seq_dir, "benchmark_results_cutoff.csv")
+        levels_path = os.path.join(project_root, "generated", "csv", seq_dir, "benchmark_results_levels.csv")
+        base_csv_path = os.path.join(project_root, "generated", "csv", seq_dir, "benchmark_results_base.csv")
     else:
         # Load parallel levels and cutoffs from par_dir if available, otherwise fallback
         cutoff_path = os.path.join(project_root, "generated", "csv", par_dir, "benchmark_results_cutoff.csv")
@@ -834,7 +835,7 @@ def plot_cutoff_grid(project_root: str, par_dir: str = "run_par2", backend_filte
         plt.close(fig)
 
 
-def plot_compare_ballard(project_root: str, par_dir: str = "run_par") -> None:
+def plot_compare_ballard(project_root: str, par_dir: str = "run_par", seq_dir: str = "run_seq") -> None:
     """Generates and saves a 4x3 grid plot comparing Rust Strassen to Ballard references.
 
     Enforces row-specific tight y-limits starting at 0 to minimize blank space.
@@ -844,8 +845,9 @@ def plot_compare_ballard(project_root: str, par_dir: str = "run_par") -> None:
     Args:
         project_root: The root directory of the project.
         par_dir: Directory name under generated/csv/ for parallel results (default: 'run_par').
+        seq_dir: Directory name under generated/csv/ for sequential results (default: 'run_seq').
     """
-    csv_seq_dir = "run_seq"
+    csv_seq_dir = seq_dir
     csv_par_dir = par_dir
 
     seq_cutoff_path = os.path.join(project_root, "generated", "csv", csv_seq_dir, "benchmark_results_cutoff.csv")
@@ -1288,6 +1290,11 @@ def main() -> None:
         default="run_par",
         help="Directory name under generated/csv/ for parallel results (default: 'run_par').",
     )
+    parser.add_argument(
+        "--seq-dir",
+        default="run_seq",
+        help="Directory name under generated/csv/ for sequential results (default: 'run_seq').",
+    )
     args = parser.parse_args()
 
     modes_to_run = []
@@ -1302,19 +1309,19 @@ def main() -> None:
 
     for mode in modes_to_run:
         if mode == "compare_ballard":
-            plot_compare_ballard(project_root, par_dir=args.par_dir)
+            plot_compare_ballard(project_root, par_dir=args.par_dir, seq_dir=args.seq_dir)
         elif mode == "parallel":
-            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="faer")
-            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="dgemm")
-            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, backend_filter="strassen_only")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, seq_dir=args.seq_dir, backend_filter="faer")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, seq_dir=args.seq_dir, backend_filter="dgemm")
+            plot_mode_grid(project_root, "parallel", par_dir=args.par_dir, seq_dir=args.seq_dir, backend_filter="strassen_only")
         elif mode == "sequential":
-            plot_mode_grid(project_root, "sequential")
+            plot_mode_grid(project_root, "sequential", seq_dir=args.seq_dir)
         elif mode == "cutoff_grid":
             plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="faer")
             plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="dgemm")
             plot_cutoff_grid(project_root, par_dir=args.par_dir, backend_filter="strassen_only")
         else:
-            plot_mode_grid(project_root, mode, par_dir=args.par_dir)
+            plot_mode_grid(project_root, mode, par_dir=args.par_dir, seq_dir=args.seq_dir)
 
 
 if __name__ == "__main__":
